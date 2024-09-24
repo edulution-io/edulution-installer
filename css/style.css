@@ -8,7 +8,7 @@ body {
 .container {
     text-align: center;
     padding-top: 50px;
-    margin-top: 15%;
+    margin-top: 30%;
 }
 
 .logo {
@@ -32,4 +32,28 @@ body {
     font-size: 16px;
     cursor: pointer;
     margin-left: 10px;
+}
+
+.footer-section {
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    text-align: center;
+    padding: 15px;
+}
+
+.gradient-button {
+    background: linear-gradient(135deg, #00A3E0, #74C000);
+    border: none;
+    color: white;
+    padding: 15px 30px;
+    text-align: center;
+    font-size: 16px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.gradient-button:hover {
+    background: linear-gradient(135deg, #0081C3, #62A500);
 }

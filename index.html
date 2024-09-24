@@ -4,17 +4,22 @@
     <meta charset="UTF-8">
     <title>edulutionUI - Installer</title>
     <link rel="stylesheet" href="css/style.css">
-    <link rel="icon" href="https://edulution.io/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="img/icon.ico" type="image/x-icon">
 </head>
 <body style="background-image: url('img/background.jpg');">
     <div class="container">
         <a href="https://edulution.io">
-            <img src="img/edulution_logo_weiss.png" alt="Logo" class="logo">
+            <img src="img/edulution_logo_weiss.png" alt="Logo" class="logo" style="height: 20%;">
         </a>
         
         <div class="copy-section">
-            <input type="text" id="linkField" value="https://get.edulution.io/installer" readonly>
-            <button onclick="copyLink()">Link kopieren</button>
+            <input type="text" id="linkField" value="bash <(curl -s https://get.edulution.io/installer)" readonly>
+            <br>
+            <button onclick="copyLink()" class="gradient-button">Link kopieren</button>
+        </div>
+
+        <div class="footer-section">
+            Alle Informationen auf <a href="https://edulution.io">edulution.io</a>
         </div>
     </div>
 
