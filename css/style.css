@@ -1,5 +1,5 @@
 body {
-    background-image: url("img/background.jpg");
+    background-image: url("../img/background.jpg");
     background-size: cover;
     background-position: center;
     margin: 0;
@@ -9,6 +9,7 @@ body {
 .container {
     text-align: center;
     padding-top: 50px;
+    margin-top: 15%;
 }
 
 .logo {
