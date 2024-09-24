@@ -43,6 +43,18 @@ body {
     color: white;
 }
 
+.footer-section a:active {
+    color: white;
+}
+
+.footer-section a:visited {
+    color: white;
+}
+
+.footer-section a:hover {
+    color: linear-gradient(135deg, #0081C3, #62A500);
+}
+
 .gradient-button {
     background: linear-gradient(135deg, #00A3E0, #74C000);
     border: none;
