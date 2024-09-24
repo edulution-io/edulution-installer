@@ -8,11 +8,11 @@ body {
 .container {
     text-align: center;
     padding-top: 50px;
-    margin-top: 30%;
+    margin-top: 15%;
 }
 
 .logo {
-    width: 200px;
+    width: 350px;
     height: auto;
 }
 
@@ -21,7 +21,7 @@ body {
 }
 
 .copy-section input[type="text"] {
-    width: 300px;
+    width: 500px;
     padding: 10px;
     font-size: 16px;
     text-align: center;
@@ -52,6 +52,8 @@ body {
     border-radius: 5px;
     cursor: pointer;
     transition: background 0.3s ease;
+    cursor: pointer;
+    margin-top: 20px;
 }
 
 .gradient-button:hover {
