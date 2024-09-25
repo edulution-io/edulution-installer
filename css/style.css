@@ -28,7 +28,7 @@ body {
     text-align: center;
     background-color: #2D2D30;
     color: white;
-    border: 2px solid linear-gradient(135deg, #00A3E0, #74C000);
+    border: black;
 }
 
 .copy-section button {
