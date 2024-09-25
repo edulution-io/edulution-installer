@@ -33,10 +33,12 @@ body {
 
 .copy-section input[type="text"]:focus {
     border: white;
+    outline: none;
 }
 
 .copy-section input[type="text"]:focus-visible {
     border: white;
+    outline: none;
 }
 
 .copy-section button {
