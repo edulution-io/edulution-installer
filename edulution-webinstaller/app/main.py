@@ -1,8 +1,8 @@
 import base64
 import json
 import requests
-import socket
-import asyncio
+import os
+import signal
 
 from fastapi import FastAPI, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -231,5 +231,4 @@ def createEdulutionEnvFile(external_domain: str, binduser_dn: str, binduser_pw: 
     with open("/edulution-ui/edulution.env", "w") as f:
         f.write(external_domain)
     
-    loop = asyncio.get_event_loop()
-    loop.stop()
+    os.kill(os.getpid(), signal.SIGTERM)
