@@ -92,6 +92,8 @@ fi
 
 echo "[*] Starte den edulutionUI Web-Installer..."
 
+docker pull ghcr.io/edulution-io/edulution-installer:main 2>&1 > /dev/zero
+
 cat <<EOF
 
 ########################################################
