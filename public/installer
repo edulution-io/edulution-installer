@@ -109,4 +109,4 @@ cat <<EOF
 
 EOF
 
-docker run -it -p 8000:8000 -v /srv/docker/edulution-ui:/edulution-ui ghcr.io/edulution-io/edulution-installer:main 2>&1 > /dev/zero
+docker run -it -p 8000:8000 -v /srv/docker/edulution-ui:/edulution-ui/ ghcr.io/edulution-io/edulution-installer:main 2>&1 > /dev/zero

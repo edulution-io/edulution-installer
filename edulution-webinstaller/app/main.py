@@ -228,7 +228,7 @@ def catch_all():
     return RedirectResponse("/")
 
 def createEdulutionEnvFile(external_domain: str, binduser_dn: str, binduser_pw: str):
-    with open("edulution-ui/edulution.env", "w") as f:
+    with open("/edulution-ui/edulution.env", "w") as f:
         f.write(external_domain)
     
     loop = asyncio.get_event_loop()
