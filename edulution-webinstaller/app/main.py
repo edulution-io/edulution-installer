@@ -1,8 +1,9 @@
 import base64
 import json
 import requests
+import socket
 
-from fastapi import FastAPI, Form
+from fastapi import FastAPI, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -20,6 +21,20 @@ class ExternalDomainWithLogin(BaseModel):
     binduser_dn: str
     binduser_pw: str
 
+print(f"""
+
+########################################################
+      
+    edulutionUI Web-Installer
+      
+    Sie erreichen die Oberfläche wie folgt:
+      
+    https://{socket.gethostname()}:8000
+    https://{socket.gethostbyname(socket.gethostname())}:8000
+
+########################################################
+
+""")
 
 app = FastAPI()
 
@@ -198,7 +213,7 @@ def checkLDAP(data: ExternalDomainWithLogin):
         return False
     
 @app.post("/finish")
-def finish(edulutionsetuptoken: str = Form(None), external_domain: str = Form(None), binduser_dn: str = Form(None), binduser_pw: str = Form(None)):
+def finish(background_tasks: BackgroundTasks, edulutionsetuptoken: str = Form(None), external_domain: str = Form(None), binduser_dn: str = Form(None), binduser_pw: str = Form(None)):
     if edulutionsetuptoken is not None:
         data = base64.b64decode(edulutionsetuptoken.encode("utf-8"))
         data = json.loads(data.decode("utf-8"))
@@ -208,6 +223,8 @@ def finish(edulutionsetuptoken: str = Form(None), external_domain: str = Form(No
 
     if not external_domain or not binduser_dn or not binduser_pw:
         return RedirectResponse("/")
+    
+    background_tasks.add_task(createEdulutionEnvFile, external_domain, binduser_dn, binduser_pw)
 
     html_content = f"""
         <h3>Konfiguration abgeschlossen</h3>
@@ -223,3 +240,9 @@ def finish(edulutionsetuptoken: str = Form(None), external_domain: str = Form(No
 @app.api_route("/{path_name:path}")
 def catch_all():
     return RedirectResponse("/")
+
+def createEdulutionEnvFile(external_domain: str, binduser_dn: str, binduser_pw: str):
+    with open("edulution-ui/edulution.env", "w") as f:
+        f.write(external_domain)
+    
+    exit(0)

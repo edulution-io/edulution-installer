@@ -89,3 +89,6 @@ if [ ! -f "${DIRECTORY}docker-compose.yml" ]; then
     echo "[!] Datei konnte nicht heruntergeladen werden!"
     exit 1
 fi
+
+echo "[*] Starte den edulutionUI Web-Installer..."
+docker run -it -p 8000:8000 -v /srv/docker/edulution-ui:/edulution-ui ghcr.io/edulution-io/edulution-installer:main
