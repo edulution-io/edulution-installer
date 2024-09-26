@@ -3,6 +3,7 @@ import json
 import requests
 import os
 import signal
+import time
 
 from fastapi import FastAPI, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -231,4 +232,5 @@ def createEdulutionEnvFile(external_domain: str, binduser_dn: str, binduser_pw: 
     with open("/edulution-ui/edulution.env", "w") as f:
         f.write(external_domain)
     
+    time.sleep(5)
     os.kill(os.getpid(), signal.SIGTERM)
