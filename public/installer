@@ -91,4 +91,20 @@ if [ ! -f "${DIRECTORY}docker-compose.yml" ]; then
 fi
 
 echo "[*] Starte den edulutionUI Web-Installer..."
-docker run -it -p 8000:8000 -v /srv/docker/edulution-ui:/edulution-ui ghcr.io/edulution-io/edulution-installer:main
+
+cat <<EOF
+
+########################################################
+
+    edulutionUI Web-Installer
+      
+    Sie erreichen die Oberfläche wie folgt:
+      
+    https://$(hostname):8000
+    https://$(hostname -I | awk '{print $1}'):8000
+
+########################################################
+
+EOF
+
+docker run -it -p 8000:8000 -v /srv/docker/edulution-ui:/edulution-ui ghcr.io/edulution-io/edulution-installer:main 2>&1 > /dev/zero

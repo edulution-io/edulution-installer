@@ -21,21 +21,6 @@ class ExternalDomainWithLogin(BaseModel):
     binduser_dn: str
     binduser_pw: str
 
-print(f"""
-
-########################################################
-      
-    edulutionUI Web-Installer
-      
-    Sie erreichen die Oberfläche wie folgt:
-      
-    https://{socket.gethostname()}:8000
-    https://{socket.gethostbyname(socket.gethostname())}:8000
-
-########################################################
-
-""")
-
 app = FastAPI()
 
 app.mount("/css", StaticFiles(directory="css"), name="static")
