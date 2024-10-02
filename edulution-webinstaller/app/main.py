@@ -247,7 +247,7 @@ def createEdulutionEnvFile(external_domain: str, binduser_dn: str, binduser_pw: 
     postgres_secret = generateSecret()
     keycloak_admin_secret = generateSecret()
 
-    realm_file = json.load(open("/edulution-ui/edulution.env"))
+    realm_file = json.load(open("/edulution-ui/realm-edulution.json"))
 
     for client in realm_file["clients"]:
         if client["clientId"] == "edu-api":
@@ -272,7 +272,7 @@ def createEdulutionEnvFile(external_domain: str, binduser_dn: str, binduser_pw: 
 
     realm_file["attributes"]["frontendUrl"] = "https://" + edulution_ui_domain + "/auth"
 
-    json.dump(realm_file, open("/edulution-ui/edulution.env", "w"))
+    json.dump(realm_file, open("/edulution-ui/realm-edulution.json", "w"))
 
     environment_file = f"""# edulution-api
 

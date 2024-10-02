@@ -79,6 +79,12 @@ else
     echo "[*] Docker ist bereits installiert."
 fi
 
+if ! command -v jq &> /dev/null; then
+    echo "[*] JQ ist nicht installiert. Installation wird gestartet..."
+    apt-get update
+    apt-get install -y jq
+fi
+
 echo "[*] Erstelle Ordner für die edulutionUI installation..."
 mkdir -p $DIRECTORY
 
