@@ -220,7 +220,7 @@ def finish(background_tasks: BackgroundTasks, edulutionsetuptoken: str = Form(No
         <h3>Konfiguration abgeschlossen</h3>
         <h2><i class="fa-solid fa-spinner fa-spin"></i></h2>
         <p>Die edulutionUI wird nun installiert...</p>
-        <p>vSie werden automatisch weitergeleitet, wenn die Installation abgeschlossen ist.</p>
+        <p>Sie werden automatisch weitergeleitet, wenn die Installation abgeschlossen ist.</p>
         <script type="text/javascript">
             waitforUI();
         </script>

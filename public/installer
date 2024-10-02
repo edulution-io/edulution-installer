@@ -125,11 +125,11 @@ cat <<EOF
 EOF
 
 docker run -it --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ ghcr.io/edulution-io/edulution-installer:main 2>&1 > /dev/zero
-docker rm edulution-installer > /dev/zero
+docker rm edulution-installer 2>&1 > /dev/zero
 
 echo "[*] Starte den Authentifizierungserver um die Einstellungen festzulegen..."
 
-docker network create edulution-prepare
+docker network create edulution-prepare 2>&1 > /dev/zero
 
 docker run -d \
   --name edulution-keycloak-db \
@@ -138,7 +138,7 @@ docker run -d \
   -e POSTGRES_DB=keycloak \
   -v ${DIRECTORY}data/keycloak/db:/var/lib/postgresql/data \
   --network edulution-prepare \
-  postgres:16
+  postgres:16 2>&1 > /dev/zero
 
 docker run -d \
   --name edulution-keycloak \
@@ -157,9 +157,20 @@ docker run -d \
   --network edulution-prepare \
   quay.io/keycloak/keycloak:25.0 \
   start-dev \
-  --import-realm
+  --import-realm 2>&1 > /dev/zero
 
-sleep 5
+attempt=0
+until $(curl --output /dev/null --silent --head --fail "http://localhost:8080/auth/realms/master"); do
+    attempt=$((attempt+1))
+  
+    if [ $attempt -ge 60 ]; then
+        echo "[!] Es konnte kein Verbindung zum Authentifizierungserver hergestellt werden!"
+        exit 1
+    fi
+
+    echo "[*] Warten bis der Authentifizierungserver gestartet ist (Versuch ${attempt} / 60)"
+    sleep 1
+done
 
 source ${DIRECTORY}edulution.env
 
