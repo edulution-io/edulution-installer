@@ -36,14 +36,11 @@ async function checkAPIStatus() {
     document.getElementById("api_status").innerHTML = "<i class='fa-solid fa-spinner fa-spin'></i>";
     document.getElementById("api_status_retry").style.display = "none";
 
-    const external_domain = document.getElementById("api_status").getAttribute("edulution-external-domain");
-    
     const response = await fetch("/check-api-status", {
-        method: "POST",
+        method: "GET",
         headers: {
             "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ external_domain: external_domain }),
+        }
     });
 
     const result = await response.json();
@@ -64,15 +61,12 @@ async function checkAPIStatus() {
 async function checkWebDAVStatus() {
     document.getElementById("webdav_status").innerHTML = "<i class='fa-solid fa-spinner fa-spin'></i>";
     document.getElementById("webdav_status_retry").style.display = "none";
-
-    const external_domain = document.getElementById("webdav_status").getAttribute("edulution-external-domain");
     
     const response = await fetch("/check-webdav-status", {
-        method: "POST",
+        method: "GET",
         headers: {
             "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ external_domain: external_domain }),
+        }
     });
 
     const result = await response.json();
@@ -93,15 +87,12 @@ async function checkWebDAVStatus() {
 async function checkLDAPStatus() {
     document.getElementById("ldap_status").innerHTML = "<i class='fa-solid fa-spinner fa-spin'></i>";
     document.getElementById("ldap_status_retry").style.display = "none";
-
-    const external_domain = document.getElementById("ldap_status").getAttribute("edulution-external-domain");
     
     const response = await fetch("/check-ldap-status", {
-        method: "POST",
+        method: "GET",
         headers: {
             "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ external_domain: external_domain }),
+        }
     });
 
     const result = await response.json();
@@ -123,17 +114,12 @@ async function checkLDAPStatus() {
 async function checkLDAPAccessStatus() {
     document.getElementById("ldap-access_status").innerHTML = "<i class='fa-solid fa-spinner fa-spin'></i>";
     document.getElementById("ldap-access_status_retry").style.display = "none";
-
-    const external_domain = document.getElementById("ldap-access_status").getAttribute("edulution-external-domain");
-    const binduser_dn = document.getElementById("ldap-access_status").getAttribute("edulution-binduser-dn");
-    const binduser_pw = document.getElementById("ldap-access_status").getAttribute("edulution-binduser-pw");
     
     const response = await fetch("/check-ldap-access-status", {
-        method: "POST",
+        method: "GET",
         headers: {
             "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ external_domain: external_domain, binduser_dn: binduser_dn, binduser_pw: binduser_pw }),
+        }
     });
 
     const result = await response.json();
@@ -151,7 +137,7 @@ async function checkLDAPAccessStatus() {
     check_ldap_access_status = true;
     checkChecks();
 }
-
+    
 function checkAll() {
     checkAPIStatus();
     checkWebDAVStatus();
@@ -161,6 +147,71 @@ function checkAll() {
 
 function waitforUI() {
     setTimeout(() => {
-        window.location.href = "https://" + window.location.hostname
-    }, 20000)
+        window.location.href = "https://" + window.location.hostname;
+    }, 30000)
+}
+
+function checkInput() {
+    const lmn_external_domain = document.getElementById("lmn_external_domain");
+    const lmn_binduser_dn = document.getElementById("lmn_binduser_dn");
+    const lmn_binduser_pw = document.getElementById("lmn_binduser_pw");
+    const lmn_ldap_schema = document.getElementById("lmn_ldap_schema");
+    const lmn_ldap_port = document.getElementById("lmn_ldap_port");
+    const edulutionui_external_domain = document.getElementById("edulutionui_external_domain");
+
+    const btn_install = document.getElementById("btn_install");
+
+    if (lmn_external_domain.value != "") {
+        lmn_external_domain.style.boxShadow = "0 0 0 2px #74C000";
+        btn_install.disabled = false;
+    }
+    else {
+        lmn_external_domain.style.boxShadow = "none";
+        btn_install.disabled = true;
+    }
+
+    if (lmn_binduser_dn.value != "") {
+        lmn_binduser_dn.style.boxShadow = "0 0 0 2px #74C000";
+        btn_install.disabled = false;
+    }
+    else {
+        lmn_binduser_dn.style.boxShadow = "none";
+        btn_install.disabled = true;
+    }
+
+    if (lmn_binduser_pw.value != "") {
+        lmn_binduser_pw.style.boxShadow = "0 0 0 2px #74C000";
+        btn_install.disabled = false;
+    }
+    else {
+        lmn_binduser_pw.style.boxShadow = "none";
+        btn_install.disabled = true;
+    }
+
+    if (lmn_ldap_schema.value    != "") {
+        lmn_ldap_schema.style.boxShadow = "0 0 0 2px #74C000";
+        btn_install.disabled = false;
+    }
+    else {
+        lmn_ldap_schema.style.boxShadow = "none";
+        btn_install.disabled = true;
+    }
+
+    if (lmn_ldap_port.value != "") {
+        lmn_ldap_port.style.boxShadow = "0 0 0 2px #74C000";
+        btn_install.disabled = false;
+    }
+    else {
+        lmn_ldap_port.style.boxShadow = "none";
+        btn_install.disabled = true;
+    }
+
+    if (edulutionui_external_domain.value != "") {
+        edulutionui_external_domain.style.boxShadow = "0 0 0 2px #74C000";
+        btn_install.disabled = false;
+    }
+    else {
+        edulutionui_external_domain.style.boxShadow = "none";
+        btn_install.disabled = true;
+    }
 }

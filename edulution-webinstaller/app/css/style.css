@@ -16,6 +16,7 @@ body {
     text-align: center;
     padding-top: 50px;
     color: white;
+    padding-bottom: 60px;
 }
 
 .logo {
@@ -30,7 +31,7 @@ body {
     margin-top: 50px;
 }
 
-.content textarea, .content input[type="text"] {
+.content textarea, .content input, .content select {
     width: 100%;
     padding: 10px;
     font-size: 16px;
@@ -45,7 +46,7 @@ body {
     box-shadow: none;
 }
 
-.content textarea:focus, .content input[type="text"]:focus, .content textarea:focus-visible, .content input[type="text"]:focus-visible {
+.content textarea:focus, .content input:focus, .content textarea:focus-visible, .content input[type="text"]:focus-visible {
     outline: none;
     background-color: #2D2D30;
     color: white;
@@ -59,6 +60,8 @@ body {
     text-align: center;
     padding: 15px;
     color: white;
+    height: 50px;
+    background-color: black;
 }
 
 a, a:active, a:visited, a:hover {
@@ -89,7 +92,11 @@ a, a:active, a:visited, a:hover {
 }
 
 .form-group {
-    margin-top: 20px;
+    margin-top: 30px !important;
+}
+
+.form-check {
+    text-align: left;
 }
 
 .card {
