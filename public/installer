@@ -82,13 +82,21 @@ fi
 echo "[*] Erstelle Ordner für die edulutionUI installation..."
 mkdir -p $DIRECTORY
 
-echo "[*] Herunterladen der docker-compose.yml - Datei..."
-curl -s -o ${DIRECTORY}docker-compose.yml https://get.edulution.io/docker-compose.yml
+for file in docker-compose.yml realm-edulution.json traefik.yml edulution-default.yml; do
 
-if [ ! -f "${DIRECTORY}docker-compose.yml" ]; then
-    echo "[!] Datei konnte nicht heruntergeladen werden!"
-    exit 1
-fi
+    echo "[*] Herunterladen der Datei $file..."
+    curl -s -o ${DIRECTORY}${file} https://get.edulution.io/download/${file}.template
+
+    if [ ! -f "${DIRECTORY}${file}" ]; then
+        echo "[!] Datei '$file' konnte nicht heruntergeladen werden!"
+        exit 1
+    fi
+
+done
+
+echo "[*] Anpassung der Proxy-Konfiguration..."
+mkdir -p ${DIRECTORY}data/traefik/config
+mv ${DIRECTORY}edulution-default.yml ${DIRECTORY}data/traefik/config
 
 echo "[*] Starte den edulutionUI Web-Installer..."
 
@@ -102,11 +110,93 @@ cat <<EOF
       
     Sie erreichen die Oberfläche wie folgt:
       
-    https://$(hostname):8000
-    https://$(hostname -I | awk '{print $1}'):8000
+    https://$(hostname):443
+    https://$(hostname -I | awk '{print $1}'):443
 
 ########################################################
 
 EOF
 
-docker run -it -p 8000:8000 -v /srv/docker/edulution-ui:/edulution-ui/ ghcr.io/edulution-io/edulution-installer:main 2>&1 > /dev/zero
+docker run -it --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ ghcr.io/edulution-io/edulution-installer:main 2>&1 > /dev/zero
+docker rm edulution-installer
+
+echo "[*] Starte den Authentifizierungserver um die Einstellungen festzulegen..."
+
+docker network create edulution-prepare
+
+docker run -d \
+  --name edulution-keycloak-db \
+  --restart always \
+  --env-file edulution.env \
+  -e POSTGRES_DB=keycloak \
+  -v ${DIRECTORY}data/keycloak/db:/var/lib/postgresql/data \
+  --network edulution-prepare \
+  postgres:16
+
+docker run -d \
+  --name edulution-keycloak \
+  --restart always \
+  --env-file edulution.env \
+  -v ${DIRECTORY}realm-edulution.json:/opt/keycloak/data/import/realm-edulution.json \
+  -e KC_DB_URL=jdbc:postgresql://edulution-keycloak-db/keycloak \
+  -e KC_DB=postgres \
+  -e KC_DB_URL_DATABASE=keycloak \
+  -e KC_DB_SCHEMA=public \
+  -e KC_PROXY=edge \
+  -e KC_HOSTNAME_STRICT=false \
+  -e KC_HOSTNAME_STRICT_HTTPS=false \
+  -e KC_HTTP_RELATIVE_PATH=/auth \
+  -p 8080:8080 \
+  --network edulution-prepare \
+  quay.io/keycloak/keycloak:25.0 \
+  start-dev \
+  --import-realm
+
+sleep 5
+
+source ${DIRECTORY}edulution.env
+
+AUTH_TOKEN=$(curl -s --request POST 'http://localhost:8080/auth/realms/master/protocol/openid-connect/token' \
+                --header 'Content-Type: application/x-www-form-urlencoded' \
+                --data-urlencode "username=${KEYCLOAK_ADMIN}" \
+                --data-urlencode "password=${KEYCLOAK_ADMIN_PASSWORD}" \
+                --data-urlencode 'grant_type=password' \
+                --data-urlencode 'client_id=admin-cli' | jq '.access_token' | sed 's/\"//g')
+
+if [ -z "${AUTH_TOKEN}" ]; then
+    echo "[!] Es konnte kein Verbindung zum Authentifizierungserver hergestellt werden!"
+    exit 1
+fi
+
+KEYCLOAK_PUBLIC_KEY=$(curl -s --request GET 'http://localhost:8080/auth/admin/realms/edulution/keys' \
+                        --header "Authorization: Bearer ${AUTH_TOKEN}" \
+                        --header 'Content-Type: application/json' | jq '.keys[] | select(.algorithm == "RS256") | .publicKey')
+
+KEYCLOAK_CERTIFICATE_KEY=$(curl -s --request GET 'http://localhost:8080/auth/admin/realms/edulution/keys' \
+                        --header "Authorization: Bearer ${AUTH_TOKEN}" \
+                        --header 'Content-Type: application/json' | jq '.keys[] | select(.algorithm == "RS256") | .certificate')
+
+if [[ -z "${KEYCLOAK_PUBLIC_KEY}" && -z "${KEYCLOAK_CERTIFICATE_KEY}" ]]; then
+    echo "[!] Die Authentifizierungsschlüssel konnten nicht abgerufen werden!"
+    exit 1
+fi
+
+cat <<EOF > ${DIRECTORY}data/edulution.pem
+-----BEGIN CERTIFICATE-----
+${KEYCLOAK_CERTIFICATE_KEY}
+-----END CERTIFICATE-----
+
+-----BEGIN PRIVATE KEY-----
+${KEYCLOAK_PUBLIC_KEY}
+-----END PRIVATE KEY-----
+EOF
+
+docker stop edulution-keycloak
+docker stop edulution-keycloak-db
+docker rm edulution-keycloak
+docker rm edulution-keycloak-db
+docker network rm edulution-prepare
+
+echo "[*] Arbeiten am Authentifizierungserver abgeschlossen."
+
+echo "[*] Konfiguration abgeschlossen. Starte edulutionUI!s"

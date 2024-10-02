@@ -1,0 +1,105 @@
+services:
+  edu-ui:
+    container_name: edulution-ui
+    image: ghcr.io/edulution-io/edulution-ui:dev
+    restart: always
+    depends_on:
+      - edu-api
+
+  edu-api:
+    container_name: edulution-api
+    image: ghcr.io/edulution-io/edulution-api:dev
+    restart: always
+    env_file:
+      - edulution.env
+    environment:
+      - EDUI_PORT: 3000
+      - EDUI_CORS_URL: '*'
+      - PUBLIC_KEY_FILE_PATH: edulution.pem
+      - KEYCLOAK_API: http://edu-keycloak:8080/auth
+      - KEYCLOAK_EDU_UI_REALM: edulution
+      - KEYCLOAK_EDU_UI_CLIENT_ID: edu-ui
+      - KEYCLOAK_EDU_API_CLIENT_ID: edu-api
+      - REDIS_HOST: edu-redis
+      - REDIS_PORT: 6379
+      - MONGODB_DATABASE_NAME: edulution
+    depends_on:
+      - edu-keycloak
+      - edu-db
+      - edu-redis
+    volumes:
+      - ./data/edulution.pem:/opt/edulution/api/edulution.pem
+      - ./data/public/downloads:/opt/edulution/public/downloads
+
+  edu-db:
+    container_name: edulution-db
+    image: mongo:7
+    restart: always
+    env_file:
+      - edulution.env
+    volumes:
+      - ./data/db:/data/db
+
+  edu-redis:
+    container_name: edulution-redis
+    image: redis:7.2
+    restart: always
+
+  edu-traefik:
+    image: traefik:v3.1
+    container_name: edulution-traefik
+    restart: always
+    ports:
+      - 80:80
+      - 443:443
+      - 8080:8080
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/etc/traefik/traefik.yml
+      - ./data/traefik/config:/etc/traefik/dynamic
+    healthcheck:
+      test: [ "CMD", "traefik", "healthcheck", "--ping" ]
+      interval: 5s
+      timeout: 1s
+      retries: 3
+      start_period: 10s
+    
+  edu-keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    container_name: edulution-keycloak
+    restart: always
+    command:
+      [
+        'start',
+        '--proxy=edge',
+        '--proxy-headers=xforwarded',
+        '--http-enabled=true',
+        '--hostname-strict=false'
+      ]
+    env_file:
+      - edulution.env
+    environment:
+      - KC_DB_URL: jdbc:postgresql://edu-keycloak-db/keycloak
+      - KC_DB: postgres
+      - KC_DB_URL_DATABASE: keycloak
+      - KC_DB_SCHEMA: public
+      - KC_PROXY: edge
+      - KC_HOSTNAME_STRICT: false
+      - KC_HOSTNAME_STRICT_HTTPS: false
+      - KC_HTTP_RELATIVE_PATH: /auth
+    depends_on:
+      - edu-keycloak-db
+
+  edu-keycloak-db:
+    image: postgres:16
+    container_name: edulution-keycloak-db
+    restart: always
+    env_file:
+      - edulution.env
+    environment:
+      - POSTGRES_DB: keycloak
+    volumes:
+      - ./data/keycloak/db:/var/lib/postgresql/data
+
+networks:
+  traefik:

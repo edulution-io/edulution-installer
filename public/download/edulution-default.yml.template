@@ -1,0 +1,28 @@
+http:
+  routers:
+    edulution-api:
+      rule: "PathPrefix(`/edu-api`)"
+      service: edulution-api
+      tls: {}
+    edulution-keycloak:
+      rule: "PathPrefix(`/auth`)"
+      service: edulution-keycloak
+      tls: {}
+    edulution-ui:
+      rule: "PathPrefix(`/`)"
+      service: edulution-ui
+      tls: {}
+
+  services:
+    edulution-api:
+      loadBalancer:
+        servers:
+          - url: "http://edu-api:3000"
+    edulution-ui:
+      loadBalancer:
+        servers:
+          - url: "https://edu-ui:443"
+    edulution-keycloak:
+      loadBalancer:
+        servers:
+          - url: "http://edu-keycloak:8080"

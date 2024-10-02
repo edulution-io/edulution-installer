@@ -4,6 +4,9 @@ import requests
 import os
 import signal
 import time
+import re
+import secrets
+import string
 
 from fastapi import FastAPI, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -228,9 +231,91 @@ def finish(background_tasks: BackgroundTasks, edulutionsetuptoken: str = Form(No
 def catch_all():
     return RedirectResponse("/")
 
-def createEdulutionEnvFile(external_domain: str, binduser_dn: str, binduser_pw: str):
+
+def generateSecret(length=32):
+    characters = string.ascii_letters + string.digits
+    random_string = ''.join(secrets.choice(characters) for _ in range(length))
+    return random_string
+
+def createEdulutionEnvFile(external_domain: str, binduser_dn: str, binduser_pw: str, edulution_ui_domain: str = "10.0.0.3"):
+    root_dn = re.search(r"(DC=.*$)", binduser_dn).group(1)
+
+    keycloak_eduapi_secret = generateSecret()
+    keycloak_eduui_secret = generateSecret()
+    eduapi_secret = generateSecret()
+    mongodb_secret = generateSecret()
+    postgres_secret = generateSecret()
+    keycloak_admin_secret = generateSecret()
+
+    realm_file = json.load(open("/edulution-ui/edulution.env"))
+
+    for client in realm_file["clients"]:
+        if client["clientId"] == "edu-api":
+            client["secret"] = keycloak_eduapi_secret
+        if client["clientId"] == "edu-ui":
+            client["secret"] = keycloak_eduui_secret
+            client["rootUrl"] = "https://" + external_domain + "/"
+            client["adminUrl"] = "https://" + external_domain + "/"
+            client["redirectUris"] = [ "https://" + external_domain + "/*" ]
+
+    for comp in realm_file["components"]["org.keycloak.storage.UserStorageProvider"]:
+        if comp["name"] == "ldap":
+            for subcomp in comp["subComponents"]["org.keycloak.storage.ldap.mappers.LDAPStorageMapper"]:
+                if subcomp["name"] == "global-groups":
+                    subcomp["config"]["groups.dn"] = [ "OU=Groups,OU=Global," + root_dn ]
+                if subcomp["name"] == "school-groups":
+                    subcomp["config"]["groups.dn"] = [ "OU=SCHOOLS," + root_dn ]
+            comp["config"]["usersDn"] = [ root_dn ]
+            comp["config"]["bindDn"] = [ binduser_dn ]
+            comp["config"]["bindCredential"] = [ binduser_pw ]
+            comp["config"]["connectionUrl"] = [ "ldaps://" + external_domain + ":636" ]
+
+    realm_file["attributes"]["frontendUrl"] = "https://" + edulution_ui_domain + "/auth"
+
+    json.dump(realm_file, open("/edulution-ui/edulution.env", "w"))
+
+    environment_file = f"""# edulution-api
+
+EDUI_ENCRYPTION_KEY={eduapi_secret}
+EDUI_WEBDAV_URL=https://{external_domain}/webdav/
+
+MONGODB_USERNAME=root
+MONGODB_PASSWORD={mongodb_secret}
+MONGODB_SERVER_URL=mongodb://root:{mongodb_secret}@edu-db:27017/
+
+KEYCLOAK_EDU_UI_SECRET={keycloak_eduui_secret}
+KEYCLOAK_EDU_API_CLIENT_SECRET={keycloak_eduapi_secret}
+
+LMN_API_BASE_URL=https://{external_domain}:8001/v1/
+
+MAIL_IMAP_URL=10.0.0.3
+MAIL_IMAP_PORT=993
+MAIL_IMAP_SECURE=true
+MAIL_IMAP_TLS_REJECT_UNAUTHORIZED=false
+MAIL_API_URL=http://10.0.0.3
+MAIL_API_KEY=BF1D4E-C54CA2-C42ADD-E59323-558D08
+
+# edulution-db
+
+MONGO_INITDB_ROOT_USERNAME=root
+MONGO_INITDB_ROOT_PASSWORD={mongodb_secret}
+
+# edulution-keycloak
+
+KC_DB_USERNAME=keycloak
+KC_DB_PASSWORD={postgres_secret}
+
+KEYCLOAK_ADMIN=admin
+KEYCLOAK_ADMIN_PASSWORD={keycloak_admin_secret}
+
+# edulution-keycloak-db
+
+POSTGRES_USER=keycloak
+POSTGRES_PASSWORD={postgres_secret}
+"""
+
     with open("/edulution-ui/edulution.env", "w") as f:
-        f.write(external_domain)
+        f.write(environment_file)
     
     time.sleep(5)
     os.kill(os.getpid(), signal.SIGTERM)
