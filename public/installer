@@ -160,15 +160,15 @@ docker run -d \
   --import-realm 2>&1 > /dev/zero
 
 attempt=0
-until $(curl --output /dev/null --silent --head --fail "http://localhost:8080/auth/realms/master"); do
+until $(curl --output /dev/null --silent --get --fail "http://localhost:8080/auth/realms/master"); do
     attempt=$((attempt+1))
   
-    if [ $attempt -ge 60 ]; then
+    if [ $attempt -ge 100 ]; then
         echo "[!] Es konnte kein Verbindung zum Authentifizierungserver hergestellt werden!"
         exit 1
     fi
 
-    echo "[*] Warten bis der Authentifizierungserver gestartet ist (Versuch ${attempt} / 60)"
+    echo "[*] Warten bis der Authentifizierungserver gestartet ist (Versuch ${attempt} / 100)"
     sleep 1
 done
 
@@ -217,4 +217,4 @@ docker network rm edulution-prepare
 
 echo "[*] Arbeiten am Authentifizierungserver abgeschlossen."
 
-echo "[*] Konfiguration abgeschlossen. Starte edulutionUI!s"
+echo "[*] Konfiguration abgeschlossen. Starte edulutionUI!"
