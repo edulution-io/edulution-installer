@@ -13,16 +13,16 @@ services:
     env_file:
       - edulution.env
     environment:
-      - EDUI_PORT: 3000
-      - EDUI_CORS_URL: '*'
-      - PUBLIC_KEY_FILE_PATH: edulution.pem
-      - KEYCLOAK_API: http://edu-keycloak:8080/auth
-      - KEYCLOAK_EDU_UI_REALM: edulution
-      - KEYCLOAK_EDU_UI_CLIENT_ID: edu-ui
-      - KEYCLOAK_EDU_API_CLIENT_ID: edu-api
-      - REDIS_HOST: edu-redis
-      - REDIS_PORT: 6379
-      - MONGODB_DATABASE_NAME: edulution
+      EDUI_PORT: 3000
+      EDUI_CORS_URL: '*'
+      PUBLIC_KEY_FILE_PATH: edulution.pem
+      KEYCLOAK_API: http://edu-keycloak:8080/auth
+      KEYCLOAK_EDU_UI_REALM: edulution
+      KEYCLOAK_EDU_UI_CLIENT_ID: edu-ui
+      KEYCLOAK_EDU_API_CLIENT_ID: edu-api
+      REDIS_HOST: edu-redis
+      REDIS_PORT: 6379
+      MONGODB_DATABASE_NAME: edulution
     depends_on:
       - edu-keycloak
       - edu-db
@@ -79,14 +79,14 @@ services:
     env_file:
       - edulution.env
     environment:
-      - KC_DB_URL: jdbc:postgresql://edu-keycloak-db/keycloak
-      - KC_DB: postgres
-      - KC_DB_URL_DATABASE: keycloak
-      - KC_DB_SCHEMA: public
-      - KC_PROXY: edge
-      - KC_HOSTNAME_STRICT: false
-      - KC_HOSTNAME_STRICT_HTTPS: false
-      - KC_HTTP_RELATIVE_PATH: /auth
+      KC_DB_URL: jdbc:postgresql://edu-keycloak-db/keycloak
+      KC_DB: postgres
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_SCHEMA: public
+      KC_PROXY: edge
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HTTP_RELATIVE_PATH: /auth
     depends_on:
       - edu-keycloak-db
 
@@ -97,9 +97,6 @@ services:
     env_file:
       - edulution.env
     environment:
-      - POSTGRES_DB: keycloak
+      POSTGRES_DB: keycloak
     volumes:
       - ./data/keycloak/db:/var/lib/postgresql/data
-
-networks:
-  traefik:
