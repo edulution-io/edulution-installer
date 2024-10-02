@@ -215,6 +215,8 @@ docker rm edulution-keycloak 2>&1 > /dev/zero
 docker rm edulution-keycloak-db 2>&1 > /dev/zero
 docker network rm edulution-prepare 2>&1 > /dev/zero
 
+rm ${DIRECTORY}realm-edulution.json
+
 echo "[*] Arbeiten am Authentifizierungserver abgeschlossen."
 
 echo "[*] Konfiguration abgeschlossen. Starte edulutionUI!"

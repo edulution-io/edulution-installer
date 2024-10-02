@@ -29,6 +29,7 @@ services:
       - edu-redis
     volumes:
       - ./data/edulution.pem:/opt/edulution/api/edulution.pem
+      - ./data/traefik/config:/opt/edulution/api/traefik
       - ./data/public/downloads:/opt/edulution/public/downloads
 
   edu-db:
@@ -39,11 +40,23 @@ services:
       - edulution.env
     volumes:
       - ./data/db:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      timeout: 1s
+      retries: 3
+      start_period: 10s
 
   edu-redis:
     container_name: edulution-redis
     image: redis:7.2
     restart: always
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 1s
+      retries: 3
+      start_period: 10s
 
   edu-traefik:
     image: traefik:v3.1
@@ -52,7 +65,6 @@ services:
     ports:
       - 80:80
       - 443:443
-      - 8080:8080
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik.yml:/etc/traefik/traefik.yml
@@ -87,8 +99,15 @@ services:
       KC_HOSTNAME_STRICT: false
       KC_HOSTNAME_STRICT_HTTPS: false
       KC_HTTP_RELATIVE_PATH: /auth
+      KC_HEALTH_ENABLED: true
     depends_on:
       - edu-keycloak-db
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health/ready" ]
+      interval: 5s
+      timeout: 1s
+      retries: 3
+      start_period: 10s
 
   edu-keycloak-db:
     image: postgres:16
@@ -100,3 +119,9 @@ services:
       POSTGRES_DB: keycloak
     volumes:
       - ./data/keycloak/db:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD", "pg_isready" ]
+      interval: 5s
+      timeout: 1s
+      retries: 3
+      start_period: 10s
