@@ -163,13 +163,13 @@ attempt=0
 until $(curl --output /dev/null --silent --get --fail "http://localhost:8080/auth/realms/master"); do
     attempt=$((attempt+1))
   
-    if [ $attempt -ge 100 ]; then
+    if [ $attempt -ge 30 ]; then
         echo "[!] Es konnte kein Verbindung zum Authentifizierungserver hergestellt werden!"
         exit 1
     fi
 
-    echo "[*] Warten bis der Authentifizierungserver gestartet ist (Versuch ${attempt} / 100)"
-    sleep 1
+    echo "[*] Warten bis der Authentifizierungserver gestartet ist (Versuch ${attempt} / 30)"
+    sleep 3
 done
 
 source ${DIRECTORY}edulution.env
@@ -188,11 +188,11 @@ fi
 
 KEYCLOAK_PUBLIC_KEY=$(curl -s --request GET 'http://localhost:8080/auth/admin/realms/edulution/keys' \
                         --header "Authorization: Bearer ${AUTH_TOKEN}" \
-                        --header 'Content-Type: application/json' | jq '.keys[] | select(.algorithm == "RS256") | .publicKey')
+                        --header 'Content-Type: application/json' | jq '.keys[] | select(.algorithm == "RS256") | .publicKey' | sed 's/\"//g')
 
 KEYCLOAK_CERTIFICATE_KEY=$(curl -s --request GET 'http://localhost:8080/auth/admin/realms/edulution/keys' \
                         --header "Authorization: Bearer ${AUTH_TOKEN}" \
-                        --header 'Content-Type: application/json' | jq '.keys[] | select(.algorithm == "RS256") | .certificate')
+                        --header 'Content-Type: application/json' | jq '.keys[] | select(.algorithm == "RS256") | .certificate' | sed 's/\"//g')
 
 if [[ -z "${KEYCLOAK_PUBLIC_KEY}" && -z "${KEYCLOAK_CERTIFICATE_KEY}" ]]; then
     echo "[!] Die Authentifizierungsschlüssel konnten nicht abgerufen werden!"
@@ -209,11 +209,11 @@ ${KEYCLOAK_PUBLIC_KEY}
 -----END PRIVATE KEY-----
 EOF
 
-docker stop edulution-keycloak
-docker stop edulution-keycloak-db
-docker rm edulution-keycloak
-docker rm edulution-keycloak-db
-docker network rm edulution-prepare
+docker stop edulution-keycloak 2>&1 > /dev/zero
+docker stop edulution-keycloak-db 2>&1 > /dev/zero
+docker rm edulution-keycloak 2>&1 > /dev/zero
+docker rm edulution-keycloak-db 2>&1 > /dev/zero
+docker network rm edulution-prepare 2>&1 > /dev/zero
 
 echo "[*] Arbeiten am Authentifizierungserver abgeschlossen."
 
