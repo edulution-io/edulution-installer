@@ -87,6 +87,7 @@ fi
 
 echo "[*] Erstelle Ordner für die edulutionUI installation..."
 mkdir -p $DIRECTORY
+cd $DIRECTORY
 
 for file in docker-compose.yml realm-edulution.json traefik.yml edulution-default.yml; do
 
@@ -124,7 +125,7 @@ cat <<EOF
 EOF
 
 docker run -it --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ ghcr.io/edulution-io/edulution-installer:main 2>&1 > /dev/zero
-docker rm edulution-installer
+docker rm edulution-installer > /dev/zero
 
 echo "[*] Starte den Authentifizierungserver um die Einstellungen festzulegen..."
 
@@ -133,7 +134,7 @@ docker network create edulution-prepare
 docker run -d \
   --name edulution-keycloak-db \
   --restart always \
-  --env-file edulution.env \
+  --env-file ${DIRECTORY}edulution.env \
   -e POSTGRES_DB=keycloak \
   -v ${DIRECTORY}data/keycloak/db:/var/lib/postgresql/data \
   --network edulution-prepare \
@@ -142,7 +143,7 @@ docker run -d \
 docker run -d \
   --name edulution-keycloak \
   --restart always \
-  --env-file edulution.env \
+  --env-file ${DIRECTORY}edulution.env \
   -v ${DIRECTORY}realm-edulution.json:/opt/keycloak/data/import/realm-edulution.json \
   -e KC_DB_URL=jdbc:postgresql://edulution-keycloak-db/keycloak \
   -e KC_DB=postgres \
