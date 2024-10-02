@@ -349,4 +349,4 @@ POSTGRES_PASSWORD={postgres_secret}
         f.write(environment_file)
     
     time.sleep(5)
-    os.kill(os.getpid(), signal.SIGKILL)
+    os.kill(os.getpid(), signal.SIGTERM)
