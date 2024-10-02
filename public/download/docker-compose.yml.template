@@ -1,14 +1,14 @@
 services:
   edu-ui:
     container_name: edulution-ui
-    image: ghcr.io/edulution-io/edulution-ui:dev
+    image: ghcr.io/edulution-io/edulution-ui
     restart: always
     depends_on:
       - edu-api
 
   edu-api:
     container_name: edulution-api
-    image: ghcr.io/edulution-io/edulution-api:dev
+    image: ghcr.io/edulution-io/edulution-api
     restart: always
     env_file:
       - edulution.env
