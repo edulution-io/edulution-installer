@@ -120,7 +120,7 @@ services:
     volumes:
       - ./data/keycloak/db:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD", "pg_isready" ]
+      test: [ "CMD", "pg_isready", "-d", "keycloak", "-U", "keycloak" ]
       interval: 5s
       timeout: 1s
       retries: 3
