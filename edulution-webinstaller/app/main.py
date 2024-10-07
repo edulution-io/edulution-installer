@@ -347,6 +347,24 @@ POSTGRES_PASSWORD={postgres_secret}
 
     with open("/edulution-ui/edulution.env", "w") as f:
         f.write(environment_file)
+
+    lmn_api_traefik = f"""
+http:
+  routers:
+    linuxmuster-api:
+      rule: "PathPrefix(`/api`)"
+      service: linuxmuster-api
+      tls: {{}}
+
+  services:
+    linuxmuster-api:
+      loadBalancer:
+        servers:
+          - url: "http://{data.DATA_LMN_EXTERNAL_DOMAIN}:8001"
+"""
+
+    with open("/edulution-ui/data/traefik/config/lmn-api.yml") as f:
+        f.write(lmn_api_traefik)
     
     time.sleep(5)
     os.kill(os.getpid(), signal.SIGTERM)
