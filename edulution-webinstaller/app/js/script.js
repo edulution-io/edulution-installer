@@ -147,7 +147,12 @@ function checkAll() {
 
 function waitforUI() {
     setTimeout(() => {
-        window.location.href = "https://" + window.location.hostname;
+        setInterval(async () => {
+            const response = await fetch("https://" + window.location.hostname)
+            if (response.ok) {
+                window.location.href = "https://" + window.location.hostname;
+            }
+        }, 3000)
     }, 30000)
 }
 
