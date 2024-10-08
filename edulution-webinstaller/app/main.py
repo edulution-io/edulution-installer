@@ -372,7 +372,7 @@ http:
           - url: "https://{data.DATA_LMN_EXTERNAL_DOMAIN}:8001"
 """
 
-    with open("/edulution-ui/data/traefik/config/lmn-api.yml") as f:
+    with open("/edulution-ui/data/traefik/config/lmn-api.yml", "w") as f:
         f.write(lmn_api_traefik)
     
     time.sleep(5)
