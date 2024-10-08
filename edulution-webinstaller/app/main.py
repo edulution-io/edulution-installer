@@ -280,7 +280,6 @@ def createEdulutionEnvFile(data: Data):
 
     keycloak_eduapi_secret = generateSecret()
     keycloak_eduui_secret = generateSecret()
-    eduapi_secret = generateSecret()
     mongodb_secret = generateSecret()
     postgres_secret = generateSecret()
     keycloak_admin_secret = generateSecret()
@@ -314,7 +313,6 @@ def createEdulutionEnvFile(data: Data):
 
     environment_file = f"""# edulution-api
 
-EDUI_ENCRYPTION_KEY={eduapi_secret}
 EDUI_WEBDAV_URL=https://{data.DATA_LMN_EXTERNAL_DOMAIN}/webdav/
 
 MONGODB_USERNAME=root
@@ -355,12 +353,20 @@ http:
       rule: "PathPrefix(`/api`)"
       service: linuxmuster-api
       tls: {{}}
+      middlewares:
+        - strip-api-prefix
+
+  middlewares:
+    strip-api-prefix:
+      stripPrefix:
+        prefixes:
+          - "/api"
 
   services:
     linuxmuster-api:
       loadBalancer:
         servers:
-          - url: "http://{data.DATA_LMN_EXTERNAL_DOMAIN}:8001"
+          - url: "https://{data.DATA_LMN_EXTERNAL_DOMAIN}:8001"
 """
 
     with open("/edulution-ui/data/traefik/config/lmn-api.yml") as f:

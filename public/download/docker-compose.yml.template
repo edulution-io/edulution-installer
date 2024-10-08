@@ -15,7 +15,6 @@ services:
     environment:
       EDUI_PORT: 3000
       EDUI_CORS_URL: '*'
-      PUBLIC_KEY_FILE_PATH: edulution.pem
       KEYCLOAK_API: http://edu-keycloak:8080/auth
       KEYCLOAK_EDU_UI_REALM: edulution
       KEYCLOAK_EDU_UI_CLIENT_ID: edu-ui
