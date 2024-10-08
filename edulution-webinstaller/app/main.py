@@ -102,19 +102,19 @@ def check(edulutionsetuptoken: str = Form(None), data: Data = Depends(getData)):
         </div>
         <div class="row">
             <div class="col-md form-group">
-                <p>LDAP-Schema</p>
+                <p>LDAP-Schema:</p>
                 <select class="form-select" name="lmn_ldap_schema" id="lmn_ldap_schema" oninput="checkInput()">
                     <option value="ldap">ldap://</option>
                     <option value="ldaps" selected>ldaps://</option>
                 </select>
             </div>
             <div class="col-md form-group"> 
-                <p>LDAP-Port</p>
+                <p>LDAP-Port:</p>
                 <input type="number" class="form-control" oninput="checkInput()" name="lmn_ldap_port" id="lmn_ldap_port" min="1" max="65535" value="636" required />
             </div>  
         </div>
         <div class="form-group">
-            <p>Externe Domain des Linuxmuster-Servers</p>
+            <p>Externe Domain der edulutionUI:</p>
             <input type="text" class="form-control" oninput="checkInput()" name="edulutionui_external_domain" id="edulutionui_external_domain" required />
         </div>
         <input type="submit" class="gradient-button" value="Installieren" id="btn_install" disabled></input>
@@ -183,7 +183,10 @@ def install(lmn_external_domain: str = Form(None), lmn_binduser_dn: str = Form(N
         </div>
     </div>
     <form method="GET" action="/finish">
-        <input type="submit" class="gradient-button" value="Abschließen"></input>
+        <input type="submit" class="gradient-button" value="Abschließen" id="finish_button" disabled></input>
+    </form>
+    <form method="GET" action="/check">
+        <input type="submit" class="gradient-button" value="Zurück"></input>
     </form>
     <script type="text/javascript">
         checkAll();

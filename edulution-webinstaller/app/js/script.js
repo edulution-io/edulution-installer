@@ -28,7 +28,7 @@ var check_ldap_access_status = false;
 
 function checkChecks() {
     if (check_api_status && check_webdav_status && check_ldap_status && check_ldap_access_status) {
-        document.getElementById("finish_button").style.display = "block";
+        document.getElementById("finish_button").disabled = false;
     }
 }
 
