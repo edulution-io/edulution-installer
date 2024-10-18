@@ -374,6 +374,25 @@ http:
 
     with open("/edulution-ui/data/traefik/config/lmn-api.yml", "w") as f:
         f.write(lmn_api_traefik)
+
+    webdav_traefik = f"""
+http:
+  routers:
+    webdav:
+      rule: "PathPrefix(`/webdav`)"
+      service: webdav
+        tls: {{}}
+      middlewares: {{}}
+
+  services:
+    webdav:
+      loadBalancer:
+        servers:
+          - url: "https://{data.DATA_LMN_EXTERNAL_DOMAIN}/webdav"
+"""
+
+    with open("/edulution-ui/data/traefik/config/webdav.yml", "w") as f:
+        f.write(webdav_traefik)
     
     time.sleep(5)
     os.kill(os.getpid(), signal.SIGTERM)
