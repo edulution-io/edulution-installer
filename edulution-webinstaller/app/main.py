@@ -381,8 +381,7 @@ http:
     webdav:
       rule: "PathPrefix(`/webdav`)"
       service: webdav
-        tls: {{}}
-      middlewares: {{}}
+      tls: {{}}
 
   services:
     webdav:
