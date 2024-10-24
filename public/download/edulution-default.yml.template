@@ -3,14 +3,20 @@ http:
     edulution-api:
       rule: "PathPrefix(`/edu-api`)"
       service: edulution-api
+      entryPoints:
+        - websecure
       tls: {}
     edulution-keycloak:
       rule: "PathPrefix(`/auth`)"
       service: edulution-keycloak
+      entryPoints:
+        - websecure
       tls: {}
     edulution-ui:
       rule: "PathPrefix(`/`)"
       service: edulution-ui
+      entryPoints:
+        - websecure
       tls: {}
 
   services:

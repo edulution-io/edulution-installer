@@ -4,8 +4,8 @@ entryPoints:
     http:
       redirections:
         entryPoint:
-          to: "https"
-          scheme: "https"    
+          to: "websecure"
+          scheme: "https"
   websecure:
     address: ":443"
     http:
