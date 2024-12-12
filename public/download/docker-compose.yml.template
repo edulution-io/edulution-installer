@@ -5,6 +5,12 @@ services:
     restart: always
     depends_on:
       - edu-api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-k", "-I", "https://localhost:443"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   edu-api:
     container_name: edulution-api
@@ -27,9 +33,13 @@ services:
       - edu-db
       - edu-redis
     volumes:
-      - ./data/edulution.pem:/opt/edulution/api/edulution.pem
-      - ./data/traefik/config:/opt/edulution/api/traefik
-      - ./data/public/downloads:/opt/edulution/public/downloads
+      - ./data:/opt/edulution/api
+    healthcheck:
+      test: ["CMD", "wget", "-f", "http://localhost:3000/edu-api/auth/.well-known/openid-configuration"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   edu-db:
     container_name: edulution-db
