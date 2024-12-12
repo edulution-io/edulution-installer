@@ -103,11 +103,9 @@ done
 
 echo "[*] Anpassung der Proxy-Konfiguration..."
 mkdir -p ${DIRECTORY}data/traefik/config
-chmod -R 777 ${DIRECTORY}data/traefik/config
 mkdir -p ${DIRECTORY}data/public/downloads
-chmod -R 777 ${DIRECTORY}data/public/downloads
 mkdir -p ${DIRECTORY}data/apps
-chmod -R 777 ${DIRECTORY}data/apps
+chmod -R 777 ${DIRECTORY}data
 mv ${DIRECTORY}edulution-default.yml ${DIRECTORY}data/traefik/config
 
 echo "[*] Starte den edulutionUI Web-Installer..."
