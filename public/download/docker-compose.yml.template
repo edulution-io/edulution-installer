@@ -33,7 +33,7 @@ services:
       - edu-db
       - edu-redis
     volumes:
-      - ./data:/opt/edulution/api
+      - ./data:/opt/edulution/api/data
 
   edu-db:
     container_name: edulution-db
