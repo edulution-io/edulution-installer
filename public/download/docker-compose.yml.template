@@ -34,6 +34,7 @@ services:
       - edu-redis
     volumes:
       - ./data:/opt/edulution/api
+      - /var/run/docker.sock:/var/run/docker.sock
 
   edu-db:
     container_name: edulution-db
