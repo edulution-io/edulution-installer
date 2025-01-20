@@ -94,6 +94,7 @@
       }
     ],
     "client": {
+      "edu-mailcow-sync": [],
       "realm-management": [
         {
           "id": "d3fb944d-a4af-47e0-9756-603884ce77b4",
@@ -425,6 +426,22 @@
       },
       "notBefore": 0,
       "groups": []
+    },
+    {
+      "id": "7d533e0a-4ab9-4ea0-a323-b59875f15dee",
+      "username": "service-account-edu-mailcow-sync",
+      "emailVerified": false,
+      "createdTimestamp": 1734623069922,
+      "enabled": true,
+      "totp": false,
+      "serviceAccountClientId": "edu-mailcow-sync",
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "default-roles-edulution"
+      ],
+      "notBefore": 0,
+      "groups": []
     }
   ],
   "scopeMappings": [
@@ -733,6 +750,110 @@
       "defaultClientScopes": [
         "web-origins",
         "acr",
+        "roles",
+        "profile",
+        "basic",
+        "email",
+        "group-membership"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt"
+      ]
+    },
+    {
+      "id": "0a8e18f1-9660-4fe8-b43d-cce47ca6d8f2",
+      "clientId": "edu-mailcow-sync",
+      "name": "edulution MAIL",
+      "description": "",
+      "rootUrl": "",
+      "adminUrl": "",
+      "baseUrl": "",
+      "surrogateAuthRequired": false,
+      "enabled": true,
+      "alwaysDisplayInConsole": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "**********",
+      "redirectUris": [
+        "/*"
+      ],
+      "webOrigins": [
+        "/*"
+      ],
+      "notBefore": 0,
+      "bearerOnly": false,
+      "consentRequired": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "publicClient": false,
+      "frontchannelLogout": true,
+      "protocol": "openid-connect",
+      "attributes": {
+        "oidc.ciba.grant.enabled": "false",
+        "client.secret.creation.time": "1734622827",
+        "backchannel.logout.session.required": "true",
+        "display.on.consent.screen": "false",
+        "oauth2.device.authorization.grant.enabled": "false",
+        "backchannel.logout.revoke.offline.tokens": "false"
+      },
+      "authenticationFlowBindingOverrides": {},
+      "fullScopeAllowed": true,
+      "nodeReRegistrationTimeout": -1,
+      "protocolMappers": [
+        {
+          "id": "0b54db3a-79eb-4efc-9401-2cb76ca8dc74",
+          "name": "Client ID",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usersessionmodel-note-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.session.note": "client_id",
+            "id.token.claim": "true",
+            "introspection.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "client_id",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "id": "751db89f-d792-47d9-bbe6-de0452ca627f",
+          "name": "Client IP Address",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usersessionmodel-note-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.session.note": "clientAddress",
+            "id.token.claim": "true",
+            "introspection.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "clientAddress",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "id": "560d50c7-9418-4840-884f-d622df479f38",
+          "name": "Client Host",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usersessionmodel-note-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.session.note": "clientHost",
+            "id.token.claim": "true",
+            "introspection.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "clientHost",
+            "jsonType.label": "String"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "school",
         "roles",
         "profile",
         "basic",
@@ -1706,106 +1827,13 @@
         "subComponents": {
           "org.keycloak.storage.ldap.mappers.LDAPStorageMapper": [
             {
-              "id": "f59b77d3-3abd-4aba-b170-a04f4f6b0495",
-              "name": "first name",
+              "id": "98fbf685-18ce-43e2-b689-f718b59f70e4",
+              "name": "proxyAddresses",
               "providerId": "user-attribute-ldap-mapper",
               "subComponents": {},
               "config": {
                 "ldap.attribute": [
-                  "givenName"
-                ],
-                "is.mandatory.in.ldap": [
-                  "true"
-                ],
-                "always.read.value.from.ldap": [
-                  "false"
-                ],
-                "read.only": [
-                  "true"
-                ],
-                "user.model.attribute": [
-                  "firstName"
-                ]
-              }
-            },
-            {
-              "id": "016fc69a-e60b-4f9d-87d8-afbf54561fad",
-              "name": "school-groups",
-              "providerId": "group-ldap-mapper",
-              "subComponents": {},
-              "config": {
-                "mode": [
-                  "IMPORT"
-                ],
-                "membership.attribute.type": [
-                  "DN"
-                ],
-                "user.roles.retrieve.strategy": [
-                  "GET_GROUPS_FROM_USER_MEMBEROF_ATTRIBUTE"
-                ],
-                "group.name.ldap.attribute": [
-                  "cn"
-                ],
-                "membership.ldap.attribute": [
-                  "member"
-                ],
-                "membership.user.ldap.attribute": [
-                  "cn"
-                ],
-                "ignore.missing.groups": [
-                  "false"
-                ],
-                "preserve.group.inheritance": [
-                  "false"
-                ],
-                "memberof.ldap.attribute": [
-                  "memberOf"
-                ],
-                "groups.dn": [
-                  "OU=SCHOOLS,DC=lm,DC=schulung,DC=multi,DC=schule"
-                ],
-                "group.object.classes": [
-                  "group"
-                ],
-                "groups.path": [
-                  "/"
-                ],
-                "drop.non.existing.groups.during.sync": [
-                  "false"
-                ]
-              }
-            },
-            {
-              "id": "aca7462d-6a4a-466e-b69c-cd18b34601d8",
-              "name": "last name",
-              "providerId": "user-attribute-ldap-mapper",
-              "subComponents": {},
-              "config": {
-                "ldap.attribute": [
-                  "sn"
-                ],
-                "is.mandatory.in.ldap": [
-                  "true"
-                ],
-                "always.read.value.from.ldap": [
-                  "false"
-                ],
-                "read.only": [
-                  "true"
-                ],
-                "user.model.attribute": [
-                  "lastName"
-                ]
-              }
-            },
-            {
-              "id": "1b6a3ed5-abf9-41d0-ac50-cd90491c3977",
-              "name": "school",
-              "providerId": "user-attribute-ldap-mapper",
-              "subComponents": {},
-              "config": {
-                "ldap.attribute": [
-                  "sophomorixSchoolname"
+                  "proxyAddresses"
                 ],
                 "is.mandatory.in.ldap": [
                   "false"
@@ -1823,7 +1851,7 @@
                   "true"
                 ],
                 "user.model.attribute": [
-                  "school"
+                  "proxyAddresses"
                 ]
               }
             },
@@ -1856,32 +1884,35 @@
               "providerId": "group-ldap-mapper",
               "subComponents": {},
               "config": {
-                "mode": [
-                  "IMPORT"
-                ],
                 "membership.attribute.type": [
                   "DN"
                 ],
-                "user.roles.retrieve.strategy": [
-                  "GET_GROUPS_FROM_USER_MEMBEROF_ATTRIBUTE"
-                ],
                 "group.name.ldap.attribute": [
                   "cn"
+                ],
+                "preserve.group.inheritance": [
+                  "true"
+                ],
+                "membership.user.ldap.attribute": [
+                  "cn"
+                ],
+                "groups.dn": [
+                  "OU=Groups,OU=Global,DC=linuxmuster,DC=lan"
+                ],
+                "mapped.group.attributes": [
+                  "mail"
+                ],
+                "mode": [
+                  "IMPORT"
+                ],
+                "user.roles.retrieve.strategy": [
+                  "GET_GROUPS_FROM_USER_MEMBEROF_ATTRIBUTE"
                 ],
                 "ignore.missing.groups": [
                   "false"
                 ],
                 "membership.ldap.attribute": [
                   "member"
-                ],
-                "membership.user.ldap.attribute": [
-                  "cn"
-                ],
-                "preserve.group.inheritance": [
-                  "true"
-                ],
-                "groups.dn": [
-                  "OU=Groups,OU=Global,DC=lm,DC=schulung,DC=multi,DC=schule"
                 ],
                 "group.object.classes": [
                   "group"
@@ -1898,6 +1929,189 @@
               }
             },
             {
+              "id": "f59b77d3-3abd-4aba-b170-a04f4f6b0495",
+              "name": "first name",
+              "providerId": "user-attribute-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "ldap.attribute": [
+                  "givenName"
+                ],
+                "is.mandatory.in.ldap": [
+                  "true"
+                ],
+                "always.read.value.from.ldap": [
+                  "false"
+                ],
+                "read.only": [
+                  "true"
+                ],
+                "user.model.attribute": [
+                  "firstName"
+                ]
+              }
+            },
+            {
+              "id": "016fc69a-e60b-4f9d-87d8-afbf54561fad",
+              "name": "school-groups",
+              "providerId": "group-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "membership.attribute.type": [
+                  "DN"
+                ],
+                "group.name.ldap.attribute": [
+                  "cn"
+                ],
+                "preserve.group.inheritance": [
+                  "false"
+                ],
+                "membership.user.ldap.attribute": [
+                  "cn"
+                ],
+                "groups.dn": [
+                  "OU=SCHOOLS,DC=linuxmuster,DC=lan"
+                ],
+                "mapped.group.attributes": [
+                  "mail,sophomorixMaillist"
+                ],
+                "mode": [
+                  "IMPORT"
+                ],
+                "user.roles.retrieve.strategy": [
+                  "GET_GROUPS_FROM_USER_MEMBEROF_ATTRIBUTE"
+                ],
+                "membership.ldap.attribute": [
+                  "member"
+                ],
+                "ignore.missing.groups": [
+                  "false"
+                ],
+                "group.object.classes": [
+                  "group"
+                ],
+                "memberof.ldap.attribute": [
+                  "memberOf"
+                ],
+                "groups.path": [
+                  "/"
+                ],
+                "drop.non.existing.groups.during.sync": [
+                  "false"
+                ]
+              }
+            },
+            {
+              "id": "aca7462d-6a4a-466e-b69c-cd18b34601d8",
+              "name": "last name",
+              "providerId": "user-attribute-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "ldap.attribute": [
+                  "sn"
+                ],
+                "is.mandatory.in.ldap": [
+                  "true"
+                ],
+                "read.only": [
+                  "true"
+                ],
+                "always.read.value.from.ldap": [
+                  "false"
+                ],
+                "user.model.attribute": [
+                  "lastName"
+                ]
+              }
+            },
+            {
+              "id": "6504f8f2-7f6c-4164-aec1-c3a3800c1398",
+              "name": "sophomorixMailQuotaCalculated",
+              "providerId": "user-attribute-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "ldap.attribute": [
+                  "sophomorixMailQuotaCalculated"
+                ],
+                "attribute.force.default": [
+                  "false"
+                ],
+                "is.mandatory.in.ldap": [
+                  "false"
+                ],
+                "is.binary.attribute": [
+                  "false"
+                ],
+                "read.only": [
+                  "true"
+                ],
+                "always.read.value.from.ldap": [
+                  "false"
+                ],
+                "user.model.attribute": [
+                  "sophomorixMailQuotaCalculated"
+                ]
+              }
+            },
+            {
+              "id": "f25369cd-fb21-4462-9245-0114c0699154",
+              "name": "sophomorixStatus",
+              "providerId": "user-attribute-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "ldap.attribute": [
+                  "sophomorixStatus"
+                ],
+                "attribute.force.default": [
+                  "true"
+                ],
+                "is.mandatory.in.ldap": [
+                  "false"
+                ],
+                "is.binary.attribute": [
+                  "false"
+                ],
+                "read.only": [
+                  "true"
+                ],
+                "always.read.value.from.ldap": [
+                  "false"
+                ],
+                "user.model.attribute": [
+                  "sophomorixStatus"
+                ]
+              }
+            },
+            {
+              "id": "1b6a3ed5-abf9-41d0-ac50-cd90491c3977",
+              "name": "school",
+              "providerId": "user-attribute-ldap-mapper",
+              "subComponents": {},
+              "config": {
+                "ldap.attribute": [
+                  "sophomorixSchoolname"
+                ],
+                "attribute.force.default": [
+                  "false"
+                ],
+                "is.mandatory.in.ldap": [
+                  "false"
+                ],
+                "is.binary.attribute": [
+                  "false"
+                ],
+                "read.only": [
+                  "true"
+                ],
+                "always.read.value.from.ldap": [
+                  "false"
+                ],
+                "user.model.attribute": [
+                  "school"
+                ]
+              }
+            },
+            {
               "id": "a9d05dce-f65b-4d80-adae-0145646bdc03",
               "name": "creation date",
               "providerId": "user-attribute-ldap-mapper",
@@ -1909,11 +2123,11 @@
                 "is.mandatory.in.ldap": [
                   "false"
                 ],
-                "always.read.value.from.ldap": [
-                  "false"
-                ],
                 "read.only": [
                   "true"
+                ],
+                "always.read.value.from.ldap": [
+                  "false"
                 ],
                 "user.model.attribute": [
                   "createTimestamp"
