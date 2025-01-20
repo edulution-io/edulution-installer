@@ -26,11 +26,21 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+cpu_flags=$(grep -m1 'flags' /proc/cpuinfo | cut -d: -f2)
+if ! (echo "$cpu_flags" | grep -qwE 'cx16' && \
+      echo "$cpu_flags" | grep -qwE 'lahf_lm' && \
+      echo "$cpu_flags" | grep -qwE 'popcnt' && \
+      echo "$cpu_flags" | grep -qwE 'sse4_1' && \
+      echo "$cpu_flags" | grep -qwE 'sse4_2' && \
+      echo "$cpu_flags" | grep -qwE 'ssse3'); then
+    echo "[!] Die CPU unterstützt kein x86-64-v2. Bitte überprüfe die CPU Einstellungen deiner VM!"
+    exit 1
+fi
+
 if [ -d "$DIRECTORY" ]; then
   echo "[!] Die edulutionUI scheint bereits installiert zu sein. Bitte prüfe das Verzeichnis '$DIRECTORY'!"
   exit 1
 fi
-
 
 if ! command -v docker &> /dev/null; then
     echo "[*] Docker ist nicht installiert. Installation wird gestartet..."
