@@ -37,7 +37,7 @@ if ! (echo "$cpu_flags" | grep -qwE 'cx16' && \
     exit 1
 fi
 
-if [ -d "$DIRECTORY" ]; then
+if [ -f "${DIRECTORY}edulution.env" ]; then
   echo "[!] Die edulutionUI scheint bereits installiert zu sein. Bitte prüfe das Verzeichnis '$DIRECTORY'!"
   exit 1
 fi
