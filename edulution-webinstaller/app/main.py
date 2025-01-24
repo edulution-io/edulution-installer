@@ -283,6 +283,7 @@ def createEdulutionEnvFile(data: Data):
 
     keycloak_eduapi_secret = generateSecret()
     keycloak_eduui_secret = generateSecret()
+    keycloak_edumailcow_sync_secret = generateSecret()
     mongodb_secret = generateSecret()
     postgres_secret = generateSecret()
     keycloak_admin_secret = generateSecret()
@@ -297,6 +298,8 @@ def createEdulutionEnvFile(data: Data):
             client["rootUrl"] = "https://" + data.DATA_EDULUTION_EXTERNAL_DOMAIN + "/"
             client["adminUrl"] = "https://" + data.DATA_EDULUTION_EXTERNAL_DOMAIN + "/"
             client["redirectUris"] = [ "https://" + data.DATA_EDULUTION_EXTERNAL_DOMAIN + "/*" ]
+        if client["clientId"] == "edu-mailcow-sync":
+            client["secret"] = keycloak_edumailcow_sync_secret
 
     for comp in realm_file["components"]["org.keycloak.storage.UserStorageProvider"]:
         if comp["name"] == "ldap":
@@ -324,6 +327,7 @@ MONGODB_SERVER_URL=mongodb://root:{mongodb_secret}@edu-db:27017/
 
 KEYCLOAK_EDU_UI_SECRET={keycloak_eduui_secret}
 KEYCLOAK_EDU_API_CLIENT_SECRET={keycloak_eduapi_secret}
+KEYCLOAK_EDU_MAILCOW_SYNC_SECRET={keycloak_edumailcow_sync_secret}
 
 LMN_API_BASE_URL=https://{data.DATA_LMN_EXTERNAL_DOMAIN}:8001/v1/
 
