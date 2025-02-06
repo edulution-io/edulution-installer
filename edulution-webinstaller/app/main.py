@@ -278,6 +278,11 @@ def generateSecret(length=32):
     random_string = ''.join(secrets.choice(characters) for _ in range(length))
     return random_string
 
+def generateRandom(length=5):
+    characters = string.ascii_lowercase
+    random_string = ''.join(secrets.choice(characters) for _ in range(length))
+    return random_string
+
 def createEdulutionEnvFile(data: Data):
     root_dn = re.search(r"(DC=.*$)", data.DATA_LMN_BINDUSER_DN).group(1)
 
@@ -287,6 +292,8 @@ def createEdulutionEnvFile(data: Data):
     mongodb_secret = generateSecret()
     postgres_secret = generateSecret()
     keycloak_admin_secret = generateSecret()
+
+    mailcow_api_secret = generateRandom() + "-" + generateRandom() + "-" + generateRandom() + "-" + generateRandom() + "-" + generateRandom()
 
     realm_file = json.load(open("/edulution-ui/realm-edulution.json"))
 
@@ -327,7 +334,6 @@ MONGODB_SERVER_URL=mongodb://root:{mongodb_secret}@edu-db:27017/
 
 KEYCLOAK_EDU_UI_SECRET={keycloak_eduui_secret}
 KEYCLOAK_EDU_API_CLIENT_SECRET={keycloak_eduapi_secret}
-KEYCLOAK_EDU_MAILCOW_SYNC_SECRET={keycloak_edumailcow_sync_secret}
 
 LMN_API_BASE_URL=https://{data.DATA_LMN_EXTERNAL_DOMAIN}:8001/v1/
 
@@ -348,6 +354,10 @@ KEYCLOAK_ADMIN_PASSWORD={keycloak_admin_secret}
 
 POSTGRES_USER=keycloak
 POSTGRES_PASSWORD={postgres_secret}
+
+# edulution-mail
+KEYCLOAK_EDU_MAILCOW_SYNC_SECRET={keycloak_edumailcow_sync_secret}
+MAILCOW_API_TOKEN={mailcow_api_secret}
 """
 
     with open("/edulution-ui/edulution.env", "w") as f:
