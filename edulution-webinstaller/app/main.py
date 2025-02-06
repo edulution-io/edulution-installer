@@ -292,6 +292,9 @@ def createEdulutionEnvFile(data: Data):
     mongodb_secret = generateSecret()
     postgres_secret = generateSecret()
     keycloak_admin_secret = generateSecret()
+    guacamole_mysql_root_secret = generateSecret()
+    guacamole_mysql_secret = generateSecret()
+    guacamole_admin_secret = generateSecret()
 
     mailcow_api_secret = generateRandom() + "-" + generateRandom() + "-" + generateRandom() + "-" + generateRandom() + "-" + generateRandom()
 
@@ -358,6 +361,12 @@ POSTGRES_PASSWORD={postgres_secret}
 # edulution-mail
 KEYCLOAK_EDU_MAILCOW_SYNC_SECRET={keycloak_edumailcow_sync_secret}
 MAILCOW_API_TOKEN={mailcow_api_secret}
+
+# guacamole
+EDULUTION_GUACAMOLE_MYSQL_ROOT_PASSWORD={guacamole_mysql_root_secret}
+EDULUTION_GUACAMOLE_MYSQL_PASSWORD={guacamole_mysql_secret}
+EDULUTION_GUACAMOLE_ADMIN_USER=admin
+EDULUTION_GUACAMOLE_ADMIN_PASSWORD={guacamole_admin_secret}
 """
 
     with open("/edulution-ui/edulution.env", "w") as f:
