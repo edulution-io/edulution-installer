@@ -6,7 +6,7 @@ services:
     depends_on:
       - edu-api
     healthcheck:
-      test: ["CMD", "curl", "-f", "-k", "-I", "https://localhost:443"]
+      test: ["CMD", "curl", "-f", "-k", "-I", "http://localhost:80"]
       interval: 60s
       timeout: 5s
       retries: 3
