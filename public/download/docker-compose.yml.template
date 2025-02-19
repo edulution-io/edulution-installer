@@ -5,6 +5,12 @@ services:
     restart: always
     depends_on:
       - edu-api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-k", "-I", "http://localhost:80"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   edu-api:
     container_name: edulution-api
@@ -27,9 +33,8 @@ services:
       - edu-db
       - edu-redis
     volumes:
-      - ./data/edulution.pem:/opt/edulution/api/edulution.pem
-      - ./data/traefik/config:/opt/edulution/api/traefik
-      - ./data/public/downloads:/opt/edulution/public/downloads
+      - ./data:/opt/edulution/api/data
+      - /var/run/docker.sock:/var/run/docker.sock
 
   edu-db:
     container_name: edulution-db

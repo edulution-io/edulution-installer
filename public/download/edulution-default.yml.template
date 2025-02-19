@@ -27,7 +27,7 @@ http:
     edulution-ui:
       loadBalancer:
         servers:
-          - url: "https://edu-ui:443"
+          - url: "http://edu-ui:80"
     edulution-keycloak:
       loadBalancer:
         servers:

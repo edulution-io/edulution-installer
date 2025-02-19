@@ -872,8 +872,8 @@
       "clientId": "edu-ui",
       "name": "edulution UI",
       "description": "Frontend User Login",
-      "rootUrl": "https://ui.schulung.multi.schule/",
-      "adminUrl": "https://ui.schulung.multi.schule/",
+      "rootUrl": "https://example.com/",
+      "adminUrl": "https://example.com/",
       "baseUrl": "",
       "surrogateAuthRequired": false,
       "enabled": true,
@@ -881,7 +881,7 @@
       "clientAuthenticatorType": "client-secret",
       "secret": "**********",
       "redirectUris": [
-        "https://ui.schulung.multi.schule/*"
+        "https://example.com/*"
       ],
       "webOrigins": [
         "*"
@@ -3004,7 +3004,7 @@
     "oauth2DeviceCodeLifespan": "600",
     "parRequestUriLifespan": "60",
     "clientSessionMaxLifespan": "0",
-    "frontendUrl": "https://ui.schulung.multi.schule/auth",
+    "frontendUrl": "https://example.com/auth",
     "organizationsEnabled": "false",
     "acr.loa.map": "{}"
   },
