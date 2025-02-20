@@ -387,6 +387,8 @@ http:
     linuxmuster-api:
       rule: "PathPrefix(`/api`)"
       service: linuxmuster-api
+      entryPoints:
+        - websecure
       tls: {{}}
       middlewares:
         - strip-api-prefix
@@ -413,6 +415,8 @@ http:
     webdav:
       rule: "PathPrefix(`/webdav`)"
       service: webdav
+      entryPoints:
+        - websecure
       tls: {{}}
 
   services:
