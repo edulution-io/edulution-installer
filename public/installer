@@ -183,12 +183,12 @@ attempt=0
 until $(curl --output /dev/null --silent --get --fail "http://localhost:8080/auth/realms/master"); do
     attempt=$((attempt+1))
   
-    if [ $attempt -ge 30 ]; then
+    if [ $attempt -ge 60 ]; then
         echo "[!] Es konnte kein Verbindung zum Authentifizierungserver hergestellt werden!"
         exit 1
     fi
 
-    echo "[*] Warten bis der Authentifizierungserver gestartet ist (Versuch ${attempt} / 30)"
+    echo "[*] Warten bis der Authentifizierungserver gestartet ist (Versuch ${attempt} / 60)"
     sleep 3
 done
 
