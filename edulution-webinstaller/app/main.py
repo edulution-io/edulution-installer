@@ -427,7 +427,7 @@ def createSSCertificate(ssdata: SSCertificate, data: Data = Depends(getData)):
 
     except Exception as e:
         print(e)
-        return { "status": False, "message": "Unknown error" }
+        return { "status": False, "message": "Unbekannter Fehler!" }
 
 @app.post("/create-le-certificate")
 def createSSCertificate(ledata: LECertificate, data: Data = Depends(getData)):
@@ -464,9 +464,11 @@ def createSSCertificate(ledata: LECertificate, data: Data = Depends(getData)):
             data.DATA_LE_USED = True
             return { "status": True, "message": "Successful" }
         else:
-            return { "status": False, "message": "Certificate does not exist" }
+            return { "status": False, "message": "Zertifikat wurde nicht erstellt!" }
     else:
-        return { "status": False, "message": "Unknown error" }
+        if "too many certificates" in result.stderr:
+            return { "status": False, "message": "Es wurden zu viele Zertifikate angefragt!" }
+        return { "status": False, "message": "Unbekannter Fehler!" }
 
 @app.post("/upload-certificate")
 def createSSCertificate(cert: UploadFile = File(...), key: UploadFile = File(...)):
@@ -484,7 +486,7 @@ def createSSCertificate(cert: UploadFile = File(...), key: UploadFile = File(...
         
     except Exception as e:
         print(e)
-        return { "status": False, "message": "Unknown error" }
+        return { "status": False, "message": "Unbekannter Fehler!" }
 
 @app.post("/check-token")
 def checkToken(token: Token):
@@ -506,10 +508,10 @@ def checkAPIStatus(data: Data = Depends(getData)):
             return { "status": True, "message": "Successful" }
         return { "status": False, "message": f"Got HTTP-Status {result.status_code}" }
     except requests.exceptions.ConnectTimeout:
-        return { "status": False, "message": "Connection timeout" }
+        return { "status": False, "message": "Verbindungsfehler: Timeout!" }
     except Exception as e:
         print(e)
-        return { "status": False, "message": "Unknown error" }
+        return { "status": False, "message": "Unbekannter Fehler!" }
     
 @app.get("/check-webdav-status")
 def checkWebDAV(data: Data = Depends(getData)):
@@ -519,10 +521,10 @@ def checkWebDAV(data: Data = Depends(getData)):
             return { "status": True, "message": "Successful" }
         return { "status": False, "message": f"Got HTTP-Status {result.status_code}" }
     except requests.exceptions.ConnectTimeout:
-        return { "status": False, "message": "Connection timeout" }
+        return { "status": False, "message": "Verbindungsfehler: Timeout!" }
     except Exception as e:
         print(e)
-        return { "status": False, "message": "Unknown error" }
+        return { "status": False, "message": "Unbekannter Fehler!" }
     
 @app.get("/check-ldap-status")
 def checkLDAP(data: Data = Depends(getData)):
@@ -534,15 +536,15 @@ def checkLDAP(data: Data = Depends(getData)):
         conn = Connection(server, auto_bind=True)
         if conn.bind():
             return { "status": True, "message": "Successful" }
-        return { "status": False, "message": "Could not bind to LDAP server" }
+        return { "status": False, "message": "Keine Verbindung zum LDAP-Server!" }
     except LDAPSocketOpenError as e:
         if "CERTIFICATE_VERIFY_FAILED" in str(e):
-            return { "status": False, "message": "Could not validate server certificate" }
+            return { "status": False, "message": "Kein gültiges Zertifikat!" }
         print(e)
-        return { "status": False, "message": "Unknown error" }
+        return { "status": False, "message": "Unbekannter Fehler!" }
     except Exception as e:
         print(e)
-        return { "status": False, "message": "Unknown error" }
+        return { "status": False, "message": "Unbekannter Fehler!" }
     
 @app.get("/check-ldap-access-status")
 def checkLDAP(data: Data = Depends(getData)):
@@ -554,20 +556,20 @@ def checkLDAP(data: Data = Depends(getData)):
         conn = Connection(server, user=data.DATA_LMN_BINDUSER_DN, password=data.DATA_LMN_BINDUSER_PW, auto_bind=True)
         if conn.bind():
             return { "status": True, "message": "Successful" }
-        return { "status": False, "message": "Could not bind to LDAP server" }
+        return { "status": False, "message": "Keine Verbindung zum LDAP-Server!" }
     except LDAPSocketOpenError as e:
         if "CERTIFICATE_VERIFY_FAILED" in str(e):
-            return { "status": False, "message": "Could not validate server certificate" }
+            return { "status": False, "message": "Kein gültiges Zertifikat!" }
         print(e)
-        return { "status": False, "message": "Unknown error" }
+        return { "status": False, "message": "Unbekannter Fehler!" }
     except LDAPBindError as e:
         if "invalidCredentials" in str(e):
-            return { "status": False, "message": "Invalid credentials" }
+            return { "status": False, "message": "LDAP Zugangsdaten falsch!" }
         print(e)
-        return { "status": False, "message": "Unknown error" }
+        return { "status": False, "message": "Unbekannter Fehler!" }
     except Exception as e:
         print(e)
-        return { "status": False, "message": "Unknown error" }
+        return { "status": False, "message": "Unbekannter Fehler!" }
 
 @app.get("/finish")
 def finish(background_tasks: BackgroundTasks, data: Data = Depends(getData)):

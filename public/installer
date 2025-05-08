@@ -259,6 +259,10 @@ echo "[*] Konfiguration abgeschlossen. Starte edulutionUI!"
 
 docker compose --project-directory ${DIRECTORY} up -d 2>&1 > /dev/zero
 
+if [ -z "$EDULUTION_BASE_DOMAIN" ]; then
+    EDULUTION_BASE_DOMAIN=$(hostname)
+fi
+
 cat <<EOF
 
 ########################################################
@@ -273,8 +277,7 @@ cat <<EOF
 
     Sie erreichen die Oberfläche wie folgt:
       
-    https://$(hostname):443
-    https://$(hostname -I | awk '{print $1}'):443                                                                 
+    https://$EDULUTION_BASE_DOMAIN                                                            
 
 ########################################################
 
