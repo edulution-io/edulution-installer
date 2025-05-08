@@ -136,7 +136,7 @@ mv ${DIRECTORY}edulution-default.yml ${DIRECTORY}data/traefik/config
 
 echo "[*] Starte den edulutionUI Web-Installer..."
 
-docker pull ghcr.io/edulution-io/edulution-installer:main 2>&1 > /dev/zero
+docker pull ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
 
 cat <<EOF
 
