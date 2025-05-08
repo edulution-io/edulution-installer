@@ -455,8 +455,10 @@ def createSSCertificate(ledata: LECertificate, data: Data = Depends(getData)):
 
     if result.returncode == 0 and "Successfully received certificate" in result.stdout:
         if os.path.exists(f"/edulution-ui/data/certbot/etc/live/{data.DATA_EDULUTION_EXTERNAL_DOMAIN}/fullchain.pem") and os.path.exists(f"/edulution-ui/data/certbot/etc/live/{data.DATA_EDULUTION_EXTERNAL_DOMAIN}/privkey.pem"):
-            os.remove(certfile)
-            os.remove(keyfile)
+            if os.path.exists(certfile):
+                os.remove(certfile)
+            if os.path.exists(keyfile):
+                os.remove(keyfile)
             os.symlink(f"../../certbot/etc/live/{data.DATA_EDULUTION_EXTERNAL_DOMAIN}/fullchain.pem", certfile)
             os.symlink(f"../../data/certbot/etc/live/{data.DATA_EDULUTION_EXTERNAL_DOMAIN}/privkey.pem", keyfile)
             data.DATA_LE_USED = True
