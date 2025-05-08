@@ -153,7 +153,8 @@ cat <<EOF
 
 EOF
 
-docker run -it --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -e EDULUTION_DIRECTORY=${DIRECTORY} ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
+docker run -it --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
+    -e EDULUTION_DIRECTORY=${DIRECTORY} ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
 docker rm edulution-installer 2>&1 > /dev/zero
 
 echo "[*] Starte den Authentifizierungserver um die Einstellungen festzulegen..."
