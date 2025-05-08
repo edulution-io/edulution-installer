@@ -73,6 +73,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik.yml:/etc/traefik/traefik.yml
       - ./data/traefik/config:/etc/traefik/dynamic
+      - ./data/traefik/ssl:/etc/traefik/ssl
     healthcheck:
       test: [ "CMD", "traefik", "healthcheck", "--ping" ]
       interval: 5s

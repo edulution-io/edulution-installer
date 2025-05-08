@@ -7,6 +7,12 @@
 ###########################################################
 
 DIRECTORY="/srv/docker/edulution-ui/"
+EDULUTION_INSTALLER_TAG="main"
+
+if [[ "$1" == "--dev" ]]; then
+  echo "Entwicklermodus aktiviert! Es werden Test-Pakete verwendet!"
+  EDULUTION_INSTALLER_TAG="dev"
+fi
 
 clear
 
@@ -114,6 +120,7 @@ done
 echo "[*] Anpassung der Proxy-Konfiguration..."
 
 mkdir -p ${DIRECTORY}data/traefik/config
+mkdir -p ${DIRECTORY}data/traefik/ssl
 mkdir -p ${DIRECTORY}data/public/downloads
 mkdir -p ${DIRECTORY}data/apps
 mkdir -p ${DIRECTORY}data/apps/desktopdeployment/edulution-guacamole/config
@@ -141,7 +148,7 @@ cat <<EOF
 
 EOF
 
-docker run -it --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ ghcr.io/edulution-io/edulution-installer:main 2>&1 > /dev/zero
+docker run -it --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -e EDULUTION_DIRECTORY=${DIRECTORY} ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
 docker rm edulution-installer 2>&1 > /dev/zero
 
 echo "[*] Starte den Authentifizierungserver um die Einstellungen festzulegen..."
