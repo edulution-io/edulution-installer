@@ -11,6 +11,11 @@ EDULUTION_INSTALLER_TAG="main"
 
 if [[ "$1" == "--dev" ]]; then
   echo "Entwicklermodus aktiviert! Es werden Test-Pakete verwendet!"
+  read -p "Möchtest du wirklich fortfahren? [j/N] " confirm
+  if [[ ! "$confirm" =~ ^[Jj]$ ]]; then
+    echo "Abgebrochen!"
+    exit 1
+  fi
   EDULUTION_INSTALLER_TAG="dev"
 fi
 
