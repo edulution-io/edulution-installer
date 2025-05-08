@@ -459,8 +459,8 @@ def createSSCertificate(ledata: LECertificate, data: Data = Depends(getData)):
                 os.remove(certfile)
             if os.path.exists(keyfile):
                 os.remove(keyfile)
-            os.symlink(f"../../certbot/etc/live/{data.DATA_EDULUTION_EXTERNAL_DOMAIN}/fullchain.pem", certfile)
-            os.symlink(f"../../data/certbot/etc/live/{data.DATA_EDULUTION_EXTERNAL_DOMAIN}/privkey.pem", keyfile)
+            shutil.copy2(f"/edulution-ui/data/certbot/etc/live/{data.DATA_EDULUTION_EXTERNAL_DOMAIN}/fullchain.pem", certfile)
+            shutil.copy2(f"/edulution-ui/data/certbot/etc/live/{data.DATA_EDULUTION_EXTERNAL_DOMAIN}/privkey.pem", keyfile)
             data.DATA_LE_USED = True
             return { "status": True, "message": "Successful" }
         else:
@@ -757,7 +757,12 @@ docker run --rm \
     --network edulution-ui_default \
     -v {EDULUTION_DIRECTORY}/data/certbot/etc:/etc/letsencrypt \
     -v {EDULUTION_DIRECTORY}/data/certbot/var:/var/lib/letsencrypt \
-    certbot/certbot renew --quiet --deploy-hook "docker kill -s HUP edu-traefik"
+    certbot/certbot renew --quiet
+
+cp {EDULUTION_DIRECTORY}/data/certbot/etc/live/{data.DATA_EDULUTION_EXTERNAL_DOMAIN}/fullchain.pem {EDULUTION_DIRECTORY}/data/traefik/ssl/cert.cert
+cp {EDULUTION_DIRECTORY}/data/certbot/etc/live/{data.DATA_EDULUTION_EXTERNAL_DOMAIN}/privkey.pem {EDULUTION_DIRECTORY}/data/traefik/ssl/cert.key
+
+docker kill -s HUP edulution-traefik
 """
         with open("/edulution-ui/renew_le_certificate.sh", "w") as f:
             f.write(le_renew_script)
