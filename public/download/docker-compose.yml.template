@@ -69,11 +69,14 @@ services:
     ports:
       - 80:80
       - 443:443
+    env_file:
+      - edulution.env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik.yml:/etc/traefik/traefik.yml
       - ./data/traefik/config:/etc/traefik/dynamic
       - ./data/traefik/ssl:/etc/traefik/ssl
+      - ./data/letsencrypt:/letsencrypt
     healthcheck:
       test: [ "CMD", "traefik", "healthcheck", "--ping" ]
       interval: 5s
