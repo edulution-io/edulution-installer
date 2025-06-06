@@ -727,12 +727,31 @@ http:
     # Traefik-Konfiguration basierend auf Proxy und Let's Encrypt anpassen
     if not data.DATA_PROXY_USED and data.DATA_LE_USED:
         # Let's Encrypt wird von Traefik verwaltet
-        # traefik.yml anpassen für ACME
-        with open("/edulution-ui/traefik.yml", "r") as f:
-            traefik_config = f.read()
-        
-        # ACME-Konfiguration hinzufügen
-        acme_config = f"""
+        # Traefik.yml muss VOR docker-compose angepasst werden
+        # Daher schreiben wir eine separate Datei
+        traefik_le_config = f"""
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+    http:
+      tls: {{}}
+  imap:
+    address: ":143"
+
+providers:
+  file:
+    directory: "/etc/traefik/dynamic/"
+    watch: true
+
+log:
+  level: ERROR
+
+serversTransport:
+  insecureSkipVerify: true
+
+ping: {{}}
 
 certificatesResolvers:
   letsencrypt:
@@ -742,10 +761,9 @@ certificatesResolvers:
       httpChallenge:
         entryPoint: web
 """
-        traefik_config += acme_config
         
         with open("/edulution-ui/traefik.yml", "w") as f:
-            f.write(traefik_config)
+            f.write(traefik_le_config)
         
         # edulution-default.yml anpassen für Let's Encrypt
         le_config = f"""
@@ -799,10 +817,9 @@ http:
         # acme.json mit korrekten Berechtigungen erstellen
         os.makedirs("/edulution-ui/data/letsencrypt", exist_ok=True)
         acme_json_path = "/edulution-ui/data/letsencrypt/acme.json"
-        if not os.path.exists(acme_json_path):
-            with open(acme_json_path, "w") as f:
-                f.write("{}")
-            os.chmod(acme_json_path, 0o600)
+        with open(acme_json_path, "w") as f:
+            f.write("{}")
+        os.chmod(acme_json_path, 0o600)
             
     elif os.path.exists("/edulution-ui/data/traefik/ssl/cert.cert") and os.path.exists("/edulution-ui/data/traefik/ssl/cert.key"):
         # Selbst-signiertes oder hochgeladenes Zertifikat

@@ -19,6 +19,16 @@ if [[ "$1" == "--dev" ]]; then
   EDULUTION_INSTALLER_TAG="dev"
 fi
 
+if [[ "$1" == "--ssl" ]]; then
+  echo "Entwicklermodus aktiviert! Es werden Test-Pakete verwendet!"
+  read -p "Möchtest du wirklich fortfahren? [j/N] " confirm
+  if [[ ! "$confirm" =~ ^[Jj]$ ]]; then
+    echo "Abgebrochen!"
+    exit 1
+  fi
+  EDULUTION_INSTALLER_TAG="ssl"
+fi
+
 clear
 
 cat <<EOF
