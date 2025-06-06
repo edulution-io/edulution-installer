@@ -724,6 +724,22 @@ http:
     with open("/edulution-ui/data/traefik/config/webdav.yml", "w") as f:
         f.write(webdav_traefik)
 
+    # Docker-compose für Let's Encrypt anpassen falls nötig
+    if not data.DATA_PROXY_USED and data.DATA_LE_USED:
+        # docker-compose.yml anpassen um letsencrypt volume hinzuzufügen
+        with open("/edulution-ui/docker-compose.yml", "r") as f:
+            compose_content = f.read()
+        
+        # Füge letsencrypt volume zu edu-traefik hinzu
+        # Suche nach den volumes von edu-traefik und füge die Zeile hinzu
+        compose_content = compose_content.replace(
+            "      - ./data/traefik/ssl:/etc/traefik/ssl\n    healthcheck:",
+            "      - ./data/traefik/ssl:/etc/traefik/ssl\n      - ./data/letsencrypt:/letsencrypt\n    healthcheck:"
+        )
+        
+        with open("/edulution-ui/docker-compose.yml", "w") as f:
+            f.write(compose_content)
+    
     # Traefik-Konfiguration basierend auf Proxy und Let's Encrypt anpassen
     if not data.DATA_PROXY_USED and data.DATA_LE_USED:
         # Let's Encrypt wird von Traefik verwaltet
