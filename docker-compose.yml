@@ -6,8 +6,7 @@ services:
       - ./edulution-webinstaller/app:/app
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
-      - 80:8000
-      - 443:8443
+      - 443:8000
     entrypoint: /startup.sh
     environment:
       - EDULUTION_DIRECTORY=/srv/docker/edulution-installer/data

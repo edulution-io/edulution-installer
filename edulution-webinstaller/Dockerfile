@@ -4,11 +4,10 @@ RUN apt-get update && apt-get install -y curl openssl
 RUN curl -sSL https://get.docker.com/ | CHANNEL=stable sh
 
 WORKDIR /app
-RUN pip install --no-cache-dir --upgrade fastapi uvicorn[standard] cryptography python-multipart requests ldap3 pyyaml aiofiles
+RUN pip install --no-cache-dir --upgrade fastapi uvicorn[standard] cryptography python-multipart requests ldap3 pyyaml
 COPY ./app /app
 COPY ./startup.sh /startup.sh
-COPY ./startup-https.sh /startup-https.sh
-RUN chmod +x /startup.sh /startup-https.sh
+RUN chmod +x /startup.sh
 
-EXPOSE 8000 8443
+EXPOSE 8000 8080
 CMD ["/startup.sh"]

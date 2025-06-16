@@ -8,26 +8,48 @@
 
 DIRECTORY="/srv/docker/edulution-ui/"
 EDULUTION_INSTALLER_TAG="main"
+INSTALLER_DOMAIN=""
 
-if [[ "$1" == "--dev" ]]; then
-  echo "Entwicklermodus aktiviert! Es werden Test-Pakete verwendet!"
-  read -p "Möchtest du wirklich fortfahren? [j/N] " confirm
-  if [[ ! "$confirm" =~ ^[Jj]$ ]]; then
-    echo "Abgebrochen!"
-    exit 1
-  fi
-  EDULUTION_INSTALLER_TAG="dev"
-fi
-
-if [[ "$1" == "--ssl" ]]; then
-  echo "Entwicklermodus aktiviert! Es werden Test-Pakete verwendet!"
-  read -p "Möchtest du wirklich fortfahren? [j/N] " confirm
-  if [[ ! "$confirm" =~ ^[Jj]$ ]]; then
-    echo "Abgebrochen!"
-    exit 1
-  fi
-  EDULUTION_INSTALLER_TAG="ssl"
-fi
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --dev)
+            echo "Entwicklermodus aktiviert! Es werden Test-Pakete verwendet!"
+            read -p "Möchtest du wirklich fortfahren? [j/N] " confirm
+            if [[ ! "$confirm" =~ ^[Jj]$ ]]; then
+                echo "Abgebrochen!"
+                exit 1
+            fi
+            EDULUTION_INSTALLER_TAG="dev"
+            shift
+            ;;
+        --ssl)
+            echo "Entwicklermodus aktiviert! Es werden Test-Pakete verwendet!"
+            read -p "Möchtest du wirklich fortfahren? [j/N] " confirm
+            if [[ ! "$confirm" =~ ^[Jj]$ ]]; then
+                echo "Abgebrochen!"
+                exit 1
+            fi
+            EDULUTION_INSTALLER_TAG="ssl"
+            shift
+            ;;
+        --domain=*)
+            INSTALLER_DOMAIN="${1#*=}"
+            echo "Domain gesetzt: $INSTALLER_DOMAIN"
+            shift
+            ;;
+        --domain)
+            INSTALLER_DOMAIN="$2"
+            echo "Domain gesetzt: $INSTALLER_DOMAIN"
+            shift 2
+            ;;
+        *)
+            echo "Unbekannter Parameter: $1"
+            echo "Verwendung: $0 [--dev] [--ssl] [--domain=example.com] [--domain example.com]"
+            exit 1
+            ;;
+    esac
+done
 
 clear
 
@@ -163,8 +185,17 @@ cat <<EOF
 
 EOF
 
-docker run -it --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
-    -e EDULUTION_DIRECTORY=${DIRECTORY} ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
+# Docker run mit optionalem Domain-Parameter
+if [ -n "$INSTALLER_DOMAIN" ]; then
+    echo "Starte Installer mit Domain: $INSTALLER_DOMAIN"
+    docker run -it --name edulution-installer -p 80:8080 -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
+        -e EDULUTION_DIRECTORY=${DIRECTORY} \
+        -e INSTALLER_DOMAIN=${INSTALLER_DOMAIN} \
+        ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
+else
+    docker run -it --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
+        -e EDULUTION_DIRECTORY=${DIRECTORY} ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
+fi
 docker rm edulution-installer 2>&1 > /dev/zero
 
 echo "[*] Starte den Authentifizierungserver um die Einstellungen festzulegen..."
