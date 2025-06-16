@@ -166,6 +166,23 @@ chmod -R 777 ${DIRECTORY}data
 
 mv ${DIRECTORY}edulution-default.yml ${DIRECTORY}data/traefik/config
 
+# Domain-Abfrage wenn nicht über Parameter gesetzt
+if [ -z "$INSTALLER_DOMAIN" ]; then
+    echo ""
+    echo "[?] Möchten Sie ein SSL-Zertifikat für eine spezifische Domain erstellen?"
+    echo "    Leer lassen = Self-signed Zertifikat"
+    echo "    Domain angeben = Let's Encrypt Zertifikat (empfohlen)"
+    echo ""
+    echo "    Hinweis: Nur nötig wenn Sie sich NICHT hinter einem Reverse Proxy"
+    echo "    (wie Traefik, nginx, Cloudflare) befinden."
+    echo ""
+    read -p "Domain (z.B. installer.example.com): " INSTALLER_DOMAIN
+    
+    if [ -n "$INSTALLER_DOMAIN" ]; then
+        echo "Domain gesetzt: $INSTALLER_DOMAIN"
+    fi
+fi
+
 echo "[*] Starte den edulutionUI Web-Installer..."
 
 docker pull ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
@@ -188,12 +205,12 @@ EOF
 # Docker run mit optionalem Domain-Parameter
 if [ -n "$INSTALLER_DOMAIN" ]; then
     echo "Starte Installer mit Domain: $INSTALLER_DOMAIN"
-    docker run -it --name edulution-installer -p 80:8080 -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
+    docker run --name edulution-installer -p 80:8080 -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
         -e EDULUTION_DIRECTORY=${DIRECTORY} \
         -e INSTALLER_DOMAIN=${INSTALLER_DOMAIN} \
         ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
 else
-    docker run -it --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
+    docker run --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
         -e EDULUTION_DIRECTORY=${DIRECTORY} ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
 fi
 docker rm edulution-installer 2>&1 > /dev/zero

@@ -5,9 +5,6 @@ if [ -n "$INSTALLER_DOMAIN" ]; then
     echo "Domain erkannt: $INSTALLER_DOMAIN"
     echo "Versuche Let's Encrypt Zertifikat zu erstellen..."
     
-    # Install certbot
-    apt-get update && apt-get install -y certbot
-    
     # Try to get Let's Encrypt certificate
     if certbot certonly --standalone --non-interactive --agree-tos --email admin@${INSTALLER_DOMAIN} -d ${INSTALLER_DOMAIN} --http-01-port=8080; then
         echo "Let's Encrypt Zertifikat erfolgreich erstellt!"
