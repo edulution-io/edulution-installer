@@ -10,6 +10,10 @@ import string
 import ssl
 import shutil
 import yaml
+import urllib3
+
+# Disable SSL warnings for self-signed certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from fastapi import FastAPI, Form, BackgroundTasks, Depends, Request, File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
