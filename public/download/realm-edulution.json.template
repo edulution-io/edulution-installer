@@ -438,7 +438,11 @@
       "disableableCredentialTypes": [],
       "requiredActions": [],
       "realmRoles": [
-        "default-roles-edulution"
+        "default-roles-edulution",
+        "view-users",
+        "query-users",
+        "view-groups",
+        "query-groups"
       ],
       "notBefore": 0,
       "groups": []
