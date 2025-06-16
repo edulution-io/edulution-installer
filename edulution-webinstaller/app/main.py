@@ -10,6 +10,8 @@ import string
 import ssl
 import shutil
 import yaml
+import subprocess
+import asyncio
 
 from fastapi import FastAPI, Form, BackgroundTasks, Depends, Request, File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -67,16 +69,73 @@ def getData():
 EDULUTION_DIRECTORY = os.environ.get("EDULUTION_DIRECTORY", "/srv/docker/edulution-ui")
 
 @app.get("/")
-def root():
-    html_content = """
-    <h1>Herzlich Willkommen!</h1>
-    <form method="GET" action="/token">
-    <br><br>
-    <input type="submit" class="gradient-button" value="Installation starten" id="btn_configure"></input>
-    </form>
-    """
+async def root(request: Request):
+    # Check if accessed via HTTPS
+    if request.url.scheme == "https":
+        html_content = """
+        <h1>Herzlich Willkommen!</h1>
+        <form method="GET" action="/token">
+        <br><br>
+        <input type="submit" class="gradient-button" value="Installation starten" id="btn_configure"></input>
+        </form>
+        """
+        return HTMLResponse(content=site.replace("##CONTENT##", html_content), status_code=200)
+    
+    # If HTTP, generate certificate and redirect
+    hostname = request.headers.get('host', 'localhost').split(':')[0]
+    
+    # Check if certificate already exists
+    if not os.path.exists('/cert.pem') or not os.path.exists('/key.pem'):
+        html_content = f"""
+        <h1>SSL-Zertifikat wird generiert...</h1>
+        <p>Der Installer generiert ein SSL-Zertifikat für: <strong>{hostname}</strong></p>
+        <p>Sie werden in wenigen Sekunden weitergeleitet...</p>
+        <script>
+            setTimeout(() => {{
+                window.location.href = 'https://' + window.location.host;
+            }}, 3000);
+        </script>
+        """
+        
+        # Generate certificate in background
+        asyncio.create_task(generate_ssl_certificate(hostname))
+        
+        return HTMLResponse(content=site.replace("##CONTENT##", html_content), status_code=200)
+    
+    # Certificate exists, just redirect
+    return RedirectResponse(url=f"https://{request.headers.get('host')}/", status_code=301)
 
-    return HTMLResponse(content=site.replace("##CONTENT##", html_content), status_code=200)
+async def generate_ssl_certificate(hostname: str):
+    """Generate SSL certificate for the given hostname"""
+    print(f"Generating SSL certificate for: {hostname}")
+    
+    # Build SAN string
+    san = f"DNS:{hostname},DNS:localhost,IP:127.0.0.1"
+    
+    # Try to get external IP
+    try:
+        ext_ip = subprocess.check_output(["curl", "-s", "ifconfig.me"], timeout=5).decode().strip()
+        if ext_ip:
+            san += f",IP:{ext_ip}"
+    except:
+        pass
+    
+    # Generate certificate
+    cmd = [
+        "openssl", "req", "-x509", "-newkey", "rsa:4096", "-nodes",
+        "-out", "/cert.pem", "-keyout", "/key.pem", "-days", "3650",
+        "-subj", f"/C=DE/ST=State/L=City/O=Installer/OU=edulution/CN={hostname}",
+        "-addext", f"subjectAltName={san}"
+    ]
+    
+    subprocess.run(cmd, check=True)
+    
+    # Wait a bit to ensure certificate is written
+    await asyncio.sleep(1)
+    
+    # Restart uvicorn with HTTPS
+    print("Certificate generated, restarting with HTTPS...")
+    os.execv('/startup-https.sh', ['/startup-https.sh'])
 
 
 @app.get("/token")
