@@ -12,7 +12,8 @@ entryPoints:
       tls: {}
   imap:
     address: ":143"
-
+  imaps:
+    address: ":993"
 
 providers:
   file:
