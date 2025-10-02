@@ -7,6 +7,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - 443:8000
-    entrypoint: uvicorn main:app --host 0.0.0.0 --port 8000 --ssl-keyfile /key.pem --ssl-certfile /cert.pem --reload
+    entrypoint: /startup.sh
     environment:
       - EDULUTION_DIRECTORY=/srv/docker/edulution-installer/data
