@@ -39,6 +39,7 @@ services:
     volumes:
       - ./data:/opt/edulution/api/data
       - /var/run/docker.sock:/var/run/docker.sock
+      - /srv/docker/edulution-mail/mailcow/data/conf/sogo:/data/apps/mail/sogo/overrides:rw
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/edu-api/health/check', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 60s
