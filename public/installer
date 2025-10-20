@@ -122,6 +122,21 @@ if ! command -v docker &> /dev/null; then
 
         systemctl enable docker --now
 
+        echo "[*] Konfiguriere Docker Daemon..."
+        cat <<DOCKEREOF > /etc/docker/daemon.json
+{
+  "live-restore": true,
+  "storage-driver": "overlay2",
+  "log-opts": {
+    "max-size": "100m",
+    "max-file": "3"
+  }
+}
+DOCKEREOF
+
+        systemctl daemon-reload
+        systemctl restart docker
+
         echo "[*] Docker wurde erfolgreich installiert."
 
     else
@@ -130,6 +145,21 @@ if ! command -v docker &> /dev/null; then
     fi
 else
     echo "[*] Docker ist bereits installiert."
+    echo "[*] Konfiguriere Docker Daemon..."
+    cat <<DOCKEREOF > /etc/docker/daemon.json
+{
+  "live-restore": true,
+  "storage-driver": "overlay2",
+  "log-opts": {
+    "max-size": "100m",
+    "max-file": "3"
+  }
+}
+DOCKEREOF
+
+    systemctl daemon-reload
+    systemctl restart docker
+    echo "[*] Docker Daemon konfiguriert."
 fi
 
 if ! command -v jq &> /dev/null; then
