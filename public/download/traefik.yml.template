@@ -10,6 +10,11 @@ entryPoints:
     address: ":443"
     http:
       tls: {}
+    transport:
+      respondingTimeouts:
+        readTimeout: 0s
+        writeTimeout: 0s
+        idleTimeout: 0s
   imap:
     address: ":143"
   imaps:
