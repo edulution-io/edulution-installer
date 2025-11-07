@@ -226,6 +226,7 @@ if [ -n "$INSTALLER_DOMAIN" ]; then
 else
     docker run --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
         -e EDULUTION_DIRECTORY=${DIRECTORY} ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
+fi
 
 # Warte bis der Installer bereit ist
 attempt=0
