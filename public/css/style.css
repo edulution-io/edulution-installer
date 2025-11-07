@@ -210,7 +210,6 @@ input.gradient-button[type="submit"]:active {
 .gradient-button:disabled,
 button.gradient-button:disabled,
 input.gradient-button[type="submit"]:disabled {
-    background: linear-gradient(135deg, #006699, #4e7e00) !important;
     cursor: not-allowed !important;
     opacity: 0.6 !important;
     color: white !important;

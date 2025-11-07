@@ -5,9 +5,9 @@ RUN curl -sSL https://get.docker.com/ | CHANNEL=stable sh
 
 WORKDIR /app
 RUN pip install --no-cache-dir --upgrade fastapi uvicorn[standard] cryptography python-multipart requests ldap3 pyyaml
-COPY edulution-webinstaller/app /app
+COPY ./app /app
 COPY public/css/style.css /app/css/style.css
-COPY edulution-webinstaller/startup.sh /startup.sh
+COPY ./startup.sh /startup.sh
 RUN chmod +x /startup.sh
 
 EXPOSE 8000 8080
