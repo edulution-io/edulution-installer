@@ -16,40 +16,52 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+    font-family: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
     min-height: 100vh;
-    position: relative;
-    background: url('../img/backgroundDarkMode.webp');
+    background: url('/img/backgroundDarkMode.webp') #000;
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
+    background-color: #000;
+    margin: 0;
+}
+
+.page-wrapper {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    min-height: 100vh;
 }
 
 .container {
-    position: fixed;
-    left: 50%;
-    top: 40%;
-    transform: translate(-50%, -50%);
     width: 90vw;
     max-width: 450px;
-    max-height: 85vh;
     background: var(--card-bg);
     backdrop-filter: blur(10px);
-    border-radius: 12px;
+    border-radius: var(--border-radius);
     border: 4px solid white;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    padding: 25px;
+    box-shadow: var(--card-shadow);
+    padding: 40px;
     overflow-y: auto;
+    max-height: 90vh;
 }
 
+/* Webinstaller benötigt größeren Container */
+.container.webinstaller-container {
+    max-width: 900px;
+}
 
 .logo-container {
     text-align: center;
-    margin-bottom: 40px;
+    margin-bottom: 30px;
 }
 
 .logo {
     max-width: 100%;
+    width: 100%;
+    max-width: 350px;
     height: auto;
     transition: var(--transition);
     filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
@@ -60,8 +72,14 @@ body {
     filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.15));
 }
 
+.content {
+    width: 100%;
+    margin: 0 auto 30px;
+}
+
+/* Copy Section (für public index.html) */
 .copy-section {
-    margin-bottom: 32px;
+    margin-bottom: 20px;
 }
 
 .copy-section h2 {
@@ -98,33 +116,6 @@ body {
     outline: none;
 }
 
-.gradient-button {
-    width: 100%;
-    height: 40px;
-    padding: 0 16px;
-    font-size: 14px;
-    font-weight: 700;
-    color: white;
-    background: linear-gradient(45deg, #88D840, #0081C6);
-    border: none;
-    border-radius: 12px;
-    cursor: pointer;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    transition: opacity 0.2s;
-}
-
-.gradient-button:hover {
-    opacity: 0.9;
-}
-
-.gradient-button:active {
-    transform: translateY(0);
-}
-
-.gradient-button.copied {
-    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-}
-
 .copy-feedback {
     text-align: center;
     margin-top: 12px;
@@ -139,11 +130,104 @@ body {
     opacity: 1;
 }
 
+/* Form Inputs (für Webinstaller) */
+.content textarea,
+.content input[type="text"],
+.content input[type="submit"],
+.content input[type="number"],
+.content input[type="email"],
+.content select {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 16px;
+    color: #2d3748;
+    background: white;
+    border: 2px solid #d1d5db;
+    border-radius: 6px;
+    display: block;
+    margin: 0 auto;
+    text-align: center;
+    transition: var(--transition);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.content input[type="file"] {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 16px;
+    color: #2d3748;
+    background: white;
+    border: 2px solid #d1d5db;
+    border-radius: 6px;
+    transition: var(--transition);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.content textarea:focus,
+.content input:focus,
+.content select:focus {
+    outline: none;
+    background: white;
+    color: #2d3748;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* Buttons */
+.gradient-button,
+button.gradient-button,
+input.gradient-button[type="submit"] {
+    width: 100% !important;
+    background: linear-gradient(45deg, #88D840, #0081C6) !important;
+    border: none !important;
+    color: white !important;
+    padding: 15px 30px !important;
+    text-align: center !important;
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    border-radius: var(--border-radius) !important;
+    cursor: pointer !important;
+    transition: var(--transition) !important;
+    margin-top: 20px !important;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+}
+
+.gradient-button:hover,
+button.gradient-button:hover,
+input.gradient-button[type="submit"]:hover {
+    opacity: 0.9 !important;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15) !important;
+    color: white !important;
+    background: linear-gradient(45deg, #88D840, #0081C6) !important;
+}
+
+.gradient-button:active,
+button.gradient-button:active,
+input.gradient-button[type="submit"]:active {
+    opacity: 0.8 !important;
+}
+
+.gradient-button:disabled,
+button.gradient-button:disabled,
+input.gradient-button[type="submit"]:disabled {
+    background: linear-gradient(135deg, #006699, #4e7e00) !important;
+    cursor: not-allowed !important;
+    opacity: 0.6 !important;
+    color: white !important;
+}
+
+.gradient-button.copied {
+    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%) !important;
+}
+
+/* Footer */
 .footer-section {
     text-align: center;
+    padding: 20px 0 0 0;
     color: #718096;
     font-size: 14px;
-    padding-top: 24px;
+    border-top: 1px solid #e2e8f0;
+    margin-top: 30px;
 }
 
 .footer-section a {
@@ -158,6 +242,88 @@ body {
     text-decoration: underline;
 }
 
+a {
+    color: #2d3748;
+    text-decoration: none;
+}
+
+/* Webinstaller-spezifische Styles */
+.form-group {
+    margin-top: 30px !important;
+}
+
+.form-check {
+    text-align: left;
+}
+
+.card {
+    margin-bottom: 20px;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    background-color: #f8f9fa;
+}
+
+.card-body {
+    text-align: left;
+    display: flex;
+    align-items: center;
+    color: #2d3748;
+}
+
+.card-icon {
+    font-size: 20pt;
+}
+
+.card-text {
+    margin-left: 20px;
+}
+
+.card-button {
+    margin-left: auto;
+}
+
+#finish_button {
+    margin: auto;
+}
+
+.certificate_content {
+    display: none;
+    margin-top: 20px;
+}
+
+.certificate_content .row {
+    margin-bottom: 10px;
+    margin-left: 13px;
+}
+
+.certificate_content input[type="text"],
+.certificate_content input[type="number"],
+.certificate_content input[type="email"] {
+    text-align: left;
+}
+
+.certificate_radio {
+    margin-top: 20px;
+}
+
+.certificate_label {
+    padding-top: calc(.6rem + var(--bs-border-width));
+    text-align: left;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .container {
+        width: 95%;
+        padding: 25px 20px;
+    }
+
+    .logo {
+        max-width: 250px;
+    }
+}
+
 @media (max-width: 640px) {
     .container {
         padding: 20px;
@@ -169,7 +335,17 @@ body {
     }
 
     .gradient-button {
-        padding: 0 16px;
-        font-size: 14px;
+        padding: 12px 24px !important;
+        font-size: 14px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        padding: 20px 15px;
+    }
+
+    .logo {
+        max-width: 200px;
     }
 }

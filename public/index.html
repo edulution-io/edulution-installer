@@ -5,35 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="edulutionUI Installer - Schnelle Installation mit einem Befehl">
     <title>edulutionUI - Installer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <link rel="icon" href="img/icon.ico" type="image/x-icon">
 </head>
 <body>
-    <div class="container">
-        <div class="logo-container">
-            <a href="https://edulution.io" target="_blank" rel="noopener noreferrer">
-                <img src="img/edulution.io_USER INTERFACE.svg" alt="edulution.io User Interface Logo" class="logo">
-            </a>
-        </div>
-
-        <div class="copy-section">
-            <h2>Quick Install</h2>
-            <div class="input-group">
-                <input
-                    type="text"
-                    id="linkField"
-                    value="bash <(curl -s https://get.edulution.io/installer)"
-                    readonly
-                    aria-label="Installation command">
+    <div class="page-wrapper">
+        <div class="container">
+            <div class="logo-container">
+                <a href="https://edulution.io" target="_blank" rel="noopener noreferrer">
+                    <img src="img/edulution.io_USER_INTERFACE.svg" alt="edulution.io User Interface Logo" class="logo">
+                </a>
             </div>
-            <button onclick="copyLink()" class="gradient-button" aria-label="Copy installation link">
-                In Zwischenablage kopieren
-            </button>
-            <div id="copyFeedback" class="copy-feedback" role="status" aria-live="polite"></div>
-        </div>
 
-        <div class="footer-section">
-            Alle Informationen auf <a href="https://edulution.io" target="_blank" rel="noopener noreferrer">edulution.io</a>
+            <div class="content">
+                <div class="copy-section">
+                    <h2>Quick Install</h2>
+                    <div class="input-group">
+                        <input
+                            type="text"
+                            id="linkField"
+                            value="bash <(curl -s https://get.edulution.io/installer)"
+                            readonly
+                            aria-label="Installation command">
+                    </div>
+                    <button onclick="copyLink()" class="gradient-button" aria-label="Copy installation link">
+                        In Zwischenablage kopieren
+                    </button>
+                    <div id="copyFeedback" class="copy-feedback" role="status" aria-live="polite"></div>
+                </div>
+            </div>
+
+            <div class="footer-section">
+            Alle Informationen auf <a href="https://edulution.io" target="_blank">edulution.io</a> oder in der <a href="https://docs.edulution.io" target="_blank">Dokumentation</a>
         </div>
     </div>
 
@@ -55,7 +61,7 @@
 
                 // Reset after 2 seconds
                 setTimeout(() => {
-                    button.textContent = 'Link kopieren';
+                    button.textContent = 'In Zwischenablage kopieren';
                     button.classList.remove('copied');
                     feedback.classList.remove('show');
                 }, 2000);
