@@ -2,7 +2,6 @@ services:
   edulution-installer-dev:
     build:
       context: .
-      dockerfile: ./edulution-webinstaller/Dockerfile
     volumes:
       - ./data:/edulution-ui
       - ./edulution-webinstaller/app:/app
