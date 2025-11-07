@@ -554,7 +554,7 @@ def finish(background_tasks: BackgroundTasks, data: Data = Depends(getData)):
     html_content = f"""
         <h3>Konfiguration abgeschlossen</h3>
         <h2><i class="fa-solid fa-spinner fa-spin"></i></h2>
-        <p>Die edulutionUI wird nun installiert...</p>
+        <p>Die edulution UI wird nun installiert...</p>
         <p>Sie werden automatisch weitergeleitet, wenn die Installation abgeschlossen ist.</p>
         <script type="text/javascript">
             waitforUI();
@@ -637,8 +637,8 @@ KEYCLOAK_EDU_API_CLIENT_SECRET={keycloak_eduapi_secret}
 
 LMN_API_BASE_URL=https://{data.DATA_LMN_EXTERNAL_DOMAIN}:8001/v1/
 
-LDAP_EDULUTION_BINDUSER_DN={data.DATA_LMN_BINDUSER_DN}
-LDAP_EDULUTION_BINDUSER_PASSWORD={data.DATA_LMN_BINDUSER_PW}
+LDAP_EDULUTION_BINDUSER_DN="{data.DATA_LMN_BINDUSER_DN}"
+LDAP_EDULUTION_BINDUSER_PASSWORD="{data.DATA_LMN_BINDUSER_PW}"
 
 # edulution-db
 
