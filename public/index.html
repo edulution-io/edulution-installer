@@ -2,34 +2,79 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="edulutionUI Installer - Schnelle Installation mit einem Befehl">
     <title>edulutionUI - Installer</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="icon" href="img/icon.ico" type="image/x-icon">
 </head>
-<body style="background-image: url('img/background.jpg');">
+<body>
     <div class="container">
-        <a href="https://edulution.io">
-            <img src="img/edulution.io_USER_INTERFACE.png" alt="Logo" class="logo">
-        </a>
-        
+        <div class="logo-container">
+            <a href="https://edulution.io" target="_blank" rel="noopener noreferrer">
+                <img src="img/edulution.io_USER INTERFACE.svg" alt="edulution.io User Interface Logo" class="logo">
+            </a>
+        </div>
+
         <div class="copy-section">
-            <input type="text" id="linkField" value="bash <(curl -s https://get.edulution.io/installer)" readonly>
-            <br>
-            <button onclick="copyLink()" class="gradient-button">Link kopieren</button>
+            <h2>Quick Install</h2>
+            <div class="input-group">
+                <input
+                    type="text"
+                    id="linkField"
+                    value="bash <(curl -s https://get.edulution.io/installer)"
+                    readonly
+                    aria-label="Installation command">
+            </div>
+            <button onclick="copyLink()" class="gradient-button" aria-label="Copy installation link">
+                In Zwischenablage kopieren
+            </button>
+            <div id="copyFeedback" class="copy-feedback" role="status" aria-live="polite"></div>
         </div>
 
         <div class="footer-section">
-            Alle Informationen auf <a href="https://edulution.io" target="_blank">edulution.io</a>
+            Alle Informationen auf <a href="https://edulution.io" target="_blank" rel="noopener noreferrer">edulution.io</a>
         </div>
     </div>
 
     <script>
-        function copyLink() {
-            var copyText = document.getElementById("linkField");
-            copyText.select();
-            copyText.setSelectionRange(0, 99999); // Für mobile Geräte
-            document.execCommand("copy");
+        async function copyLink() {
+            const linkField = document.getElementById('linkField');
+            const button = document.querySelector('.gradient-button');
+            const feedback = document.getElementById('copyFeedback');
+
+            try {
+                // Modern Clipboard API
+                await navigator.clipboard.writeText(linkField.value);
+
+                // Visual feedback
+                button.textContent = '✓ Kopiert!';
+                button.classList.add('copied');
+                feedback.textContent = 'In die Zwischenablage kopiert!';
+                feedback.classList.add('show');
+
+                // Reset after 2 seconds
+                setTimeout(() => {
+                    button.textContent = 'Link kopieren';
+                    button.classList.remove('copied');
+                    feedback.classList.remove('show');
+                }, 2000);
+            } catch (err) {
+                // Fallback for older browsers
+                linkField.select();
+                linkField.setSelectionRange(0, 99999);
+                document.execCommand('copy');
+
+                feedback.textContent = 'Kopiert!';
+                feedback.classList.add('show');
+                setTimeout(() => feedback.classList.remove('show'), 2000);
+            }
         }
+
+        // Allow copying on click of the input field
+        document.getElementById('linkField').addEventListener('click', function() {
+            this.select();
+        });
     </script>
 </body>
 </html>

@@ -8,9 +8,12 @@ import re
 import secrets
 import string
 import ssl
-import subprocess
 import shutil
 import yaml
+import urllib3
+
+# Disable SSL warnings for self-signed certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from fastapi import FastAPI, Form, BackgroundTasks, Depends, Request, File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -57,6 +60,8 @@ class Data:
         self.DATA_LMN_LDAP_PORT = None
         self.DATA_EDULUTION_EXTERNAL_DOMAIN = None
         self.DATA_LE_USED = False
+        self.DATA_LE_EMAIL = None
+        self.DATA_PROXY_USED = False
 
 data = Data()
 
@@ -225,6 +230,7 @@ def certificate(request: Request, data: Data = Depends(getData)):
         return RedirectResponse("/")
     
     proxyUsed = request.headers.get("x-forwarded-for") is not None
+    data.DATA_PROXY_USED = proxyUsed
     
     html_content = "<h3>Zertifikat</h3><br>"
 
@@ -431,44 +437,11 @@ def createSSCertificate(ssdata: SSCertificate, data: Data = Depends(getData)):
 
 @app.post("/create-le-certificate")
 def createSSCertificate(ledata: LECertificate, data: Data = Depends(getData)):
-    keyfile = "/edulution-ui/data/traefik/ssl/cert.key"
-    certfile = "/edulution-ui/data/traefik/ssl/cert.cert"
-
-    command = [
-        "docker", "run", "--rm",
-        "-p", "80:80",
-        "-v", f"{EDULUTION_DIRECTORY}/data/certbot/etc:/etc/letsencrypt",
-        "-v", f"{EDULUTION_DIRECTORY}/data/certbot/var:/var/lib/letsencrypt",
-        "certbot/certbot",
-        "certonly",
-        "--standalone",
-        "-d", data.DATA_EDULUTION_EXTERNAL_DOMAIN,
-        "--agree-tos",
-        "--no-eff-email",
-        "--email", ledata.email
-    ]
-
-    result = subprocess.run(command, capture_output=True, text=True)
-
-    print("STDOUT:\n", result.stdout)
-    print("STDERR:\n", result.stderr)
-
-    if result.returncode == 0 and "Successfully received certificate" in result.stdout:
-        if os.path.exists(f"/edulution-ui/data/certbot/etc/live/{data.DATA_EDULUTION_EXTERNAL_DOMAIN}/fullchain.pem") and os.path.exists(f"/edulution-ui/data/certbot/etc/live/{data.DATA_EDULUTION_EXTERNAL_DOMAIN}/privkey.pem"):
-            if os.path.exists(certfile):
-                os.remove(certfile)
-            if os.path.exists(keyfile):
-                os.remove(keyfile)
-            shutil.copy2(f"/edulution-ui/data/certbot/etc/live/{data.DATA_EDULUTION_EXTERNAL_DOMAIN}/fullchain.pem", certfile)
-            shutil.copy2(f"/edulution-ui/data/certbot/etc/live/{data.DATA_EDULUTION_EXTERNAL_DOMAIN}/privkey.pem", keyfile)
-            data.DATA_LE_USED = True
-            return { "status": True, "message": "Successful" }
-        else:
-            return { "status": False, "message": "Zertifikat wurde nicht erstellt!" }
-    else:
-        if "too many certificates" in result.stderr:
-            return { "status": False, "message": "Es wurden zu viele Zertifikate angefragt!" }
-        return { "status": False, "message": "Unbekannter Fehler!" }
+    # Traefik wird jetzt Let's Encrypt selbst verwalten
+    # Wir speichern nur die E-Mail für die Konfiguration
+    data.DATA_LE_USED = True
+    data.DATA_LE_EMAIL = ledata.email
+    return { "status": True, "message": "Let's Encrypt wird beim Start von Traefik konfiguriert" }
 
 @app.post("/upload-certificate")
 def createSSCertificate(cert: UploadFile = File(...), key: UploadFile = File(...)):
@@ -581,7 +554,7 @@ def finish(background_tasks: BackgroundTasks, data: Data = Depends(getData)):
     html_content = f"""
         <h3>Konfiguration abgeschlossen</h3>
         <h2><i class="fa-solid fa-spinner fa-spin"></i></h2>
-        <p>Die edulutionUI wird nun installiert...</p>
+        <p>Die edulution UI wird nun installiert...</p>
         <p>Sie werden automatisch weitergeleitet, wenn die Installation abgeschlossen ist.</p>
         <script type="text/javascript">
             waitforUI();
@@ -664,6 +637,9 @@ KEYCLOAK_EDU_API_CLIENT_SECRET={keycloak_eduapi_secret}
 
 LMN_API_BASE_URL=https://{data.DATA_LMN_EXTERNAL_DOMAIN}:8001/v1/
 
+LDAP_EDULUTION_BINDUSER_DN="{data.DATA_LMN_BINDUSER_DN}"
+LDAP_EDULUTION_BINDUSER_PASSWORD="{data.DATA_LMN_BINDUSER_PW}"
+
 # edulution-db
 
 MONGO_INITDB_ROOT_USERNAME=root
@@ -700,6 +676,10 @@ EDULUTION_GUACAMOLE_ADMIN_PASSWORD={guacamole_admin_secret}
 EDULUTION_ONLYOFFICE_JWT_SECRET={onlyoffice_jwt_secret}
 EDULUTION_ONLYOFFICE_POSTGRES_PASSWORD={onlyoffice_postgres_secret}
 """
+
+    # Let's Encrypt E-Mail hinzufügen wenn verwendet
+    if data.DATA_LE_USED and data.DATA_LE_EMAIL:
+        environment_file += f"\n# Let's Encrypt\n\nLE_EMAIL={data.DATA_LE_EMAIL}\n"
 
     with open("/edulution-ui/edulution.env", "w") as f:
         f.write(environment_file)
@@ -752,34 +732,129 @@ http:
     with open("/edulution-ui/data/traefik/config/webdav.yml", "w") as f:
         f.write(webdav_traefik)
 
-    if data.DATA_LE_USED:
-        le_renew_script = f"""
-#!/bin/bash
+    # Docker-compose für Let's Encrypt anpassen falls nötig
+    if not data.DATA_PROXY_USED and data.DATA_LE_USED:
+        # docker-compose.yml anpassen um letsencrypt volume hinzuzufügen
+        with open("/edulution-ui/docker-compose.yml", "r") as f:
+            compose_content = f.read()
+        
+        # Füge letsencrypt volume zu edu-traefik hinzu
+        # Suche nach den volumes von edu-traefik und füge die Zeile hinzu
+        compose_content = compose_content.replace(
+            "      - ./data/traefik/ssl:/etc/traefik/ssl\n    healthcheck:",
+            "      - ./data/traefik/ssl:/etc/traefik/ssl\n      - ./data/letsencrypt:/letsencrypt\n    healthcheck:"
+        )
+        
+        with open("/edulution-ui/docker-compose.yml", "w") as f:
+            f.write(compose_content)
+    
+    # Traefik-Konfiguration basierend auf Proxy und Let's Encrypt anpassen
+    if not data.DATA_PROXY_USED and data.DATA_LE_USED:
+        # Let's Encrypt wird von Traefik verwaltet
+        # Traefik.yml muss VOR docker-compose angepasst werden
+        # Daher schreiben wir eine separate Datei
+        traefik_le_config = f"""
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+    http:
+      tls: {{}}
+  imap:
+    address: ":143"
 
-docker run --rm \
-    --network edulution-ui_default \
-    -v {EDULUTION_DIRECTORY}/data/certbot/etc:/etc/letsencrypt \
-    -v {EDULUTION_DIRECTORY}/data/certbot/var:/var/lib/letsencrypt \
-    certbot/certbot renew --quiet
+providers:
+  file:
+    directory: "/etc/traefik/dynamic/"
+    watch: true
 
-cp {EDULUTION_DIRECTORY}/data/certbot/etc/live/{data.DATA_EDULUTION_EXTERNAL_DOMAIN}/fullchain.pem {EDULUTION_DIRECTORY}/data/traefik/ssl/cert.cert
-cp {EDULUTION_DIRECTORY}/data/certbot/etc/live/{data.DATA_EDULUTION_EXTERNAL_DOMAIN}/privkey.pem {EDULUTION_DIRECTORY}/data/traefik/ssl/cert.key
+log:
+  level: ERROR
 
-docker kill -s HUP edulution-traefik
+serversTransport:
+  insecureSkipVerify: true
+
+ping: {{}}
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: {data.DATA_LE_EMAIL}
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: web
 """
-        with open("/edulution-ui/renew_le_certificate.sh", "w") as f:
-            f.write(le_renew_script)
+        
+        with open("/edulution-ui/traefik.yml", "w") as f:
+            f.write(traefik_le_config)
+        
+        # edulution-default.yml anpassen für Let's Encrypt
+        le_config = f"""
+http:
+  routers:
+    edulution-api:
+      rule: "PathPrefix(`/edu-api`)"
+      service: edulution-api
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "{data.DATA_EDULUTION_EXTERNAL_DOMAIN}"
+    edulution-keycloak:
+      rule: "PathPrefix(`/auth`)"
+      service: edulution-keycloak
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "{data.DATA_EDULUTION_EXTERNAL_DOMAIN}"
+    edulution-ui:
+      rule: "PathPrefix(`/`)"
+      service: edulution-ui
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "{data.DATA_EDULUTION_EXTERNAL_DOMAIN}"
 
-    if os.path.exists("/edulution-ui/data/traefik/ssl/cert.cert") and os.path.exists("/edulution-ui/data/traefik/ssl/cert.key"):
+  services:
+    edulution-api:
+      loadBalancer:
+        servers:
+          - url: "http://edu-api:3000"
+    edulution-ui:
+      loadBalancer:
+        servers:
+          - url: "http://edu-ui:80"
+    edulution-keycloak:
+      loadBalancer:
+        servers:
+          - url: "http://edu-keycloak:8080"
+"""
+        with open("/edulution-ui/data/traefik/config/edulution-default.yml", "w") as f:
+            f.write(le_config)
+            
+        # acme.json mit korrekten Berechtigungen erstellen
+        os.makedirs("/edulution-ui/data/letsencrypt", exist_ok=True)
+        acme_json_path = "/edulution-ui/data/letsencrypt/acme.json"
+        with open(acme_json_path, "w") as f:
+            f.write("{}")
+        os.chmod(acme_json_path, 0o600)
+            
+    elif os.path.exists("/edulution-ui/data/traefik/ssl/cert.cert") and os.path.exists("/edulution-ui/data/traefik/ssl/cert.key"):
+        # Selbst-signiertes oder hochgeladenes Zertifikat
         cert_traefik = f"""
-    tls:
-      stores:
-        default:
-          defaultCertificate:
-            certFile: "/etc/traefik/ssl/cert.cert"
-            keyFile: "/etc/traefik/ssl/cert.key"
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: "/etc/traefik/ssl/cert.cert"
+        keyFile: "/etc/traefik/ssl/cert.key"
 """
-
         with open("/edulution-ui/data/traefik/config/cert.yml", "w") as f:
             f.write(cert_traefik)
     

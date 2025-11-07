@@ -440,6 +440,14 @@
       "realmRoles": [
         "default-roles-edulution"
       ],
+      "clientRoles": {
+        "realm-management": [
+          "view-users",
+          "query-users",
+          "query-groups",
+          "view-groups"
+        ]
+      },
       "notBefore": 0,
       "groups": []
     }
