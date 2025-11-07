@@ -77,6 +77,13 @@ body {
     margin: 0 auto 30px;
 }
 
+.content h2 {
+    color: #2d3748;
+    font-weight: 600;
+    margin-bottom: 16px;
+    text-align: center;
+}
+
 /* Copy Section (für public index.html) */
 .copy-section {
     margin-bottom: 20px;
@@ -174,50 +181,95 @@ body {
 }
 
 /* Buttons */
-.gradient-button,
-button.gradient-button,
-input.gradient-button[type="submit"] {
-    width: 100% !important;
-    background: linear-gradient(45deg, #88D840, #0081C6) !important;
-    border: none !important;
-    color: white !important;
-    padding: 15px 30px !important;
-    text-align: center !important;
-    font-size: 16px !important;
-    font-weight: 700 !important;
-    border-radius: var(--border-radius) !important;
-    cursor: pointer !important;
-    transition: var(--transition) !important;
-    margin-top: 20px !important;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+.login-submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 8px;
+  padding: 0 16px;
+  height: 40px;
+  width: 100%;
+  max-width: 300px;
+  margin: 0 auto;
+
+  font-size: 14px;
+  font-weight: bold;
+  font-family: Lato, sans-serif;
+  white-space: nowrap;
+
+  color: var(--button-text, #fff);
+  background: linear-gradient(90deg, #88D840, #0081C6); /* ciGreen → ciBlue */
+
+  border: none;
+  border-radius: 12px;
+
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
 }
 
-.gradient-button:hover,
-button.gradient-button:hover,
-input.gradient-button[type="submit"]:hover {
-    opacity: 0.9 !important;
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15) !important;
-    color: white !important;
-    background: linear-gradient(45deg, #88D840, #0081C6) !important;
+.login-submit-btn:hover {
+  opacity: 0.9;
 }
 
-.gradient-button:active,
-button.gradient-button:active,
-input.gradient-button[type="submit"]:active {
-    opacity: 0.8 !important;
+.login-submit-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring-color, #4f46e5);
 }
 
-.gradient-button:disabled,
-button.gradient-button:disabled,
-input.gradient-button[type="submit"]:disabled {
-    cursor: not-allowed !important;
-    opacity: 0.6 !important;
-    color: white !important;
+.login-submit-btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
-.gradient-button.copied {
-    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%) !important;
+
+.qr-login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  gap: 8px;
+  padding: 0 16px;
+  height: 40px;
+
+  width: 100%;
+  max-width: 300px;
+  margin: 0 auto;
+
+  font-size: 14px;
+  font-family: Lato, sans-serif;
+  font-weight: bold;
+  white-space: nowrap;
+
+  color: var(--accent-foreground, #111);
+  background: transparent;
+
+  border: 1px solid var(--input-border, #ccc);
+  border-radius: 12px;
+
+  cursor: pointer;
+  transition: opacity 0.2s ease, background 0.2s ease;
+
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
 }
+
+.qr-login-btn:hover {
+  opacity: 0.9;
+  background: rgba(200, 200, 200, 0.1); /* ähnelt ciGrey/10 */
+}
+
+.qr-login-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring-color, #007bff);
+}
+
+.qr-login-btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 
 /* Footer */
 .footer-section {
@@ -333,7 +385,7 @@ a {
         padding: 8px 12px;
     }
 
-    .gradient-button {
+    .login-submit-btn {
         padding: 12px 24px !important;
         font-size: 14px !important;
     }

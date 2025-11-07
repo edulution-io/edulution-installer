@@ -29,8 +29,10 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from datetime import datetime, timedelta
 
+
 class Token(BaseModel):
     token: str
+
 
 class SSCertificate(BaseModel):
     countrycode: str
@@ -39,8 +41,10 @@ class SSCertificate(BaseModel):
     organisation: str
     valid_days: int
 
+
 class LECertificate(BaseModel):
     email: str
+
 
 app = FastAPI()
 
@@ -50,6 +54,7 @@ app.mount("/js", StaticFiles(directory="js"), name="static")
 
 with open("./html/site.html") as f:
     site = f.read()
+
 
 class Data:
     def __init__(self):
@@ -63,24 +68,29 @@ class Data:
         self.DATA_LE_EMAIL = None
         self.DATA_PROXY_USED = False
 
+
 data = Data()
+
 
 def getData():
     return data
 
+
 EDULUTION_DIRECTORY = os.environ.get("EDULUTION_DIRECTORY", "/srv/docker/edulution-ui")
+
 
 @app.get("/")
 def root():
     html_content = """
-    <h1>Herzlich Willkommen!</h1>
+    <h2>Herzlich Willkommen!</h2>
     <form method="GET" action="/token">
-    <br><br>
-    <input type="submit" class="gradient-button" value="Installation starten" id="btn_configure"></input>
+    <button type="submit" class="login-submit-btn" id="btn_configure">Installation starten</button>
     </form>
     """
 
-    return HTMLResponse(content=site.replace("##CONTENT##", html_content), status_code=200)
+    return HTMLResponse(
+        content=site.replace("##CONTENT##", html_content), status_code=200
+    )
 
 
 @app.get("/token")
@@ -91,15 +101,19 @@ def token():
             <p>Füge hier deinen "Edulution-Setup-Token" ein:</p>
             <textarea class="form-control" rows="5" name="edulutionsetuptoken" id="edulutionsetuptoken" oninput="checkToken()" onfocus="checkToken()"></textarea>
         </div>
-        <input type="submit" class="gradient-button" value="Überprüfen" id="btn_install" disabled></input>
+        <br>
+        <button type="submit" class="login-submit-btn" id="btn_install" disabled>Überprüfen</button>
         <br>
         <hr>
         <br>
         <p>oder gebe die Daten manuell ein:</p>
-        <input type="submit" class="gradient-button" value="Manuell eingeben"></input>
+        <button type="submit" class="login-submit-btn">Manuell eingeben</button>
     </form>
     """
-    return HTMLResponse(content=site.replace("##CONTENT##", html_content), status_code=200)
+    return HTMLResponse(
+        content=site.replace("##CONTENT##", html_content), status_code=200
+    )
+
 
 @app.post("/configure")
 def configure(edulutionsetuptoken: str = Form(None), data: Data = Depends(getData)):
@@ -146,15 +160,40 @@ def configure(edulutionsetuptoken: str = Form(None), data: Data = Depends(getDat
             <p>Externe Domain der edulutionUI:</p>
             <input type="text" class="form-control" oninput="checkInput()" name="edulutionui_external_domain" id="edulutionui_external_domain" required />
         </div>
-        <input type="submit" class="gradient-button" value="Überprüfen" id="btn_install" disabled></input>
+        <br>
+        <button type="submit" class="login-submit-btn" id="btn_install" disabled>Überprüfen</button>
+    </form>
+    <br>
+    <form method="GET" action="/token">
+        <button type="submit" class="qr-login-btn">
+        Zurück
+        </button>
     </form>
     <script>loadDomain();checkInput();</script>
     """
-    return HTMLResponse(content=site.replace("##CONTENT##", html_content), status_code=200)
+    return HTMLResponse(
+        content=site.replace("##CONTENT##", html_content), status_code=200
+    )
+
 
 @app.post("/check")
-def check(lmn_external_domain: str = Form(None), lmn_binduser_dn: str = Form(None), lmn_binduser_pw: str = Form(None), lmn_ldap_schema: str = Form(None), lmn_ldap_port: str = Form(None), edulutionui_external_domain: str = Form(None), data: Data = Depends(getData)):
-    if lmn_external_domain is not None and lmn_binduser_dn is not None and lmn_binduser_pw is not None and lmn_ldap_schema is not None and lmn_ldap_port is not None and edulutionui_external_domain is not None:
+def check(
+    lmn_external_domain: str = Form(None),
+    lmn_binduser_dn: str = Form(None),
+    lmn_binduser_pw: str = Form(None),
+    lmn_ldap_schema: str = Form(None),
+    lmn_ldap_port: str = Form(None),
+    edulutionui_external_domain: str = Form(None),
+    data: Data = Depends(getData),
+):
+    if (
+        lmn_external_domain is not None
+        and lmn_binduser_dn is not None
+        and lmn_binduser_pw is not None
+        and lmn_ldap_schema is not None
+        and lmn_ldap_port is not None
+        and edulutionui_external_domain is not None
+    ):
         data.DATA_LMN_EXTERNAL_DOMAIN = lmn_external_domain
         data.DATA_LMN_BINDUSER_DN = lmn_binduser_dn
         data.DATA_LMN_BINDUSER_PW = lmn_binduser_pw
@@ -163,7 +202,7 @@ def check(lmn_external_domain: str = Form(None), lmn_binduser_dn: str = Form(Non
         data.DATA_EDULUTION_EXTERNAL_DOMAIN = edulutionui_external_domain
     else:
         return RedirectResponse("/")
-    
+
     html_content = f"""
     <h3>Überprüfung der Abhängigkeiten</h3>
     <br>
@@ -212,26 +251,30 @@ def check(lmn_external_domain: str = Form(None), lmn_binduser_dn: str = Form(Non
         </div>
     </div>
     <form method="GET" action="/certificate">
-        <input type="submit" class="gradient-button" value="Weiter" id="cert_button" disabled></input>
+        <button type="submit" class="login-submit-btn" id="cert_button" disabled>Weiter</button>
     </form>
+    <br>
     <form method="GET" action="/configure">
-        <input type="submit" class="gradient-button" value="Zurück"></input>
+        <button type="submit" class="qr-login-btn">Zurück</button>
     </form>
     <script type="text/javascript">
         checkAll();
     </script>
     """
 
-    return HTMLResponse(content=site.replace("##CONTENT##", html_content), status_code=200)
+    return HTMLResponse(
+        content=site.replace("##CONTENT##", html_content), status_code=200
+    )
+
 
 @app.get("/certificate")
 def certificate(request: Request, data: Data = Depends(getData)):
     if not data.DATA_EDULUTION_EXTERNAL_DOMAIN:
         return RedirectResponse("/")
-    
+
     proxyUsed = request.headers.get("x-forwarded-for") is not None
     data.DATA_PROXY_USED = proxyUsed
-    
+
     html_content = "<h3>Zertifikat</h3><br>"
 
     if proxyUsed:
@@ -240,7 +283,7 @@ def certificate(request: Request, data: Data = Depends(getData)):
             Du verwendest einen Reverse-Proxy. Daher kann für edulution kein gültiges Zertifikat hinterlegt / ausgestellt werden.
         </div>
         <form method="GET" action="/finish">
-            <input type="submit" class="gradient-button" value="Installation starten" id="install_button"></input>
+            <button type="submit" class="login-submit-btn" id="install_button">Installation starten</button>
         </form>
         """
     else:
@@ -306,7 +349,7 @@ def certificate(request: Request, data: Data = Depends(getData)):
             <div class="row">
                 <div class="col-md-3 certificate_label"></div>
                 <div class="col-auto" style="text-align: left;">
-                    <button class="gradient-button" style="padding: 10px 15px;margin-top:0px;" id="cert_generate_btn" onclick="generateSSCertificate()" disabled>Zertifikat generieren</button>
+                    <button class="login-submit-btn" style="padding: 10px 15px;margin-top:0px;" id="cert_generate_btn" onclick="generateSSCertificate()" disabled>Zertifikat generieren</button>
                 </div>
                 <div class="col-auto" style="text-align: left;">
                     <div class="card-icon" id="ss_certificate_status">
@@ -340,7 +383,7 @@ def certificate(request: Request, data: Data = Depends(getData)):
             <div class="row">
                 <div class="col-md-3 certificate_label"></div>
                 <div class="col-auto" style="text-align: left;">
-                    <button class="gradient-button" style="padding: 10px 15px;margin-top:0px;"  id="lecert_create_btn" onclick="createLECertificate()" disabled>Zertifikat erstellen</button>
+                    <button class="login-submit-btn" style="padding: 10px 15px;margin-top:0px;"  id="lecert_create_btn" onclick="createLECertificate()" disabled>Zertifikat erstellen</button>
                 </div>
                 <div class="col-auto" style="text-align: left;">
                     <div class="card-icon" id="le_certificate_status">
@@ -374,7 +417,7 @@ def certificate(request: Request, data: Data = Depends(getData)):
             <div class="row">
                 <div class="col-md-3 certificate_label"></div>
                 <div class="col-auto" style="text-align: left;">
-                    <button class="gradient-button" style="padding: 10px 15px;margin-top:0px;"  id="cert_upload_btn" onclick="uploadCertificate()" disabled>Dateien hochladen</button>
+                    <button class="login-submit-btn" style="padding: 10px 15px;margin-top:0px;"  id="cert_upload_btn" onclick="uploadCertificate()" disabled>Dateien hochladen</button>
                 </div>
                 <div class="col-auto" style="text-align: left;">
                     <div class="card-icon" id="upload_certificate_status">
@@ -383,11 +426,18 @@ def certificate(request: Request, data: Data = Depends(getData)):
             </div>
         </div>
         <form method="GET" action="/finish">
-            <input type="submit" class="gradient-button" value="Installation starten" id="install_button" disabled></input>
+            <button type="submit" class="login-submit-btn" id="install_button" disabled>Installation starten</button>
+        </form>
+        <br>
+        <form method="GET" action="/configure">
+            <button type="submit" class="qr-login-btn">Zurück</button>
         </form>
         """
-    
-    return HTMLResponse(content=site.replace("##CONTENT##", html_content), status_code=200)
+
+    return HTMLResponse(
+        content=site.replace("##CONTENT##", html_content), status_code=200
+    )
+
 
 @app.post("/create-ss-certificate")
 def createSSCertificate(ssdata: SSCertificate, data: Data = Depends(getData)):
@@ -396,13 +446,17 @@ def createSSCertificate(ssdata: SSCertificate, data: Data = Depends(getData)):
 
     try:
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        subject = x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, data.DATA_EDULUTION_EXTERNAL_DOMAIN),
-            x509.NameAttribute(NameOID.COUNTRY_NAME, ssdata.countrycode),
-            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, ssdata.state),
-            x509.NameAttribute(NameOID.LOCALITY_NAME, ssdata.city),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, ssdata.organisation),
-        ])
+        subject = x509.Name(
+            [
+                x509.NameAttribute(
+                    NameOID.COMMON_NAME, data.DATA_EDULUTION_EXTERNAL_DOMAIN
+                ),
+                x509.NameAttribute(NameOID.COUNTRY_NAME, ssdata.countrycode),
+                x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, ssdata.state),
+                x509.NameAttribute(NameOID.LOCALITY_NAME, ssdata.city),
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, ssdata.organisation),
+            ]
+        )
 
         cert = (
             x509.CertificateBuilder()
@@ -413,27 +467,32 @@ def createSSCertificate(ssdata: SSCertificate, data: Data = Depends(getData)):
             .not_valid_before(datetime.utcnow())
             .not_valid_after(datetime.utcnow() + timedelta(days=ssdata.valid_days))
             .add_extension(
-                x509.SubjectAlternativeName([x509.DNSName(data.DATA_EDULUTION_EXTERNAL_DOMAIN)]),
+                x509.SubjectAlternativeName(
+                    [x509.DNSName(data.DATA_EDULUTION_EXTERNAL_DOMAIN)]
+                ),
                 critical=False,
             )
             .sign(key, hashes.SHA256())
         )
 
         with open(keyfile, "wb") as f:
-            f.write(key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.TraditionalOpenSSL,
-                encryption_algorithm=serialization.NoEncryption()
-            ))
+            f.write(
+                key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.TraditionalOpenSSL,
+                    encryption_algorithm=serialization.NoEncryption(),
+                )
+            )
 
         with open(certfile, "wb") as f:
             f.write(cert.public_bytes(serialization.Encoding.PEM))
 
-        return { "status": True, "message": "Successful" }
+        return {"status": True, "message": "Successful"}
 
     except Exception as e:
         print(e)
-        return { "status": False, "message": "Unbekannter Fehler!" }
+        return {"status": False, "message": "Unbekannter Fehler!"}
+
 
 @app.post("/create-le-certificate")
 def createSSCertificate(ledata: LECertificate, data: Data = Depends(getData)):
@@ -441,7 +500,11 @@ def createSSCertificate(ledata: LECertificate, data: Data = Depends(getData)):
     # Wir speichern nur die E-Mail für die Konfiguration
     data.DATA_LE_USED = True
     data.DATA_LE_EMAIL = ledata.email
-    return { "status": True, "message": "Let's Encrypt wird beim Start von Traefik konfiguriert" }
+    return {
+        "status": True,
+        "message": "Let's Encrypt wird beim Start von Traefik konfiguriert",
+    }
+
 
 @app.post("/upload-certificate")
 def createSSCertificate(cert: UploadFile = File(...), key: UploadFile = File(...)):
@@ -455,11 +518,12 @@ def createSSCertificate(cert: UploadFile = File(...), key: UploadFile = File(...
         with open(keyfile, "wb") as buffer:
             shutil.copyfileobj(key.file, buffer)
 
-        return { "status": True, "message": "Successful" }
-        
+        return {"status": True, "message": "Successful"}
+
     except Exception as e:
         print(e)
-        return { "status": False, "message": "Unbekannter Fehler!" }
+        return {"status": False, "message": "Unbekannter Fehler!"}
+
 
 @app.post("/check-token")
 def checkToken(token: Token):
@@ -472,83 +536,130 @@ def checkToken(token: Token):
         return True
     except Exception as e:
         return False
-    
+
+
 @app.get("/check-api-status")
 def checkAPIStatus(data: Data = Depends(getData)):
     try:
-        result = requests.get("https://" + data.DATA_LMN_EXTERNAL_DOMAIN + ":8001", verify=False, timeout=3)
+        result = requests.get(
+            "https://" + data.DATA_LMN_EXTERNAL_DOMAIN + ":8001",
+            verify=False,
+            timeout=3,
+        )
         if result.status_code == 200:
-            return { "status": True, "message": "Successful" }
-        return { "status": False, "message": f"Got HTTP-Status {result.status_code}" }
+            return {"status": True, "message": "Successful"}
+        return {"status": False, "message": f"Got HTTP-Status {result.status_code}"}
     except requests.exceptions.ConnectTimeout:
-        return { "status": False, "message": "Verbindungsfehler: Timeout!" }
+        return {"status": False, "message": "Verbindungsfehler: Timeout!"}
     except Exception as e:
         print(e)
-        return { "status": False, "message": "Unbekannter Fehler!" }
-    
+        return {"status": False, "message": "Unbekannter Fehler!"}
+
+
 @app.get("/check-webdav-status")
 def checkWebDAV(data: Data = Depends(getData)):
     try:
-        result = requests.get("https://" + data.DATA_LMN_EXTERNAL_DOMAIN + ":443", verify=False, timeout=3)
+        result = requests.get(
+            "https://" + data.DATA_LMN_EXTERNAL_DOMAIN + ":443", verify=False, timeout=3
+        )
         if result.status_code == 200:
-            return { "status": True, "message": "Successful" }
-        return { "status": False, "message": f"Got HTTP-Status {result.status_code}" }
+            return {"status": True, "message": "Successful"}
+        return {"status": False, "message": f"Got HTTP-Status {result.status_code}"}
     except requests.exceptions.ConnectTimeout:
-        return { "status": False, "message": "Verbindungsfehler: Timeout!" }
+        return {"status": False, "message": "Verbindungsfehler: Timeout!"}
     except Exception as e:
         print(e)
-        return { "status": False, "message": "Unbekannter Fehler!" }
-    
+        return {"status": False, "message": "Unbekannter Fehler!"}
+
+
 @app.get("/check-ldap-status")
 def checkLDAP(data: Data = Depends(getData)):
     try:
         if data.DATA_LMN_LDAP_SCHEMA == "ldaps":
-            server = Server(data.DATA_LMN_EXTERNAL_DOMAIN, port=int(data.DATA_LMN_LDAP_PORT), get_info=ALL, connect_timeout=3, use_ssl=True, tls=Tls(validate=ssl.CERT_REQUIRED))
+            server = Server(
+                data.DATA_LMN_EXTERNAL_DOMAIN,
+                port=int(data.DATA_LMN_LDAP_PORT),
+                get_info=ALL,
+                connect_timeout=3,
+                use_ssl=True,
+                tls=Tls(validate=ssl.CERT_REQUIRED),
+            )
         else:
-            server = Server(data.DATA_LMN_EXTERNAL_DOMAIN, port=int(data.DATA_LMN_LDAP_PORT), get_info=ALL, connect_timeout=3)
+            server = Server(
+                data.DATA_LMN_EXTERNAL_DOMAIN,
+                port=int(data.DATA_LMN_LDAP_PORT),
+                get_info=ALL,
+                connect_timeout=3,
+            )
         conn = Connection(server, auto_bind=True)
         if conn.bind():
-            return { "status": True, "message": "Successful" }
-        return { "status": False, "message": "Keine Verbindung zum LDAP-Server!" }
+            return {"status": True, "message": "Successful"}
+        return {"status": False, "message": "Keine Verbindung zum LDAP-Server!"}
     except LDAPSocketOpenError as e:
         if "CERTIFICATE_VERIFY_FAILED" in str(e):
-            return { "status": False, "message": "Kein gültiges Zertifikat!" }
+            return {"status": False, "message": "Kein gültiges Zertifikat!"}
         print(e)
-        return { "status": False, "message": "Unbekannter Fehler!" }
+        return {"status": False, "message": "Unbekannter Fehler!"}
     except Exception as e:
         print(e)
-        return { "status": False, "message": "Unbekannter Fehler!" }
-    
+        return {"status": False, "message": "Unbekannter Fehler!"}
+
+
 @app.get("/check-ldap-access-status")
 def checkLDAP(data: Data = Depends(getData)):
     try:
         if data.DATA_LMN_LDAP_SCHEMA == "ldaps":
-            server = Server(data.DATA_LMN_EXTERNAL_DOMAIN, port=int(data.DATA_LMN_LDAP_PORT), get_info=ALL, connect_timeout=3, use_ssl=True, tls=Tls(validate=ssl.CERT_REQUIRED))
+            server = Server(
+                data.DATA_LMN_EXTERNAL_DOMAIN,
+                port=int(data.DATA_LMN_LDAP_PORT),
+                get_info=ALL,
+                connect_timeout=3,
+                use_ssl=True,
+                tls=Tls(validate=ssl.CERT_REQUIRED),
+            )
         else:
-            server = Server(data.DATA_LMN_EXTERNAL_DOMAIN, port=int(data.DATA_LMN_LDAP_PORT), get_info=ALL, connect_timeout=3)
-        conn = Connection(server, user=data.DATA_LMN_BINDUSER_DN, password=data.DATA_LMN_BINDUSER_PW, auto_bind=True)
+            server = Server(
+                data.DATA_LMN_EXTERNAL_DOMAIN,
+                port=int(data.DATA_LMN_LDAP_PORT),
+                get_info=ALL,
+                connect_timeout=3,
+            )
+        conn = Connection(
+            server,
+            user=data.DATA_LMN_BINDUSER_DN,
+            password=data.DATA_LMN_BINDUSER_PW,
+            auto_bind=True,
+        )
         if conn.bind():
-            return { "status": True, "message": "Successful" }
-        return { "status": False, "message": "Keine Verbindung zum LDAP-Server!" }
+            return {"status": True, "message": "Successful"}
+        return {"status": False, "message": "Keine Verbindung zum LDAP-Server!"}
     except LDAPSocketOpenError as e:
         if "CERTIFICATE_VERIFY_FAILED" in str(e):
-            return { "status": False, "message": "Kein gültiges Zertifikat!" }
+            return {"status": False, "message": "Kein gültiges Zertifikat!"}
         print(e)
-        return { "status": False, "message": "Unbekannter Fehler!" }
+        return {"status": False, "message": "Unbekannter Fehler!"}
     except LDAPBindError as e:
         if "invalidCredentials" in str(e):
-            return { "status": False, "message": "LDAP Zugangsdaten falsch!" }
+            return {"status": False, "message": "LDAP Zugangsdaten falsch!"}
         print(e)
-        return { "status": False, "message": "Unbekannter Fehler!" }
+        return {"status": False, "message": "Unbekannter Fehler!"}
     except Exception as e:
         print(e)
-        return { "status": False, "message": "Unbekannter Fehler!" }
+        return {"status": False, "message": "Unbekannter Fehler!"}
+
 
 @app.get("/finish")
 def finish(background_tasks: BackgroundTasks, data: Data = Depends(getData)):
-    if data.DATA_LMN_EXTERNAL_DOMAIN is None or data.DATA_LMN_BINDUSER_DN is None or data.DATA_LMN_BINDUSER_PW is None or data.DATA_LMN_LDAP_PORT is None or data.DATA_LMN_LDAP_SCHEMA is None or data.DATA_EDULUTION_EXTERNAL_DOMAIN is None:
+    if (
+        data.DATA_LMN_EXTERNAL_DOMAIN is None
+        or data.DATA_LMN_BINDUSER_DN is None
+        or data.DATA_LMN_BINDUSER_PW is None
+        or data.DATA_LMN_LDAP_PORT is None
+        or data.DATA_LMN_LDAP_SCHEMA is None
+        or data.DATA_EDULUTION_EXTERNAL_DOMAIN is None
+    ):
         return RedirectResponse("/")
-    
+
     background_tasks.add_task(createEdulutionEnvFile, data)
 
     html_content = f"""
@@ -560,21 +671,27 @@ def finish(background_tasks: BackgroundTasks, data: Data = Depends(getData)):
             waitforUI();
         </script>
     """
-    return HTMLResponse(content=site.replace("##CONTENT##", html_content), status_code=200)
+    return HTMLResponse(
+        content=site.replace("##CONTENT##", html_content), status_code=200
+    )
+
 
 @app.api_route("/{path_name:path}")
 def catch_all():
     return RedirectResponse("/")
 
+
 def generateSecret(length=32):
     characters = string.ascii_letters + string.digits
-    random_string = ''.join(secrets.choice(characters) for _ in range(length))
+    random_string = "".join(secrets.choice(characters) for _ in range(length))
     return random_string
+
 
 def generateRandom(length=5):
     characters = string.ascii_lowercase
-    random_string = ''.join(secrets.choice(characters) for _ in range(length))
+    random_string = "".join(secrets.choice(characters) for _ in range(length))
     return random_string
+
 
 def createEdulutionEnvFile(data: Data):
     root_dn = re.search(r"(DC=.*$)", data.DATA_LMN_BINDUSER_DN).group(1)
@@ -591,7 +708,17 @@ def createEdulutionEnvFile(data: Data):
     onlyoffice_jwt_secret = generateSecret()
     onlyoffice_postgres_secret = generateSecret()
 
-    mailcow_api_secret = generateRandom() + "-" + generateRandom() + "-" + generateRandom() + "-" + generateRandom() + "-" + generateRandom()
+    mailcow_api_secret = (
+        generateRandom()
+        + "-"
+        + generateRandom()
+        + "-"
+        + generateRandom()
+        + "-"
+        + generateRandom()
+        + "-"
+        + generateRandom()
+    )
 
     realm_file = json.load(open("/edulution-ui/realm-edulution.json"))
 
@@ -602,23 +729,35 @@ def createEdulutionEnvFile(data: Data):
             client["secret"] = keycloak_eduui_secret
             client["rootUrl"] = "https://" + data.DATA_EDULUTION_EXTERNAL_DOMAIN + "/"
             client["adminUrl"] = "https://" + data.DATA_EDULUTION_EXTERNAL_DOMAIN + "/"
-            client["redirectUris"] = [ "https://" + data.DATA_EDULUTION_EXTERNAL_DOMAIN + "/*" ]
+            client["redirectUris"] = [
+                "https://" + data.DATA_EDULUTION_EXTERNAL_DOMAIN + "/*"
+            ]
         if client["clientId"] == "edu-mailcow-sync":
             client["secret"] = keycloak_edumailcow_sync_secret
 
     for comp in realm_file["components"]["org.keycloak.storage.UserStorageProvider"]:
         if comp["name"] == "ldap":
-            for subcomp in comp["subComponents"]["org.keycloak.storage.ldap.mappers.LDAPStorageMapper"]:
+            for subcomp in comp["subComponents"][
+                "org.keycloak.storage.ldap.mappers.LDAPStorageMapper"
+            ]:
                 if subcomp["name"] == "global-groups":
-                    subcomp["config"]["groups.dn"] = [ "OU=Groups,OU=Global," + root_dn ]
+                    subcomp["config"]["groups.dn"] = ["OU=Groups,OU=Global," + root_dn]
                 if subcomp["name"] == "school-groups":
-                    subcomp["config"]["groups.dn"] = [ "OU=SCHOOLS," + root_dn ]
-            comp["config"]["usersDn"] = [ root_dn ]
-            comp["config"]["bindDn"] = [ data.DATA_LMN_BINDUSER_DN ]
-            comp["config"]["bindCredential"] = [ data.DATA_LMN_BINDUSER_PW ]
-            comp["config"]["connectionUrl"] = [ data.DATA_LMN_LDAP_SCHEMA + "://" + data.DATA_LMN_EXTERNAL_DOMAIN + ":" + str(data.DATA_LMN_LDAP_PORT) ]
+                    subcomp["config"]["groups.dn"] = ["OU=SCHOOLS," + root_dn]
+            comp["config"]["usersDn"] = [root_dn]
+            comp["config"]["bindDn"] = [data.DATA_LMN_BINDUSER_DN]
+            comp["config"]["bindCredential"] = [data.DATA_LMN_BINDUSER_PW]
+            comp["config"]["connectionUrl"] = [
+                data.DATA_LMN_LDAP_SCHEMA
+                + "://"
+                + data.DATA_LMN_EXTERNAL_DOMAIN
+                + ":"
+                + str(data.DATA_LMN_LDAP_PORT)
+            ]
 
-    realm_file["attributes"]["frontendUrl"] = "https://" + data.DATA_EDULUTION_EXTERNAL_DOMAIN + "/auth"
+    realm_file["attributes"]["frontendUrl"] = (
+        "https://" + data.DATA_EDULUTION_EXTERNAL_DOMAIN + "/auth"
+    )
 
     json.dump(realm_file, open("/edulution-ui/realm-edulution.json", "w"))
 
@@ -737,17 +876,17 @@ http:
         # docker-compose.yml anpassen um letsencrypt volume hinzuzufügen
         with open("/edulution-ui/docker-compose.yml", "r") as f:
             compose_content = f.read()
-        
+
         # Füge letsencrypt volume zu edu-traefik hinzu
         # Suche nach den volumes von edu-traefik und füge die Zeile hinzu
         compose_content = compose_content.replace(
             "      - ./data/traefik/ssl:/etc/traefik/ssl\n    healthcheck:",
-            "      - ./data/traefik/ssl:/etc/traefik/ssl\n      - ./data/letsencrypt:/letsencrypt\n    healthcheck:"
+            "      - ./data/traefik/ssl:/etc/traefik/ssl\n      - ./data/letsencrypt:/letsencrypt\n    healthcheck:",
         )
-        
+
         with open("/edulution-ui/docker-compose.yml", "w") as f:
             f.write(compose_content)
-    
+
     # Traefik-Konfiguration basierend auf Proxy und Let's Encrypt anpassen
     if not data.DATA_PROXY_USED and data.DATA_LE_USED:
         # Let's Encrypt wird von Traefik verwaltet
@@ -785,10 +924,10 @@ certificatesResolvers:
       httpChallenge:
         entryPoint: web
 """
-        
+
         with open("/edulution-ui/traefik.yml", "w") as f:
             f.write(traefik_le_config)
-        
+
         # edulution-default.yml anpassen für Let's Encrypt
         le_config = f"""
 http:
@@ -837,15 +976,17 @@ http:
 """
         with open("/edulution-ui/data/traefik/config/edulution-default.yml", "w") as f:
             f.write(le_config)
-            
+
         # acme.json mit korrekten Berechtigungen erstellen
         os.makedirs("/edulution-ui/data/letsencrypt", exist_ok=True)
         acme_json_path = "/edulution-ui/data/letsencrypt/acme.json"
         with open(acme_json_path, "w") as f:
             f.write("{}")
         os.chmod(acme_json_path, 0o600)
-            
-    elif os.path.exists("/edulution-ui/data/traefik/ssl/cert.cert") and os.path.exists("/edulution-ui/data/traefik/ssl/cert.key"):
+
+    elif os.path.exists("/edulution-ui/data/traefik/ssl/cert.cert") and os.path.exists(
+        "/edulution-ui/data/traefik/ssl/cert.key"
+    ):
         # Selbst-signiertes oder hochgeladenes Zertifikat
         cert_traefik = f"""
 tls:
@@ -857,6 +998,6 @@ tls:
 """
         with open("/edulution-ui/data/traefik/config/cert.yml", "w") as f:
             f.write(cert_traefik)
-    
+
     time.sleep(5)
     os.kill(os.getpid(), signal.SIGTERM)

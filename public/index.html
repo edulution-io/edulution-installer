@@ -31,7 +31,7 @@
                             readonly
                             aria-label="Installation command">
                     </div>
-                    <button onclick="copyLink()" class="gradient-button" aria-label="Copy installation link">
+                    <button onclick="copyLink()" class="login-submit-btn" aria-label="Copy installation link">
                         In Zwischenablage kopieren
                     </button>
                     <div id="copyFeedback" class="copy-feedback" role="status" aria-live="polite"></div>
@@ -46,7 +46,7 @@
     <script>
         async function copyLink() {
             const linkField = document.getElementById('linkField');
-            const button = document.querySelector('.gradient-button');
+            const button = document.querySelector('.login-submit-btn');
             const feedback = document.getElementById('copyFeedback');
 
             try {
