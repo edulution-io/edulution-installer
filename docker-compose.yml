@@ -1,9 +1,11 @@
 services:
   edulution-installer-dev:
-    build: ./edulution-webinstaller
+    build:
+      context: .
     volumes:
       - ./data:/edulution-ui
       - ./edulution-webinstaller/app:/app
+      - ./public/css/style.css:/app/css/style.css
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - 443:8000

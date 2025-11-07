@@ -219,22 +219,36 @@ docker pull ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 
 
 # Docker run mit optionalem Domain-Parameter
 if [ -n "$INSTALLER_DOMAIN" ]; then
-    docker run --name edulution-installer -p 80:8080 -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
+    docker run -d --name edulution-installer -p 80:8080 -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
         -e EDULUTION_DIRECTORY=${DIRECTORY} \
         -e INSTALLER_DOMAIN=${INSTALLER_DOMAIN} \
         ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
 else
-    docker run --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
+    docker run -d --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
         -e EDULUTION_DIRECTORY=${DIRECTORY} ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
 fi
 
-# Zeige Zugriffs-URLs nach erfolgreichem Start
+# Warte bis der Installer bereit ist
+attempt=0
+until curl --output /dev/null --silent --insecure --get --fail "https://localhost:443" 2>/dev/null; do
+    attempt=$((attempt+1))
+
+    if [ $attempt -ge 60 ]; then
+        echo "[!] Der Web-Installer konnte nicht gestartet werden!"
+        docker logs edulution-installer
+        exit 1
+    fi
+
+    echo "[*] Warten bis der Web-Installer gestartet ist (Versuch ${attempt} / 60)"
+    sleep 3
+done
+
 cat <<EOF
 
 ########################################################
 
     edulutionUI Web-Installer
-      
+
     Sie erreichen die Oberfläche wie folgt:
 EOF
 
@@ -250,7 +264,29 @@ cat <<EOF
 
 EOF
 
-docker rm edulution-installer 2>&1 > /dev/zero
+# Warte bis die Konfiguration vom Web-Installer erstellt wurde
+echo "[*] Warte auf Abschluss der Web-Installation..."
+attempt=0
+while [ ! -f "${DIRECTORY}edulution.env" ]; do
+    attempt=$((attempt+1))
+
+    # Prüfe ob Container noch läuft
+    if ! docker ps | grep -q edulution-installer; then
+        echo "[!] Der Web-Installer wurde unerwartet beendet!"
+        docker logs edulution-installer
+        exit 1
+    fi
+
+    if [ $attempt -ge 600 ]; then
+        echo "[!] Timeout: Die Installation wurde nicht innerhalb von 30 Minuten abgeschlossen!"
+        exit 1
+    fi
+
+    sleep 3
+done
+
+echo "[*] Web-Installation abgeschlossen! Fahre mit der Konfiguration fort..."
+docker rm -f edulution-installer 2>&1 > /dev/zero
 
 echo "[*] Starte den Authentifizierungserver um die Einstellungen festzulegen..."
 
@@ -288,7 +324,7 @@ docker run -d \
   --import-realm 2>&1 > /dev/zero
 
 attempt=0
-until $(curl --output /dev/null --silent --get --fail "http://localhost:8080/auth/realms/master"); do
+until curl --output /dev/null --silent --get --fail "http://localhost:8080/auth/realms/master"; do
     attempt=$((attempt+1))
   
     if [ $attempt -ge 60 ]; then
