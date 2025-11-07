@@ -138,14 +138,32 @@ echo "[*] Starte den edulutionUI Web-Installer..."
 
 docker pull ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
 
+docker run -d --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
+    -e EDULUTION_DIRECTORY=${DIRECTORY} ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
+
+# Warte bis der Installer bereit ist
+attempt=0
+until $(curl --output /dev/null --silent --insecure --get --fail "https://localhost:443" 2>/dev/null); do
+    attempt=$((attempt+1))
+
+    if [ $attempt -ge 60 ]; then
+        echo "[!] Der Web-Installer konnte nicht gestartet werden!"
+        docker logs edulution-installer
+        exit 1
+    fi
+
+    echo "[*] Warten bis der Web-Installer gestartet ist (Versuch ${attempt} / 60)"
+    sleep 3
+done
+
 cat <<EOF
 
 ########################################################
 
     edulutionUI Web-Installer
-      
+
     Sie erreichen die Oberfläche wie folgt:
-      
+
     https://$(hostname):443
     https://$(hostname -I | awk '{print $1}'):443
 
@@ -153,9 +171,29 @@ cat <<EOF
 
 EOF
 
-docker run -it --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
-    -e EDULUTION_DIRECTORY=${DIRECTORY} ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
-docker rm edulution-installer 2>&1 > /dev/zero
+# Warte bis die Konfiguration vom Web-Installer erstellt wurde
+echo "[*] Warte auf Abschluss der Web-Installation..."
+attempt=0
+while [ ! -f "${DIRECTORY}edulution.env" ]; do
+    attempt=$((attempt+1))
+
+    # Prüfe ob Container noch läuft
+    if ! docker ps | grep -q edulution-installer; then
+        echo "[!] Der Web-Installer wurde unerwartet beendet!"
+        docker logs edulution-installer
+        exit 1
+    fi
+
+    if [ $attempt -ge 600 ]; then
+        echo "[!] Timeout: Die Installation wurde nicht innerhalb von 30 Minuten abgeschlossen!"
+        exit 1
+    fi
+
+    sleep 3
+done
+
+echo "[*] Web-Installation abgeschlossen! Fahre mit der Konfiguration fort..."
+docker rm -f edulution-installer 2>&1 > /dev/zero
 
 echo "[*] Starte den Authentifizierungserver um die Einstellungen festzulegen..."
 
