@@ -217,152 +217,10 @@ def certificate(request: Request, data: Data = Depends(getData)):
         </form>
         """
     else:
-        html_content += f"""
-        <div class="alert alert-success" role="alert">
-            Du verwendest keinen Reverse-Proxy. Für edulution benötigst du ein Zertifikat, welches du hier generieren, erstellen oder hochladen kannst.
-        </div>
-        <div class="form-check certificate_radio">
-            <input class="form-check-input" type="radio" onchange="loadCertificateContent(this);checkCertificateInput()" name="certificate_type" id="certificate_type_1" value="1">
-            <label class="form-check-label" for="certificate_type_1">
-                Selbst-Signiertes-Zertifikat generieren
-            </label>
-        </div>
-        <div id="content_1" class="certificate_content">
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Domain:
-                </div>
-                <div class="col-md-9">
-                    <input type="text" class="form-control" oninput="checkCertificateInput()" name="cert_domain" id="cert_domain" value="{data.DATA_EDULUTION_EXTERNAL_DOMAIN}" readonly/>
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Ländercode (DE):
-                </div>
-                <div class="col-md-9">
-                    <input type="text" class="form-control" oninput="checkCertificateInput()" name="cert_country_code" id="cert_country_code" />
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Bundesland:
-                </div>
-                <div class="col-md-9">
-                    <input type="text" class="form-control" oninput="checkCertificateInput()" name="cert_state" id="cert_state" />
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Stadt:
-                </div>
-                <div class="col-md-9">
-                    <input type="text" class="form-control" oninput="checkCertificateInput()" name="cert_city" id="cert_city" />
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Organisation:
-                </div>
-                <div class="col-md-9">
-                    <input type="text" class="form-control" oninput="checkCertificateInput()" name="cert_organisation" id="cert_organisation" />
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Gültigkeitsdauer (Tage):
-                </div>
-                <div class="col-md-9">
-                    <input type="number" class="form-control" oninput="checkCertificateInput()" name="cert_valid_days" id="cert_valid_days" />
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label"></div>
-                <div class="col-auto" style="text-align: left;">
-                    <button class="login-submit-btn" style="padding: 10px 15px;margin-top:0px;" id="cert_generate_btn" onclick="generateSSCertificate()" disabled>Zertifikat generieren</button>
-                </div>
-                <div class="col-auto" style="text-align: left;">
-                    <div class="card-icon" id="ss_certificate_status">
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="form-check certificate_radio">
-            <input class="form-check-input" type="radio" onchange="loadCertificateContent(this);checkLECertificateInput();" name="certificate_type" id="certificate_type_2" value="2">
-            <label class="form-check-label" for="certificate_type_2">
-                Zertifikat mit Let's Encrypt erstellen
-            </label>
-        </div>
-        <div id="content_2" class="certificate_content">
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Domain:
-                </div>
-                <div class="col-md-9">
-                    <input type="text" class="form-control" oninput="checkLECertificateInput()" name="cert_domain" id="lecert_domain" value="{data.DATA_EDULUTION_EXTERNAL_DOMAIN}" readonly/>
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    E-Mail-Adresse:
-                </div>
-                <div class="col-md-9">
-                    <input type="email" class="form-control" oninput="checkLECertificateInput()" name="cert_email" id="lecert_email" />
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label"></div>
-                <div class="col-auto" style="text-align: left;">
-                    <button class="login-submit-btn" style="padding: 10px 15px;margin-top:0px;"  id="lecert_create_btn" onclick="createLECertificate()" disabled>Zertifikat erstellen</button>
-                </div>
-                <div class="col-auto" style="text-align: left;">
-                    <div class="card-icon" id="le_certificate_status">
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="form-check certificate_radio">
-            <input class="form-check-input" type="radio" onchange="loadCertificateContent(this)" name="certificate_type" id="certificate_type_3" value="3" checked>
-            <label class="form-check-label" for="certificate_type_3">
-                Zertifikat hochladen
-            </label>
-        </div>
-        <div id="content_3" class="certificate_content" style="display: block;">
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Zertifikats-Datei:
-                </div>
-                <div class="col-md-9">
-                    <input type="file" class="form-control" oninput="checkUploadCertificateInput()" name="certificate_file" id="certificate_file" accept=".crt,.pem,.cer,.cert" />
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Zertifikats-Key:
-                </div>
-                <div class="col-md-9">
-                    <input type="file" class="form-control" oninput="checkUploadCertificateInput()" name="key_file" id="key_file" accept=".key,.pem" />
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label"></div>
-                <div class="col-auto" style="text-align: left;">
-                    <button class="login-submit-btn" style="padding: 10px 15px;margin-top:0px;"  id="cert_upload_btn" onclick="uploadCertificate()" disabled>Dateien hochladen</button>
-                </div>
-                <div class="col-auto" style="text-align: left;">
-                    <div class="card-icon" id="upload_certificate_status">
-                    </div>
-                </div>
-            </div>
-        </div>
-        <form method="GET" action="/finish">
-            <button type="submit" class="login-submit-btn" id="install_button" disabled>Installation starten</button>
-        </form>
-        <br>
-        <form method="GET" action="/configure">
-            <button type="submit" class="qr-login-btn">Zurück</button>
-        </form>
-        """
+        html_content = render_page(
+            "05_certificate",
+            DATA_EDULUTION_EXTERNAL_DOMAIN=data.DATA_EDULUTION_EXTERNAL_DOMAIN,
+        )
 
     return HTMLResponse(
         content=site.replace("##CONTENT##", html_content), status_code=200
@@ -425,7 +283,7 @@ def createSSCertificate(ssdata: SSCertificate, data: Data = Depends(getData)):
 
 
 @app.post("/create-le-certificate")
-def createSSCertificate(ledata: LECertificate, data: Data = Depends(getData)):
+def createLECertificate(ledata: LECertificate, data: Data = Depends(getData)):
     # Traefik wird jetzt Let's Encrypt selbst verwalten
     # Wir speichern nur die E-Mail für die Konfiguration
     data.DATA_LE_USED = True
@@ -437,7 +295,7 @@ def createSSCertificate(ledata: LECertificate, data: Data = Depends(getData)):
 
 
 @app.post("/upload-certificate")
-def createSSCertificate(cert: UploadFile = File(...), key: UploadFile = File(...)):
+def uplaodCertificate(cert: UploadFile = File(...), key: UploadFile = File(...)):
     keyfile = "/edulution-ui/data/traefik/ssl/cert.key"
     certfile = "/edulution-ui/data/traefik/ssl/cert.cert"
 

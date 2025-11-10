@@ -1,6 +1,8 @@
 <form method="POST" action="/check">
   <div class="form-group">
-    <p>Externe Domain des Linuxmuster-Servers:</p>
+    <label for="lmn_external_domain"
+      ><strong>Externe Domain des Linuxmuster-Servers:</strong></label
+    >
     <input
       type="text"
       class="form-control"
@@ -12,7 +14,7 @@
     />
   </div>
   <div class="form-group">
-    <p>LDAP Benutzer:</p>
+    <label for="lmn_binduser_dn"><strong>LDAP Benutzer:</strong></label>
     <input
       type="text"
       class="form-control"
@@ -24,7 +26,8 @@
     />
   </div>
   <div class="form-group">
-    <p>LDAP Passwort:</p>
+    <p></p>
+    <label for="lmn_binduser_pw"><strong>LDAP Passwort:</strong></label>
     <input
       type="text"
       class="form-control"
@@ -37,7 +40,7 @@
   </div>
   <div class="row">
     <div class="col-md form-group">
-      <p>LDAP-Schema:</p>
+      <label for="lmn_ldap_schema"><strong>LDAP-Schema:</strong></label>
       <select
         class="form-select"
         name="lmn_ldap_schema"
@@ -49,7 +52,7 @@
       </select>
     </div>
     <div class="col-md form-group">
-      <p>LDAP-Port:</p>
+      <label for="lmn_ldap_port"><strong>LDAP-Port:</strong></label>
       <input
         type="number"
         class="form-control"
@@ -64,7 +67,9 @@
     </div>
   </div>
   <div class="form-group">
-    <p>Externe Domain der edulutionUI:</p>
+    <label for="edulutionui_external_domain"
+      ><strong>Externe Domain der edulutionUI:</strong></label
+    >
     <input
       type="text"
       class="form-control"
