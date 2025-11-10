@@ -27,8 +27,6 @@ services:
       #EDUI_DISK_SPACE_THRESHOLD:
       # optional: Initial admin group to manage edulution
       #EDUI_INITIAL_ADMIN_GROUP:
-      # optional: Deployment target, can be "generic" or "linuxmuster", defaults to "linuxmuster"
-      #EDUI_DEPLOYMENT_TARGET:
       # optional: Timeout for IMAP fetch in ms, default 5000
       #EDUI_MAIL_IMAP_TIMEOUT:
       # Cache TTL for storing oidc config request in redis in ms, default 1h

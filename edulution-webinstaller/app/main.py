@@ -121,7 +121,7 @@ def configure(
     data: Data = Depends(getData),
 ):
     print("🔥 DEPLOYMENT TARGET =", targetType)
-    data.DEPLOYMENT_TARGET = targetType
+    data.DATA_DATA_DEPLOYMENT_TARGET = targetType
 
     if targetType == "generic":
         data.DATA_LMN_EXTERNAL_DOMAIN = ""
@@ -155,7 +155,7 @@ def configure(
         DATA_LMN_BINDUSER_PW=data.DATA_LMN_BINDUSER_PW,
         DATA_LMN_LDAP_PORT=data.DATA_LMN_LDAP_PORT,
         DATA_EDULUTION_EXTERNAL_DOMAIN=data.DATA_EDULUTION_EXTERNAL_DOMAIN,
-        DEPLOYMENT_TARGET=data.DEPLOYMENT_TARGET,
+        DATA_DEPLOYMENT_TARGET=data.DATA_DEPLOYMENT_TARGET,
     )
 
     return HTMLResponse(
