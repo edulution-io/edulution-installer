@@ -211,9 +211,14 @@ def setAdminGroup():
 
 
 @app.post("/certificate")
-def certificate(request: Request, data: Data = Depends(getData)):
+def certificate(
+    request: Request, admin_group: str = Form(None), data: Data = Depends(getData)
+):
     if not data.DATA_EDULUTION_EXTERNAL_DOMAIN:
         return RedirectResponse("/")
+
+    if admin_group:
+        data.DATA_INITIAL_ADMIN_GROUP = admin_group
 
     proxyUsed = request.headers.get("x-forwarded-for") is not None
     data.DATA_PROXY_USED = proxyUsed
@@ -582,7 +587,7 @@ LMN_API_BASE_URL=https://{data.DATA_LMN_EXTERNAL_DOMAIN}:8001/v1/
 LDAP_EDULUTION_BINDUSER_DN="{data.DATA_LMN_BINDUSER_DN}"
 LDAP_EDULUTION_BINDUSER_PASSWORD="{data.DATA_LMN_BINDUSER_PW}"
 
-EDUI_INITIAL_ADMIN_GROUP="{data.DATA_INITIAL_ADMIN_GROUP}"
+EDUI_INITIAL_ADMIN_GROUP="{data.DATA_INITIAL_ADMIN_GROUP or ""}"
 
 # edulution-db
 
