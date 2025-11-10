@@ -120,6 +120,7 @@ def configure(
     edulutionsetuptoken: str = Form(None),
     data: Data = Depends(getData),
 ):
+    print("🔥 DEPLOYMENT TARGET =", targetType)
     data.DEPLOYMENT_TARGET = targetType
 
     if targetType == "generic":
