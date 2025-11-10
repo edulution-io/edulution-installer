@@ -121,7 +121,7 @@ def configure(
     data: Data = Depends(getData),
 ):
     print("🔥 DEPLOYMENT TARGET =", targetType)
-    data.DATA_DATA_DEPLOYMENT_TARGET = targetType
+    data.DATA_DEPLOYMENT_TARGET = targetType
 
     if targetType == "generic":
         data.DATA_LMN_EXTERNAL_DOMAIN = ""
