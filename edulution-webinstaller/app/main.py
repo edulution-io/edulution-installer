@@ -73,6 +73,8 @@ class Data:
         self.DATA_LE_USED = False
         self.DATA_LE_EMAIL = None
         self.DATA_PROXY_USED = False
+        self.DATA_DEPLOYMENT_TARGET = None
+        self.DATA_INITIAL_ADMIN_GROUP = None
 
 
 data = Data()
@@ -197,10 +199,26 @@ def check(
     )
 
 
-@app.get("/certificate")
-def certificate(request: Request, data: Data = Depends(getData)):
+@app.get("/set-admin-group")
+def setAdminGroup():
+    html_content = render_page(
+        "06_set_admin_group",
+        DATA_INITIAL_ADMIN_GROUP=data.DATA_INITIAL_ADMIN_GROUP,
+    )
+    return HTMLResponse(
+        content=site.replace("##CONTENT##", html_content), status_code=200
+    )
+
+
+@app.post("/certificate")
+def certificate(
+    request: Request, admin_group: str = Form(None), data: Data = Depends(getData)
+):
     if not data.DATA_EDULUTION_EXTERNAL_DOMAIN:
         return RedirectResponse("/")
+
+    if admin_group:
+        data.DATA_INITIAL_ADMIN_GROUP = admin_group
 
     proxyUsed = request.headers.get("x-forwarded-for") is not None
     data.DATA_PROXY_USED = proxyUsed
@@ -568,6 +586,8 @@ LMN_API_BASE_URL=https://{data.DATA_LMN_EXTERNAL_DOMAIN}:8001/v1/
 
 LDAP_EDULUTION_BINDUSER_DN="{data.DATA_LMN_BINDUSER_DN}"
 LDAP_EDULUTION_BINDUSER_PASSWORD="{data.DATA_LMN_BINDUSER_PW}"
+
+EDUI_INITIAL_ADMIN_GROUP="{data.DATA_INITIAL_ADMIN_GROUP or ""}"
 
 # edulution-db
 
