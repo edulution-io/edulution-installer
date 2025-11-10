@@ -1,0 +1,86 @@
+<h3>Überprüfung der Abhängigkeiten</h3>
+<br />
+<div class="card text-bg-dark">
+  <div class="card-body">
+    <div class="card-icon" id="api_status">
+      <i class="fa-solid fa-spinner fa-spin"></i>
+    </div>
+    <div class="card-text">Überprüfung der Linuxmuster-API</div>
+    <div class="card-button">
+      <button
+        type="button"
+        class="btn btn-secondary"
+        onclick="checkAPIStatus()"
+        id="api_status_retry"
+      >
+        Erneut prüfen
+      </button>
+    </div>
+  </div>
+</div>
+<div class="card text-bg-dark">
+  <div class="card-body">
+    <div class="card-icon" id="webdav_status">
+      <i class="fa-solid fa-spinner fa-spin"></i>
+    </div>
+    <div class="card-text">Überprüfung des WebDAV-Servers</div>
+    <div class="card-button">
+      <button
+        type="button"
+        class="btn btn-secondary"
+        onclick="checkWebDAVStatus()"
+        id="webdav_status_retry"
+      >
+        Erneut prüfen
+      </button>
+    </div>
+  </div>
+</div>
+<div class="card text-bg-dark">
+  <div class="card-body">
+    <div class="card-icon" id="ldap_status">
+      <i class="fa-solid fa-spinner fa-spin"></i>
+    </div>
+    <div class="card-text">Überprüfung des LDAP(s)-Servers</div>
+    <div class="card-button">
+      <button
+        type="button"
+        class="btn btn-secondary"
+        onclick="checkLDAPStatus()"
+        id="ldap_status_retry"
+      >
+        Erneut prüfen
+      </button>
+    </div>
+  </div>
+</div>
+<div class="card text-bg-dark">
+  <div class="card-body">
+    <div class="card-icon" id="ldap-access_status">
+      <i class="fa-solid fa-spinner fa-spin"></i>
+    </div>
+    <div class="card-text">Überprüfung der LDAP(s) Zugangsdaten</div>
+    <div class="card-button">
+      <button
+        type="button"
+        class="btn btn-secondary"
+        onclick="checkLDAPAccessStatus()"
+        id="ldap-access_status_retry"
+      >
+        Erneut prüfen
+      </button>
+    </div>
+  </div>
+</div>
+<form method="GET" action="/certificate">
+  <button type="submit" class="login-submit-btn" id="cert_button" disabled>
+    Weiter
+  </button>
+</form>
+<br />
+<form method="GET" action="/configure">
+  <button type="submit" class="qr-login-btn">Zurück</button>
+</form>
+<script type="text/javascript">
+  checkAll();
+</script>
