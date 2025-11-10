@@ -9,7 +9,6 @@ import secrets
 import string
 import ssl
 import shutil
-import yaml
 import urllib3
 
 # Disable SSL warnings for self-signed certificates
@@ -28,6 +27,13 @@ from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from datetime import datetime, timedelta
+from pathlib import Path
+
+
+BASE_PATH = Path(__file__).parent
+PAGES_PATH = BASE_PATH / "html" / "pages"
+
+EDULUTION_DIRECTORY = os.environ.get("EDULUTION_DIRECTORY", "/srv/docker/edulution-ui")
 
 
 class Token(BaseModel):
@@ -76,18 +82,25 @@ def getData():
     return data
 
 
-EDULUTION_DIRECTORY = os.environ.get("EDULUTION_DIRECTORY", "/srv/docker/edulution-ui")
+def load_html(name: str) -> str:
+    file_path = PAGES_PATH / f"{name}.html"
+
+    if not file_path.exists():
+        return f"<h2>Fehler: Datei nicht gefunden ({file_path})</h2>"
+
+    return file_path.read_text(encoding="utf-8")
+
+
+def render_page(page_name: str, **kwargs) -> str:
+    html = load_html(page_name)
+    for key, value in kwargs.items():
+        html = html.replace(f"{{{{{key}}}}}", str(value or ""))
+    return html
 
 
 @app.get("/")
 def root():
-    html_content = """
-    <h2>Herzlich Willkommen!</h2>
-    <form method="GET" action="/token">
-    <button type="submit" class="login-submit-btn" id="btn_configure">Installation starten</button>
-    </form>
-    """
-
+    html_content = load_html("01_start")
     return HTMLResponse(
         content=site.replace("##CONTENT##", html_content), status_code=200
     )
@@ -95,82 +108,56 @@ def root():
 
 @app.get("/token")
 def token():
-    html_content = """
-    <form method="POST" action="/configure">
-        <div class="form-group">
-            <p>Füge hier deinen "Edulution-Setup-Token" ein:</p>
-            <textarea class="form-control" rows="5" name="edulutionsetuptoken" id="edulutionsetuptoken" oninput="checkToken()" onfocus="checkToken()"></textarea>
-        </div>
-        <br>
-        <button type="submit" class="login-submit-btn" id="btn_install" disabled>Überprüfen</button>
-        <br>
-        <hr>
-        <br>
-        <p>oder gebe die Daten manuell ein:</p>
-        <button type="submit" class="login-submit-btn">Manuell eingeben</button>
-    </form>
-    """
+    html_content = load_html("02_token")
     return HTMLResponse(
         content=site.replace("##CONTENT##", html_content), status_code=200
     )
 
 
 @app.post("/configure")
-def configure(edulutionsetuptoken: str = Form(None), data: Data = Depends(getData)):
-    if edulutionsetuptoken is not None and edulutionsetuptoken != "":
-        token = base64.b64decode(edulutionsetuptoken.encode("utf-8"))
-        token = json.loads(token.decode("utf-8"))
+def configure(
+    targetType: str = Form(...),
+    edulutionsetuptoken: str = Form(None),
+    data: Data = Depends(getData),
+):
+    print("🔥 DEPLOYMENT TARGET =", targetType)
+    data.DATA_DEPLOYMENT_TARGET = targetType
 
-        data.DATA_LMN_EXTERNAL_DOMAIN = token["external_domain"]
-        data.DATA_LMN_BINDUSER_DN = token["binduser_dn"]
-        data.DATA_LMN_BINDUSER_PW = token["binduser_password"]
-    else:
+    if targetType == "generic":
         data.DATA_LMN_EXTERNAL_DOMAIN = ""
         data.DATA_LMN_BINDUSER_DN = ""
         data.DATA_LMN_BINDUSER_PW = ""
+        data.DATA_LMN_LDAP_PORT = ""
+        data.DATA_EDULUTION_EXTERNAL_DOMAIN = ""
+    else:
+        if edulutionsetuptoken:
+            try:
+                token_raw = base64.b64decode(edulutionsetuptoken.encode("utf-8"))
+                token = json.loads(token_raw.decode("utf-8"))
 
-    html_content = f"""
-    <form method="POST" action="/check">
-        <div class="form-group">
-            <p>Externe Domain des Linuxmuster-Servers:</p>
-            <input type="text" class="form-control" oninput="checkInput()" name="lmn_external_domain" id="lmn_external_domain" value="{data.DATA_LMN_EXTERNAL_DOMAIN}" required />
-        </div>
-        <div class="form-group">
-            <p>LDAP Benutzer:</p>
-            <input type="text" class="form-control" oninput="checkInput()" name="lmn_binduser_dn" id="lmn_binduser_dn" value="{data.DATA_LMN_BINDUSER_DN}" required />
-        </div>
-        <div class="form-group">
-            <p>LDAP Passwort:</p>
-            <input type="text" class="form-control" oninput="checkInput()" name="lmn_binduser_pw" id="lmn_binduser_pw" value="{data.DATA_LMN_BINDUSER_PW}" required />
-        </div>
-        <div class="row">
-            <div class="col-md form-group">
-                <p>LDAP-Schema:</p>
-                <select class="form-select" name="lmn_ldap_schema" id="lmn_ldap_schema" oninput="checkInput()">
-                    <option value="ldap">ldap://</option>
-                    <option value="ldaps" selected>ldaps://</option>
-                </select>
-            </div>
-            <div class="col-md form-group"> 
-                <p>LDAP-Port:</p>
-                <input type="number" class="form-control" oninput="checkInput()" name="lmn_ldap_port" id="lmn_ldap_port" min="1" max="65535" value="636" required />
-            </div>  
-        </div>
-        <div class="form-group">
-            <p>Externe Domain der edulutionUI:</p>
-            <input type="text" class="form-control" oninput="checkInput()" name="edulutionui_external_domain" id="edulutionui_external_domain" required />
-        </div>
-        <br>
-        <button type="submit" class="login-submit-btn" id="btn_install" disabled>Überprüfen</button>
-    </form>
-    <br>
-    <form method="GET" action="/token">
-        <button type="submit" class="qr-login-btn">
-        Zurück
-        </button>
-    </form>
-    <script>loadDomain();checkInput();</script>
-    """
+                data.DATA_LMN_EXTERNAL_DOMAIN = token.get("external_domain", "")
+                data.DATA_LMN_BINDUSER_DN = token.get("binduser_dn", "")
+                data.DATA_LMN_BINDUSER_PW = token.get("binduser_password", "")
+            except Exception as e:
+                print("Token-Fehler:", e)
+                data.DATA_LMN_EXTERNAL_DOMAIN = ""
+                data.DATA_LMN_BINDUSER_DN = ""
+                data.DATA_LMN_BINDUSER_PW = ""
+        else:
+            data.DATA_LMN_EXTERNAL_DOMAIN = ""
+            data.DATA_LMN_BINDUSER_DN = ""
+            data.DATA_LMN_BINDUSER_PW = ""
+
+    html_content = render_page(
+        "03_configure",
+        DATA_LMN_EXTERNAL_DOMAIN=data.DATA_LMN_EXTERNAL_DOMAIN,
+        DATA_LMN_BINDUSER_DN=data.DATA_LMN_BINDUSER_DN,
+        DATA_LMN_BINDUSER_PW=data.DATA_LMN_BINDUSER_PW,
+        DATA_LMN_LDAP_PORT=data.DATA_LMN_LDAP_PORT,
+        DATA_EDULUTION_EXTERNAL_DOMAIN=data.DATA_EDULUTION_EXTERNAL_DOMAIN,
+        DATA_DEPLOYMENT_TARGET=data.DATA_DEPLOYMENT_TARGET,
+    )
+
     return HTMLResponse(
         content=site.replace("##CONTENT##", html_content), status_code=200
     )
@@ -203,64 +190,7 @@ def check(
     else:
         return RedirectResponse("/")
 
-    html_content = f"""
-    <h3>Überprüfung der Abhängigkeiten</h3>
-    <br>
-    <div class="card text-bg-dark">
-        <div class="card-body">
-            <div class="card-icon" id="api_status">
-                <i class="fa-solid fa-spinner fa-spin"></i>
-            </div>
-            <div class="card-text">Überprüfung der Linuxmuster-API</div>
-            <div class="card-button">
-                <button type="button" class="btn btn-secondary" onclick="checkAPIStatus()" id="api_status_retry">Erneut prüfen</button>
-            </div>
-        </div>
-    </div>
-    <div class="card text-bg-dark">
-        <div class="card-body">
-            <div class="card-icon" id="webdav_status">
-                <i class="fa-solid fa-spinner fa-spin"></i>
-            </div>
-            <div class="card-text">Überprüfung des WebDAV-Servers</div>
-            <div class="card-button">
-                <button type="button" class="btn btn-secondary" onclick="checkWebDAVStatus()" id="webdav_status_retry">Erneut prüfen</button>
-            </div>
-        </div>
-    </div>
-    <div class="card text-bg-dark">
-        <div class="card-body">
-            <div class="card-icon" id="ldap_status">
-                <i class="fa-solid fa-spinner fa-spin"></i>         
-            </div>
-            <div class="card-text">Überprüfung des LDAP(s)-Servers</div>
-            <div class="card-button">
-                <button type="button" class="btn btn-secondary" onclick="checkLDAPStatus()" id="ldap_status_retry">Erneut prüfen</button>
-            </div>
-        </div>
-    </div>
-    <div class="card text-bg-dark">
-        <div class="card-body">
-            <div class="card-icon" id="ldap-access_status">
-                <i class="fa-solid fa-spinner fa-spin"></i>
-            </div>
-            <div class="card-text">Überprüfung der LDAP(s) Zugangsdaten</div>
-            <div class="card-button">
-                <button type="button" class="btn btn-secondary" onclick="checkLDAPAccessStatus()" id="ldap-access_status_retry">Erneut prüfen</button>
-            </div>
-        </div>
-    </div>
-    <form method="GET" action="/certificate">
-        <button type="submit" class="login-submit-btn" id="cert_button" disabled>Weiter</button>
-    </form>
-    <br>
-    <form method="GET" action="/configure">
-        <button type="submit" class="qr-login-btn">Zurück</button>
-    </form>
-    <script type="text/javascript">
-        checkAll();
-    </script>
-    """
+    html_content = load_html("04_check")
 
     return HTMLResponse(
         content=site.replace("##CONTENT##", html_content), status_code=200
@@ -287,152 +217,10 @@ def certificate(request: Request, data: Data = Depends(getData)):
         </form>
         """
     else:
-        html_content += f"""
-        <div class="alert alert-success" role="alert">
-            Du verwendest keinen Reverse-Proxy. Für edulution benötigst du ein Zertifikat, welches du hier generieren, erstellen oder hochladen kannst.
-        </div>
-        <div class="form-check certificate_radio">
-            <input class="form-check-input" type="radio" onchange="loadCertificateContent(this);checkCertificateInput()" name="certificate_type" id="certificate_type_1" value="1">
-            <label class="form-check-label" for="certificate_type_1">
-                Selbst-Signiertes-Zertifikat generieren
-            </label>
-        </div>
-        <div id="content_1" class="certificate_content">
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Domain:
-                </div>
-                <div class="col-md-9">
-                    <input type="text" class="form-control" oninput="checkCertificateInput()" name="cert_domain" id="cert_domain" value="{data.DATA_EDULUTION_EXTERNAL_DOMAIN}" readonly/>
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Ländercode (DE):
-                </div>
-                <div class="col-md-9">
-                    <input type="text" class="form-control" oninput="checkCertificateInput()" name="cert_country_code" id="cert_country_code" />
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Bundesland:
-                </div>
-                <div class="col-md-9">
-                    <input type="text" class="form-control" oninput="checkCertificateInput()" name="cert_state" id="cert_state" />
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Stadt:
-                </div>
-                <div class="col-md-9">
-                    <input type="text" class="form-control" oninput="checkCertificateInput()" name="cert_city" id="cert_city" />
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Organisation:
-                </div>
-                <div class="col-md-9">
-                    <input type="text" class="form-control" oninput="checkCertificateInput()" name="cert_organisation" id="cert_organisation" />
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Gültigkeitsdauer (Tage):
-                </div>
-                <div class="col-md-9">
-                    <input type="number" class="form-control" oninput="checkCertificateInput()" name="cert_valid_days" id="cert_valid_days" />
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label"></div>
-                <div class="col-auto" style="text-align: left;">
-                    <button class="login-submit-btn" style="padding: 10px 15px;margin-top:0px;" id="cert_generate_btn" onclick="generateSSCertificate()" disabled>Zertifikat generieren</button>
-                </div>
-                <div class="col-auto" style="text-align: left;">
-                    <div class="card-icon" id="ss_certificate_status">
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="form-check certificate_radio">
-            <input class="form-check-input" type="radio" onchange="loadCertificateContent(this);checkLECertificateInput();" name="certificate_type" id="certificate_type_2" value="2">
-            <label class="form-check-label" for="certificate_type_2">
-                Zertifikat mit Let's Encrypt erstellen
-            </label>
-        </div>
-        <div id="content_2" class="certificate_content">
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Domain:
-                </div>
-                <div class="col-md-9">
-                    <input type="text" class="form-control" oninput="checkLECertificateInput()" name="cert_domain" id="lecert_domain" value="{data.DATA_EDULUTION_EXTERNAL_DOMAIN}" readonly/>
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    E-Mail-Adresse:
-                </div>
-                <div class="col-md-9">
-                    <input type="email" class="form-control" oninput="checkLECertificateInput()" name="cert_email" id="lecert_email" />
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label"></div>
-                <div class="col-auto" style="text-align: left;">
-                    <button class="login-submit-btn" style="padding: 10px 15px;margin-top:0px;"  id="lecert_create_btn" onclick="createLECertificate()" disabled>Zertifikat erstellen</button>
-                </div>
-                <div class="col-auto" style="text-align: left;">
-                    <div class="card-icon" id="le_certificate_status">
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="form-check certificate_radio">
-            <input class="form-check-input" type="radio" onchange="loadCertificateContent(this)" name="certificate_type" id="certificate_type_3" value="3" checked>
-            <label class="form-check-label" for="certificate_type_3">
-                Zertifikat hochladen
-            </label>
-        </div>
-        <div id="content_3" class="certificate_content" style="display: block;">
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Zertifikats-Datei:
-                </div>
-                <div class="col-md-9">
-                    <input type="file" class="form-control" oninput="checkUploadCertificateInput()" name="certificate_file" id="certificate_file" accept=".crt,.pem,.cer,.cert" />
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label">
-                    Zertifikats-Key:
-                </div>
-                <div class="col-md-9">
-                    <input type="file" class="form-control" oninput="checkUploadCertificateInput()" name="key_file" id="key_file" accept=".key,.pem" />
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-md-3 certificate_label"></div>
-                <div class="col-auto" style="text-align: left;">
-                    <button class="login-submit-btn" style="padding: 10px 15px;margin-top:0px;"  id="cert_upload_btn" onclick="uploadCertificate()" disabled>Dateien hochladen</button>
-                </div>
-                <div class="col-auto" style="text-align: left;">
-                    <div class="card-icon" id="upload_certificate_status">
-                    </div>
-                </div>
-            </div>
-        </div>
-        <form method="GET" action="/finish">
-            <button type="submit" class="login-submit-btn" id="install_button" disabled>Installation starten</button>
-        </form>
-        <br>
-        <form method="GET" action="/configure">
-            <button type="submit" class="qr-login-btn">Zurück</button>
-        </form>
-        """
+        html_content = render_page(
+            "05_certificate",
+            DATA_EDULUTION_EXTERNAL_DOMAIN=data.DATA_EDULUTION_EXTERNAL_DOMAIN,
+        )
 
     return HTMLResponse(
         content=site.replace("##CONTENT##", html_content), status_code=200
@@ -495,7 +283,7 @@ def createSSCertificate(ssdata: SSCertificate, data: Data = Depends(getData)):
 
 
 @app.post("/create-le-certificate")
-def createSSCertificate(ledata: LECertificate, data: Data = Depends(getData)):
+def createLECertificate(ledata: LECertificate, data: Data = Depends(getData)):
     # Traefik wird jetzt Let's Encrypt selbst verwalten
     # Wir speichern nur die E-Mail für die Konfiguration
     data.DATA_LE_USED = True
@@ -507,7 +295,7 @@ def createSSCertificate(ledata: LECertificate, data: Data = Depends(getData)):
 
 
 @app.post("/upload-certificate")
-def createSSCertificate(cert: UploadFile = File(...), key: UploadFile = File(...)):
+def uplaodCertificate(cert: UploadFile = File(...), key: UploadFile = File(...)):
     keyfile = "/edulution-ui/data/traefik/ssl/cert.key"
     certfile = "/edulution-ui/data/traefik/ssl/cert.cert"
 
@@ -764,6 +552,8 @@ def createEdulutionEnvFile(data: Data):
     environment_file = f"""EDULUTION_BASE_DOMAIN={data.DATA_EDULUTION_EXTERNAL_DOMAIN}
     
 # edulution-api
+
+EDUI_DEPLOYMENT_TARGET={data.DATA_DEPLOYMENT_TARGET}
 
 EDUI_WEBDAV_URL=https://{data.DATA_LMN_EXTERNAL_DOMAIN}/webdav/
 
