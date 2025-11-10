@@ -1,0 +1,33 @@
+<form method="POST" action="/certificate">
+  <div class="form-group">
+    <label for="set_admin_group"
+      ><strong
+        >Hier kann eine initiale Admin-Gruppe definiert werden.</strong
+      ></label
+    >
+    <input
+      type="text"
+      class="form-control"
+      id="set_admin_group"
+      name="admin_group"
+      placeholder="z.B. Verwaltung, role-admins, etc."
+      value="{{DATA_INITIAL_ADMIN_GROUP}}"
+    />
+    <p>
+      Bei Linuxmuster-Installationen ist "role-globaladministrator"
+      standardmäßig aktiviert.
+    </p>
+  </div>
+
+  <br />
+  <hr />
+  <br />
+
+  <button type="submit" class="login-submit-btn" id="btn_install">
+    Weiter
+  </button>
+</form>
+<br />
+<form method="GET" action="/token">
+  <button type="submit" class="qr-login-btn">Abbrechen</button>
+</form>
