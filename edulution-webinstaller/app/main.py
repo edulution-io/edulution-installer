@@ -200,10 +200,11 @@ def check(
 
 
 @app.get("/set-admin-group")
-def setAdminGroup():
+def setAdminGroup(data: Data = Depends(getData)):
     html_content = render_page(
         "06_set_admin_group",
         DATA_INITIAL_ADMIN_GROUP=data.DATA_INITIAL_ADMIN_GROUP,
+        DATA_DEPLOYMENT_TARGET=data.DATA_DEPLOYMENT_TARGET,
     )
     return HTMLResponse(
         content=site.replace("##CONTENT##", html_content), status_code=200
@@ -216,6 +217,10 @@ def certificate(
 ):
     if not data.DATA_EDULUTION_EXTERNAL_DOMAIN:
         return RedirectResponse("/")
+
+    if data.DATA_DEPLOYMENT_TARGET == "generic":
+        if not admin_group or not admin_group.strip():
+            return RedirectResponse("/set-admin-group", status_code=303)
 
     if admin_group:
         data.DATA_INITIAL_ADMIN_GROUP = admin_group
