@@ -70,14 +70,23 @@ services:
 
   edu-redis:
     container_name: edulution-redis
-    image: redis:7.2
+    image: redis:8.2
     restart: always
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test:
+        - CMD
+        - redis-cli
+        - ping
       interval: 5s
       timeout: 1s
       retries: 3
       start_period: 10s
+    command: >
+      redis-server
+        --save ""
+        --appendonly no
+        --io-threads 2
+        --io-threads-do-reads yes
 
   edu-traefik:
     image: traefik:v3.1
