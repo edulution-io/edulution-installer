@@ -127,7 +127,7 @@ services:
     depends_on:
       - edu-keycloak-db
     healthcheck:
-      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/9000"]
       interval: 5s
       timeout: 3s
       retries: 5
