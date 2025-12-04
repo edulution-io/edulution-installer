@@ -109,13 +109,12 @@ services:
       start_period: 10s
     
   edu-keycloak:
-    image: quay.io/keycloak/keycloak:25.0
+    image: quay.io/keycloak/keycloak:26.4
     container_name: edulution-keycloak
     restart: always
     command:
       [
         'start',
-        '--proxy=edge',
         '--proxy-headers=xforwarded',
         '--http-enabled=true',
         '--hostname-strict=false'
@@ -127,19 +126,17 @@ services:
       KC_DB: postgres
       KC_DB_URL_DATABASE: keycloak
       KC_DB_SCHEMA: public
-      KC_PROXY: edge
       KC_HOSTNAME_STRICT: false
-      KC_HOSTNAME_STRICT_HTTPS: false
       KC_HTTP_RELATIVE_PATH: /auth
       KC_HEALTH_ENABLED: true
     depends_on:
       - edu-keycloak-db
     healthcheck:
-      test: [ "CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000;echo -e 'GET /health/ready HTTP/1.1\r\nhost: http://localhost\r\nConnection: close\r\n\r\n' >&3;if [ $? -eq 0 ]; then echo 'Healthcheck Successful';exit 0;else echo 'Healthcheck Failed';exit 1;fi;" ]
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/9000"]
       interval: 5s
-      timeout: 1s
-      retries: 3
-      start_period: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
 
   edu-keycloak-db:
     image: postgres:16
