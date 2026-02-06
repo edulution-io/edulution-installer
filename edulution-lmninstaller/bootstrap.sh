@@ -8,12 +8,12 @@ set -e
 # und startet die API.
 #
 # Verwendung auf dem Zielserver:
-#   curl -sSL https://raw.githubusercontent.com/hermanntoast/edulution-installer/main/bootstrap.sh | bash
+#   curl -sSL https://raw.githubusercontent.com/hermanntoast/edulution-installer/main/edulution-lmninstaller/bootstrap.sh | bash
 # =============================================================================
 
 GITHUB_REPO="hermanntoast/edulution-installer"
 GITHUB_BRANCH="main"
-GITHUB_RAW="https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}"
+GITHUB_RAW="https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/edulution-lmninstaller"
 
 INSTALL_DIR="/opt/edulution-installer"
 VENV_DIR="${INSTALL_DIR}/venv"

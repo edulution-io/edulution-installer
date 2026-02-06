@@ -1,50 +1,46 @@
 # Edulution LMN Installer
 
-Remote-Installation von [linuxmuster.net 7.3](https://docs.linuxmuster.net/de/latest/) via SSH mit einer Mini-API fuer Variablen-Konfiguration und Echtzeit-Fortschrittsueberwachung per WebSocket.
+Installation von [linuxmuster.net 7.3](https://docs.linuxmuster.net/de/latest/) mit einer Mini-API fuer Variablen-Konfiguration und Echtzeit-Fortschrittsueberwachung per WebSocket.
 
 ## Architektur
 
 ```
-+--------------+      SSH        +--------------------------------------+
-|              | -------------> |         Zielserver                    |
-|    Client    |                |                                       |
-|              |  curl/websocket|   bootstrap.sh                        |
-|              | <------------> |     - Laedt Dateien von GitHub        |
-+--------------+   Port 8000   |     - Installiert Python/pip/Ansible  |
-                                |     - Startet API                     |
-                                |                                       |
-                                |   FastAPI Server (0.0.0.0:8000)       |
-                                |     - POST /api/playbook/start        |
-                                |     - GET  /api/status                |
-                                |     - WS   /ws/output                 |
-                                |                                       |
-                                |   ansible-runner                      |
-                                |     - Fuehrt Playbook lokal aus       |
-                                |     - Streamt Output via WebSocket    |
-                                +---------------------------------------+
++---------------------------------------+
+|         Zielserver                     |
+|                                        |
+|   curl | bash                          |
+|     - Laedt Dateien von GitHub         |
+|     - Installiert Python/pip/Ansible   |
+|     - Startet API                      |
+|                                        |
+|   FastAPI Server (0.0.0.0:8000)        |
+|     - POST /api/playbook/start         |
+|     - GET  /api/status                 |
+|     - WS   /ws/output                  |
+|                                        |
+|   ansible-runner                       |
+|     - Fuehrt Playbook lokal aus        |
+|     - Streamt Output via WebSocket     |
++----------------------------------------+
 ```
 
 ## Schnellstart
 
 ### Voraussetzungen
 
-- **Client** (dein Rechner): SSH-Zugang zum Zielserver, `curl`
-- **Zielserver**: Ubuntu 24.04 LTS, Root-Zugang via SSH
+- **Zielserver**: Ubuntu 24.04 LTS, Root-Zugang
 
-### 1. Client-Script herunterladen und ausfuehren
+### 1. Bootstrap auf dem Zielserver ausfuehren
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/hermanntoast/edulution-installer/main/install.sh -o install.sh
-chmod +x install.sh
-./install.sh root@10.0.0.1
+curl -sSL https://raw.githubusercontent.com/hermanntoast/edulution-installer/main/edulution-lmninstaller/bootstrap.sh | bash
 ```
 
 Das Script:
-1. Verbindet sich per SSH zum Zielserver
-2. Laedt `bootstrap.sh` von GitHub herunter
-3. Bootstrap installiert Abhaengigkeiten und laedt alle Dateien von GitHub
+1. Installiert Abhaengigkeiten (Python, Ansible, etc.)
+2. Laedt alle Dateien von GitHub herunter
+3. Richtet Python Virtual Environment ein
 4. Startet die API auf Port 8000
-5. Prueft ob die API bereit ist
 
 ### 2. Playbook starten
 
@@ -72,15 +68,6 @@ websocat ws://10.0.0.1:8000/ws/output
 
 # Oder Status per REST abfragen
 curl http://10.0.0.1:8000/api/status
-```
-
-### Alternative: Bootstrap direkt auf dem Zielserver
-
-Falls kein Client-Script gewuenscht, kann der Bootstrap auch direkt auf dem Zielserver ausgefuehrt werden:
-
-```bash
-ssh root@10.0.0.1
-curl -sSL https://raw.githubusercontent.com/hermanntoast/edulution-installer/main/bootstrap.sh | bash
 ```
 
 ## API-Referenz
@@ -231,24 +218,24 @@ Die API beendet sich automatisch 5 Sekunden nach erfolgreichem Playbook-Abschlus
 
 **API startet nicht:**
 ```bash
-ssh root@10.0.0.1 'cat /opt/edulution-installer/api.log'
+cat /opt/edulution-installer/api.log
 ```
 
 **Playbook laeuft schon (409):**
 ```bash
-curl http://10.0.0.1:8000/api/status
+curl http://localhost:8000/api/status
 ```
 
 **API neustarten:**
 ```bash
-ssh root@10.0.0.1 'kill $(cat /opt/edulution-installer/api.pid); curl -sSL https://raw.githubusercontent.com/hermanntoast/edulution-installer/main/bootstrap.sh | bash'
+kill $(cat /opt/edulution-installer/api.pid)
+curl -sSL https://raw.githubusercontent.com/hermanntoast/edulution-installer/main/edulution-lmninstaller/bootstrap.sh | bash
 ```
 
 ## Projektstruktur
 
 ```
 edulution-lmninstaller/
-|-- install.sh                   # Client-Script (auf deinem Rechner)
 |-- bootstrap.sh                 # Bootstrap (laedt auf dem Zielserver von GitHub)
 |-- requirements.txt             # Python-Abhaengigkeiten
 |-- api/
