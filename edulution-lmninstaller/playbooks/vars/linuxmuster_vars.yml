@@ -1,0 +1,145 @@
+# =============================================================================
+# LINUXMUSTER.NET 7.3 - KONFIGURATIONSVARIABLEN
+# =============================================================================
+#
+# Diese Datei enthält alle konfigurierbaren Variablen für die Installation.
+# Passe die Werte an deine Umgebung an.
+#
+# Verwendung:
+#   ansible-playbook main.yml -e @vars/linuxmuster.yml
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# NETZWERK-KONFIGURATION
+# -----------------------------------------------------------------------------
+# Standard-Netzwerk: 10.0.0.0/16 (255.255.0.0)
+
+# IP-Adresse des Linuxmuster-Servers
+lmn_server_ip: "10.0.0.1"
+
+# Subnetzmaske
+lmn_netmask: "255.255.0.0"
+
+# Gateway
+lmn_gateway: "10.0.0.254"
+
+# -----------------------------------------------------------------------------
+# SERVER-KONFIGURATION
+# -----------------------------------------------------------------------------
+
+# Hostname des Servers (max. 15 Zeichen, nur Kleinbuchstaben a-z)
+lmn_servername: "server"
+
+# Domain-Name (Format: subdomain.domain.tld)
+# WICHTIG:
+#   - Erste Subdomain max. 15 Zeichen
+#   - Nur Kleinbuchstaben a-z
+#   - Keine Sonderzeichen oder Zahlen
+#   - Gesamte FQDN max. 64 Bytes
+# Beispiele:
+#   - linuxmuster.lan (einfach)
+#   - linuxmuster.meineschule.de (mit externer Domain)
+lmn_domainname: "linuxmuster.lan"
+
+# -----------------------------------------------------------------------------
+# SCHUL-INFORMATIONEN
+# -----------------------------------------------------------------------------
+
+# Name der Schule
+lmn_schoolname: "Meine Schule"
+
+# Stadt/Ort
+lmn_location: "Musterstadt"
+
+# Ländercode (ISO 3166-1 alpha-2)
+lmn_country: "de"
+
+# Bundesland (Kürzel)
+# Beispiele: BW, BY, BE, BB, HB, HH, HE, MV, NI, NW, RP, SL, SN, ST, SH, TH
+lmn_state: "BW"
+
+# -----------------------------------------------------------------------------
+# DHCP-KONFIGURATION
+# -----------------------------------------------------------------------------
+
+# DHCP-Bereich für Client-Computer
+# Format: "START-IP END-IP"
+lmn_dhcprange: "10.0.100.1 10.0.100.254"
+
+# -----------------------------------------------------------------------------
+# ADMINISTRATOR-PASSWORT
+# -----------------------------------------------------------------------------
+# Anforderungen:
+#   - Mindestens 7 Zeichen
+#   - Groß- und Kleinbuchstaben
+#   - Mindestens eine Ziffer
+#   - Mindestens ein Sonderzeichen
+#
+# Erlaubte Sonderzeichen: ?!§+-@#%&*()[]{}
+#
+# WICHTIG: Dieses Passwort wird für folgende Konten verwendet:
+#   - root (Server)
+#   - global-admin (Active Directory)
+#   - pgmadmin
+#   - linbo
+#
+# Ändere diese Passwörter nach der Installation individuell!
+
+lmn_adminpw: "Muster!"
+
+# -----------------------------------------------------------------------------
+# ZEITZONE UND LOCALE
+# -----------------------------------------------------------------------------
+
+# Zeitzone (Europe/Berlin für Deutschland)
+lmn_timezone: "Europe/Berlin"
+
+# Systemsprache
+lmn_locale: "de_DE.UTF-8"
+
+# -----------------------------------------------------------------------------
+# ERWEITERTE OPTIONEN
+# -----------------------------------------------------------------------------
+
+# Firewall-Setup ueberspringen
+# Standardmaessig wird KEINE Firewall installiert.
+# Die Firewall muss separat eingerichtet werden.
+lmn_skip_firewall: true
+
+# Unattended-Modus (keine interaktiven Abfragen)
+lmn_unattended: true
+
+# Automatische System-Updates deaktivieren
+lmn_disable_auto_updates: true
+
+# -----------------------------------------------------------------------------
+# REPOSITORY-KONFIGURATION (normalerweise nicht ändern)
+# -----------------------------------------------------------------------------
+
+# Linuxmuster Repository URL
+lmn_repo_url: "https://deb.linuxmuster.net/"
+
+# GPG-Schlüssel URL
+lmn_repo_gpg_url: "https://deb.linuxmuster.net/pub.gpg"
+
+# Repository-Distribution
+lmn_repo_distribution: "lmn73"
+
+# lmn-appliance Script URL
+lmn_appliance_url: "https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/master/lmn-appliance"
+
+# -----------------------------------------------------------------------------
+# ZUSÄTZLICHE PAKETE
+# -----------------------------------------------------------------------------
+
+lmn_additional_packages:
+  - net-tools
+  - iputils-ping
+  - dnsutils
+  - qemu-guest-agent
+  - apt-utils
+  - locales
+  - wget
+  - curl
+  - gnupg
