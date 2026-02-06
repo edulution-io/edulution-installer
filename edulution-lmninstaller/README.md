@@ -1,17 +1,17 @@
 # Edulution LMN Installer
 
-Installation von [linuxmuster.net 7.3](https://docs.linuxmuster.net/de/latest/) mit einer Mini-API fuer Variablen-Konfiguration und Echtzeit-Fortschrittsueberwachung per WebSocket.
+Installation of [linuxmuster.net 7.3](https://docs.linuxmuster.net/de/latest/) with a minimal API for variable configuration and real-time progress monitoring via WebSocket.
 
-## Architektur
+## Architecture
 
 ```
 +---------------------------------------+
-|         Zielserver                     |
+|         Target Server                  |
 |                                        |
 |   curl | bash                          |
-|     - Laedt Dateien von GitHub         |
-|     - Installiert Python/pip/Ansible   |
-|     - Startet API                      |
+|     - Downloads files from GitHub      |
+|     - Installs Python/pip/Ansible      |
+|     - Starts API                       |
 |                                        |
 |   FastAPI Server (0.0.0.0:8000)        |
 |     - POST /api/playbook/{p}/start     |
@@ -20,36 +20,36 @@ Installation von [linuxmuster.net 7.3](https://docs.linuxmuster.net/de/latest/) 
 |     - WS   /ws/output                  |
 |                                        |
 |   ansible-runner                       |
-|     - Fuehrt Playbook lokal aus        |
-|     - Streamt Output via WebSocket     |
+|     - Runs playbook locally            |
+|     - Streams output via WebSocket     |
 +----------------------------------------+
 ```
 
-## Schnellstart
+## Quick Start
 
-### Voraussetzungen
+### Prerequisites
 
-- **Zielserver**: Ubuntu 24.04 LTS, Root-Zugang
+- **Target server**: Ubuntu 24.04 LTS, root access
 
-### 1. Bootstrap auf dem Zielserver ausfuehren
+### 1. Run bootstrap on the target server
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/hermanntoast/edulution-installer/main/edulution-lmninstaller/bootstrap.sh | bash
+curl -sSL https://raw.githubusercontent.com/edulution-io/edulution-installer/main/edulution-lmninstaller/bootstrap.sh | bash
 ```
 
-Das Script:
-1. Installiert Abhaengigkeiten (Python, Ansible, etc.)
-2. Laedt alle Dateien von GitHub herunter
-3. Richtet Python Virtual Environment ein
-4. Startet die API auf Port 8000
+The script:
+1. Installs dependencies (Python, Ansible, etc.)
+2. Downloads all files from GitHub
+3. Sets up a Python virtual environment
+4. Starts the API on port 8000
 
-### 2. Voraussetzungen pruefen
+### 2. Check requirements
 
 ```bash
 curl http://10.0.0.1:8000/api/playbook/linuxmuster.yml/requirements
 ```
 
-### 3. Playbook starten
+### 3. Start playbook
 
 ```bash
 curl -X POST http://10.0.0.1:8000/api/playbook/linuxmuster.yml/start \
@@ -59,39 +59,39 @@ curl -X POST http://10.0.0.1:8000/api/playbook/linuxmuster.yml/start \
       "extra_vars": {
         "lmn_schoolname": "Gymnasium Musterstadt",
         "lmn_location": "Musterstadt",
-        "lmn_adminpw": "SicheresPasswort1!",
+        "lmn_adminpw": "SecurePassword1!",
         "lmn_domainname": "linuxmuster.gymnasium-musterstadt.de"
       }
     }
   }'
 ```
 
-### 4. Output live verfolgen
+### 4. Follow output live
 
 ```bash
-# Mit websocat
+# With websocat
 websocat ws://10.0.0.1:8000/ws/output
 
-# Oder Status per REST abfragen
+# Or query status via REST
 curl http://10.0.0.1:8000/api/status
 ```
 
-## API-Referenz
+## API Reference
 
-### REST-Endpoints
+### REST Endpoints
 
-| Methode | Pfad | Beschreibung |
-|---------|------|--------------|
-| `GET` | `/api/health` | Health-Check |
-| `GET` | `/api/status` | Aktueller Job-Status |
-| `GET` | `/api/playbook/{playbook}/requirements` | Voraussetzungen pruefen |
-| `POST` | `/api/playbook/{playbook}/start` | Playbook starten |
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/health` | Health check |
+| `GET` | `/api/status` | Current job status |
+| `GET` | `/api/playbook/{playbook}/requirements` | Check requirements |
+| `POST` | `/api/playbook/{playbook}/start` | Start playbook |
 
 ### GET /api/playbook/{playbook}/requirements
 
-Prueft die Systemvoraussetzungen fuer ein Playbook. Die Anforderungen werden aus `playbooks/requirements/{playbook}` gelesen.
+Checks system requirements for a playbook. Requirements are read from `playbooks/requirements/{playbook}`.
 
-**Beispiel:**
+**Example:**
 
 ```bash
 curl http://localhost:8000/api/playbook/linuxmuster.yml/requirements
@@ -131,13 +131,13 @@ curl http://localhost:8000/api/playbook/linuxmuster.yml/requirements
 }
 ```
 
-Gibt immer `200` zurueck. Existiert keine Requirements-Datei, ist `all_passed: true` mit einem `skipped`-Check.
+Always returns `200`. If no requirements file exists, `all_passed` is `true` with a `skipped` check.
 
-`checks[].status` ist einer von: `passed`, `failed`, `skipped`
+`checks[].status` is one of: `passed`, `failed`, `skipped`
 
 ### POST /api/playbook/{playbook}/start
 
-Startet ein Playbook. Der Playbook-Name wird als Pfad-Parameter uebergeben.
+Starts a playbook. The playbook name is passed as a path parameter.
 
 **Request:**
 
@@ -145,21 +145,21 @@ Startet ein Playbook. Der Playbook-Name wird als Pfad-Parameter uebergeben.
 {
   "variables": {
     "extra_vars": {
-      "lmn_schoolname": "Meine Schule",
-      "lmn_adminpw": "MeinPasswort1!"
+      "lmn_schoolname": "My School",
+      "lmn_adminpw": "MyPassword1!"
     }
   }
 }
 ```
 
-- `variables.extra_vars`: Key-Value-Paare, die als Ansible `--extra-vars` uebergeben werden
+- `variables.extra_vars`: Key-value pairs passed as Ansible `--extra-vars`
 
-**Beispiel:**
+**Example:**
 
 ```bash
 curl -X POST http://localhost:8000/api/playbook/linuxmuster.yml/start \
   -H "Content-Type: application/json" \
-  -d '{"variables": {"extra_vars": {"lmn_adminpw": "MeinPasswort1!"}}}'
+  -d '{"variables": {"extra_vars": {"lmn_adminpw": "MyPassword1!"}}}'
 ```
 
 **Response (200):**
@@ -172,10 +172,10 @@ curl -X POST http://localhost:8000/api/playbook/linuxmuster.yml/start \
 }
 ```
 
-**Fehlercodes:**
-- `409` -- Ein Playbook laeuft bereits
-- `404` -- Playbook-Datei nicht gefunden
-- `500` -- Interner Fehler
+**Error codes:**
+- `409` -- A playbook is already running
+- `404` -- Playbook file not found
+- `500` -- Internal error
 
 ### GET /api/status
 
@@ -191,145 +191,141 @@ curl -X POST http://localhost:8000/api/playbook/linuxmuster.yml/start \
 }
 ```
 
-`status` ist einer von: `idle`, `running`, `completed`, `failed`
+`status` is one of: `idle`, `running`, `completed`, `failed`
 
 ### WebSocket /ws/output
 
-Verbindung: `ws://<server-ip>:8000/ws/output`
+Connection: `ws://<server-ip>:8000/ws/output`
 
-Nachrichten-Format:
+Message format:
 
 ```json
 {
   "type": "stdout",
-  "data": "TASK [Erforderliche Pakete installieren] *****",
+  "data": "TASK [Install required packages] *****",
   "timestamp": "2025-01-26T12:34:56.789",
   "job_id": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
-`type` ist einer von: `stdout`, `stderr`, `event`, `status`
+`type` is one of: `stdout`, `stderr`, `event`, `status`
 
-## Playbook-Variablen (linuxmuster.yml)
+## Playbook Variables (linuxmuster.yml)
 
-Alle Variablen haben Standardwerte und koennen via `extra_vars` ueberschrieben werden.
+All variables have default values and can be overridden via `extra_vars`.
 
-### Grundkonfiguration
+### Basic Configuration
 
-| Variable | Standard | Beschreibung |
-|----------|----------|--------------|
-| `lmn_server_ip` | `10.0.0.1` | IP-Adresse des Servers |
-| `lmn_netmask` | `255.255.0.0` | Subnetzmaske |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `lmn_server_ip` | `10.0.0.1` | Server IP address |
+| `lmn_netmask` | `255.255.0.0` | Subnet mask |
 | `lmn_gateway` | `10.0.0.254` | Gateway |
-| `lmn_servername` | `server` | Hostname (max. 15 Zeichen, nur a-z) |
-| `lmn_domainname` | `linuxmuster.lan` | Domain-Name |
-| `lmn_schoolname` | `Meine Schule` | Name der Schule |
-| `lmn_location` | `Musterstadt` | Ort |
-| `lmn_country` | `de` | Laendercode |
-| `lmn_state` | `BW` | Bundesland |
-| `lmn_dhcprange` | `10.0.100.1 10.0.100.254` | DHCP-Bereich |
-| `lmn_adminpw` | `Muster!` | Admin-Passwort |
-| `lmn_timezone` | `Europe/Berlin` | Zeitzone |
-| `lmn_locale` | `de_DE.UTF-8` | Systemsprache |
+| `lmn_servername` | `server` | Hostname (max 15 chars, a-z only) |
+| `lmn_domainname` | `linuxmuster.lan` | Domain name |
+| `lmn_schoolname` | `Meine Schule` | School name |
+| `lmn_location` | `Musterstadt` | Location |
+| `lmn_country` | `de` | Country code |
+| `lmn_state` | `BW` | State/province |
+| `lmn_dhcprange` | `10.0.100.1 10.0.100.254` | DHCP range |
+| `lmn_adminpw` | `Muster!` | Admin password |
+| `lmn_timezone` | `Europe/Berlin` | Timezone |
+| `lmn_locale` | `de_DE.UTF-8` | System locale |
 
-### Erweiterte Optionen
+### Advanced Options
 
-| Variable | Standard | Beschreibung |
-|----------|----------|--------------|
-| `lmn_skip_firewall` | `true` | Kein Firewall-Setup (Firewall separat einrichten) |
-| `lmn_unattended` | `true` | Keine interaktiven Abfragen |
-| `lmn_disable_auto_updates` | `true` | Auto-Updates deaktivieren |
-| `lmn_repo_url` | `https://deb.linuxmuster.net/` | Repository-URL |
-| `lmn_repo_distribution` | `lmn73` | Repository-Distribution |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `lmn_skip_firewall` | `true` | Skip firewall setup (configure firewall separately) |
+| `lmn_unattended` | `true` | No interactive prompts |
+| `lmn_disable_auto_updates` | `true` | Disable auto updates |
+| `lmn_repo_url` | `https://deb.linuxmuster.net/` | Repository URL |
+| `lmn_repo_distribution` | `lmn73` | Repository distribution |
 
-### Passwort-Anforderungen
+### Password Requirements
 
-- Mindestens 7 Zeichen
-- Gross- und Kleinbuchstaben
-- Mindestens eine Ziffer
-- Mindestens ein Sonderzeichen: `?!+-@#%&*()[]{}`
+- At least 7 characters
+- Upper and lower case letters
+- At least one digit
+- At least one special character: `?!+-@#%&*()[]{}`
 
-Das Passwort wird gesetzt fuer: `root` (Server), `global-admin`, `pgmadmin`, `linbo`.
+The password is set for: `root` (server), `global-admin`, `pgmadmin`, `linbo`.
 
-## Eigene Playbooks hinzufuegen
+## Adding Custom Playbooks
 
-Lege eine neue YAML-Datei im Verzeichnis `playbooks/` ab (auf dem Zielserver unter `/opt/edulution-installer/playbooks/`). Sie wird automatisch ueber die API verfuegbar:
+Place a new YAML file in the `playbooks/` directory (on the target server at `/opt/edulution-installer/playbooks/`). It becomes automatically available via the API:
 
 ```bash
-curl -X POST http://10.0.0.1:8000/api/playbook/mein-playbook.yml/start \
+curl -X POST http://10.0.0.1:8000/api/playbook/my-playbook.yml/start \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
 
-Optional koennen Anforderungen als `playbooks/requirements/mein-playbook.yml` hinterlegt werden, die dann ueber `GET /api/playbook/mein-playbook.yml/requirements` pruefbar sind.
+Optionally, requirements can be defined in `playbooks/requirements/my-playbook.yml` and checked via `GET /api/playbook/my-playbook.yml/requirements`.
 
-## Konfiguration
+## Configuration
 
-Die API laesst sich ueber Umgebungsvariablen konfigurieren:
+The API can be configured via environment variables:
 
-| Variable | Standard | Beschreibung |
-|----------|----------|--------------|
-| `EDULUTION_HOST` | `0.0.0.0` | Bind-Adresse |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EDULUTION_HOST` | `0.0.0.0` | Bind address |
 | `EDULUTION_PORT` | `8000` | Port |
-| `EDULUTION_PLAYBOOK_DIR` | `/opt/edulution-installer/playbooks` | Playbook-Verzeichnis |
-| `EDULUTION_PRIVATE_DATA_DIR` | `/opt/edulution-installer/ansible` | Ansible-Arbeitsverzeichnis |
-| `EDULUTION_SHUTDOWN_DELAY` | `5` | Sekunden bis Auto-Shutdown nach Erfolg |
+| `EDULUTION_PLAYBOOK_DIR` | `/opt/edulution-installer/playbooks` | Playbook directory |
+| `EDULUTION_PRIVATE_DATA_DIR` | `/opt/edulution-installer/ansible` | Ansible working directory |
+| `EDULUTION_SHUTDOWN_DELAY` | `5` | Seconds until auto-shutdown after success |
 
 ## Auto-Shutdown
 
-Die API beendet sich automatisch 5 Sekunden nach erfolgreichem Playbook-Abschluss. Das ist beabsichtigt -- der API-Server wird nur fuer die Dauer der Installation benoetigt.
+The API automatically shuts down 5 seconds after a successful playbook run. This is intentional -- the API server is only needed for the duration of the installation.
 
-## Fehlerbehebung
+## Troubleshooting
 
-**API startet nicht:**
+**API won't start:**
 ```bash
 cat /opt/edulution-installer/api.log
 ```
 
-**Playbook laeuft schon (409):**
+**Playbook already running (409):**
 ```bash
 curl http://localhost:8000/api/status
 ```
 
-**API neustarten:**
+**Restart the API:**
 ```bash
 kill $(cat /opt/edulution-installer/api.pid)
-curl -sSL https://raw.githubusercontent.com/hermanntoast/edulution-installer/main/edulution-lmninstaller/bootstrap.sh | bash
+curl -sSL https://raw.githubusercontent.com/edulution-io/edulution-installer/main/edulution-lmninstaller/bootstrap.sh | bash
 ```
 
-## Projektstruktur
+## Project Structure
 
 ```
 edulution-lmninstaller/
-|-- bootstrap.sh                 # Bootstrap (laedt auf dem Zielserver von GitHub)
-|-- requirements.txt             # Python-Abhaengigkeiten
+|-- bootstrap.sh                 # Bootstrap (downloads from GitHub on target server)
+|-- requirements.txt             # Python dependencies
 |-- api/
-|   |-- main.py                  # FastAPI App mit Lifespan-Management
-|   |-- config.py                # Konfiguration (Environment-Variablen)
-|   |-- models.py                # Pydantic Request/Response Models
+|   |-- main.py                  # FastAPI app with lifespan management
+|   |-- config.py                # Configuration (environment variables)
+|   |-- models.py                # Pydantic request/response models
 |   |-- routes/
-|   |   |-- playbook.py          # REST-Endpoints
-|   |   +-- websocket.py         # WebSocket-Endpoint
+|   |   |-- playbook.py          # REST endpoints
+|   |   +-- websocket.py         # WebSocket endpoint
 |   +-- services/
-|       |-- ansible_runner.py    # Ansible-Ausfuehrung
-|       |-- output_streamer.py   # WebSocket-Broadcasting
-|       +-- system_checker.py    # Voraussetzungspruefung
+|       |-- ansible_runner.py    # Ansible execution
+|       |-- output_streamer.py   # WebSocket broadcasting
+|       +-- system_checker.py    # Requirements checking
 +-- playbooks/
-    |-- linuxmuster.yml          # Linuxmuster.net Server Playbook
+    |-- linuxmuster.yml          # linuxmuster.net server playbook
     |-- vars/
-    |   +-- linuxmuster_vars.yml # Konfigurationsvariablen
+    |   +-- linuxmuster_vars.yml # Configuration variables
     +-- requirements/
-        +-- linuxmuster.yml      # Systemanforderungen
+        +-- linuxmuster.yml      # System requirements
 ```
 
-## Voraussetzungen Zielserver
+## Target Server Requirements
 
 - Ubuntu 24.04 LTS
-- Mindestens 4 GB RAM (empfohlen 16 GB)
-- 25 GB System + 100 GB Daten
-- Netzwerk: 10.0.0.0/16 (Standard)
-- Firewall separat einrichten (wird nicht vom Playbook installiert)
-
-## Lizenz
-
-MIT
+- At least 4 GB RAM (16 GB recommended)
+- 25 GB system + 100 GB data
+- Network: 10.0.0.0/16 (default)
+- Firewall must be configured separately (not installed by the playbook)

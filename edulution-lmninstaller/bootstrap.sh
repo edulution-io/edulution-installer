@@ -4,15 +4,15 @@ set -e
 # =============================================================================
 # Edulution LMN Installer - Bootstrap
 # =============================================================================
-# Laedt alle Dateien von GitHub herunter, installiert Abhaengigkeiten
-# und startet die API.
+# Downloads all files from GitHub, installs dependencies
+# and starts the API.
 #
-# Verwendung auf dem Zielserver:
-#   curl -sSL https://raw.githubusercontent.com/hermanntoast/edulution-installer/main/edulution-lmninstaller/bootstrap.sh | bash
+# Usage on the target server:
+#   curl -sSL https://raw.githubusercontent.com/edulution-io/edulution-installer/main/edulution-lmninstaller/bootstrap.sh | bash
 # =============================================================================
 
-GITHUB_REPO="hermanntoast/edulution-installer"
-GITHUB_BRANCH="add-lmn-installer"
+GITHUB_REPO="edulution-io/edulution-installer"
+GITHUB_BRANCH="main"
 GITHUB_RAW="https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/edulution-lmninstaller"
 
 INSTALL_DIR="/opt/edulution-installer"
