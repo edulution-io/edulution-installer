@@ -14,7 +14,8 @@ Installation von [linuxmuster.net 7.3](https://docs.linuxmuster.net/de/latest/) 
 |     - Startet API                      |
 |                                        |
 |   FastAPI Server (0.0.0.0:8000)        |
-|     - POST /api/playbook/start         |
+|     - POST /api/playbook/{p}/start     |
+|     - GET  /api/playbook/{p}/requirements |
 |     - GET  /api/status                 |
 |     - WS   /ws/output                  |
 |                                        |
@@ -42,13 +43,18 @@ Das Script:
 3. Richtet Python Virtual Environment ein
 4. Startet die API auf Port 8000
 
-### 2. Playbook starten
+### 2. Voraussetzungen pruefen
 
 ```bash
-curl -X POST http://10.0.0.1:8000/api/playbook/start \
+curl http://10.0.0.1:8000/api/playbook/linuxmuster.yml/requirements
+```
+
+### 3. Playbook starten
+
+```bash
+curl -X POST http://10.0.0.1:8000/api/playbook/linuxmuster.yml/start \
   -H "Content-Type: application/json" \
   -d '{
-    "playbook": "linuxmuster.yml",
     "variables": {
       "extra_vars": {
         "lmn_schoolname": "Gymnasium Musterstadt",
@@ -60,7 +66,7 @@ curl -X POST http://10.0.0.1:8000/api/playbook/start \
   }'
 ```
 
-### 3. Output live verfolgen
+### 4. Output live verfolgen
 
 ```bash
 # Mit websocat
@@ -78,15 +84,65 @@ curl http://10.0.0.1:8000/api/status
 |---------|------|--------------|
 | `GET` | `/api/health` | Health-Check |
 | `GET` | `/api/status` | Aktueller Job-Status |
-| `POST` | `/api/playbook/start` | Playbook starten |
+| `GET` | `/api/playbook/{playbook}/requirements` | Voraussetzungen pruefen |
+| `POST` | `/api/playbook/{playbook}/start` | Playbook starten |
 
-### POST /api/playbook/start
+### GET /api/playbook/{playbook}/requirements
+
+Prueft die Systemvoraussetzungen fuer ein Playbook. Die Anforderungen werden aus `playbooks/requirements/{playbook}` gelesen.
+
+**Beispiel:**
+
+```bash
+curl http://localhost:8000/api/playbook/linuxmuster.yml/requirements
+```
+
+**Response (200):**
+
+```json
+{
+  "playbook": "linuxmuster.yml",
+  "all_passed": true,
+  "checks": [
+    {
+      "name": "os_distribution",
+      "status": "passed",
+      "required": "Ubuntu",
+      "actual": "Ubuntu",
+      "message": "OS distribution is Ubuntu"
+    },
+    {
+      "name": "ram",
+      "status": "passed",
+      "required": ">= 4 GB",
+      "actual": "15.5 GB",
+      "message": "RAM 15.5 GB meets minimum 4 GB"
+    }
+  ],
+  "system_info": {
+    "os": "Ubuntu",
+    "os_version": "24.04",
+    "ram_gb": 15.5,
+    "disks": [
+      {"name": "sda", "size_gb": 100.0},
+      {"name": "sdb", "size_gb": 500.0}
+    ]
+  }
+}
+```
+
+Gibt immer `200` zurueck. Existiert keine Requirements-Datei, ist `all_passed: true` mit einem `skipped`-Check.
+
+`checks[].status` ist einer von: `passed`, `failed`, `skipped`
+
+### POST /api/playbook/{playbook}/start
+
+Startet ein Playbook. Der Playbook-Name wird als Pfad-Parameter uebergeben.
 
 **Request:**
 
 ```json
 {
-  "playbook": "linuxmuster.yml",
   "variables": {
     "extra_vars": {
       "lmn_schoolname": "Meine Schule",
@@ -96,8 +152,15 @@ curl http://10.0.0.1:8000/api/status
 }
 ```
 
-- `playbook`: Name der Playbook-Datei im `playbooks/`-Verzeichnis
 - `variables.extra_vars`: Key-Value-Paare, die als Ansible `--extra-vars` uebergeben werden
+
+**Beispiel:**
+
+```bash
+curl -X POST http://localhost:8000/api/playbook/linuxmuster.yml/start \
+  -H "Content-Type: application/json" \
+  -d '{"variables": {"extra_vars": {"lmn_adminpw": "MeinPasswort1!"}}}'
+```
 
 **Response (200):**
 
@@ -193,10 +256,12 @@ Das Passwort wird gesetzt fuer: `root` (Server), `global-admin`, `pgmadmin`, `li
 Lege eine neue YAML-Datei im Verzeichnis `playbooks/` ab (auf dem Zielserver unter `/opt/edulution-installer/playbooks/`). Sie wird automatisch ueber die API verfuegbar:
 
 ```bash
-curl -X POST http://10.0.0.1:8000/api/playbook/start \
+curl -X POST http://10.0.0.1:8000/api/playbook/mein-playbook.yml/start \
   -H "Content-Type: application/json" \
-  -d '{"playbook": "mein-playbook.yml"}'
+  -d '{}'
 ```
+
+Optional koennen Anforderungen als `playbooks/requirements/mein-playbook.yml` hinterlegt werden, die dann ueber `GET /api/playbook/mein-playbook.yml/requirements` pruefbar sind.
 
 ## Konfiguration
 
@@ -247,11 +312,14 @@ edulution-lmninstaller/
 |   |   +-- websocket.py         # WebSocket-Endpoint
 |   +-- services/
 |       |-- ansible_runner.py    # Ansible-Ausfuehrung
-|       +-- output_streamer.py   # WebSocket-Broadcasting
+|       |-- output_streamer.py   # WebSocket-Broadcasting
+|       +-- system_checker.py    # Voraussetzungspruefung
 +-- playbooks/
     |-- linuxmuster.yml          # Linuxmuster.net Server Playbook
-    +-- vars/
-        +-- linuxmuster_vars.yml # Konfigurationsvariablen
+    |-- vars/
+    |   +-- linuxmuster_vars.yml # Konfigurationsvariablen
+    +-- requirements/
+        +-- linuxmuster.yml      # Systemanforderungen
 ```
 
 ## Voraussetzungen Zielserver

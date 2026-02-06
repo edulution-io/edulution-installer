@@ -13,13 +13,45 @@ class JobStatus(str, Enum):
     FAILED = "failed"
 
 
+class CheckStatus(str, Enum):
+    PASSED = "passed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class RequirementCheck(BaseModel):
+    name: str
+    status: CheckStatus
+    required: str | None = None
+    actual: str | None = None
+    message: str
+
+
+class DiskInfo(BaseModel):
+    name: str
+    size_gb: float
+
+
+class SystemInfo(BaseModel):
+    os: str | None = None
+    os_version: str | None = None
+    ram_gb: float | None = None
+    disks: list[DiskInfo] = Field(default_factory=list)
+
+
+class RequirementsResponse(BaseModel):
+    playbook: str
+    all_passed: bool
+    checks: list[RequirementCheck] = Field(default_factory=list)
+    system_info: SystemInfo
+
+
 class PlaybookVariables(BaseModel):
     extra_vars: dict[str, Any] = Field(default_factory=dict)
 
 
 class PlaybookStartRequest(BaseModel):
     variables: PlaybookVariables = Field(default_factory=PlaybookVariables)
-    playbook: str = "main.yml"
 
 
 class PlaybookStartResponse(BaseModel):

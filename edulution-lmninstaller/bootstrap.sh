@@ -88,8 +88,8 @@ download_file() {
     fi
 }
 
-download_files() {
-    log_info "Downloading files from GitHub (${GITHUB_REPO}@${GITHUB_BRANCH})..."
+download_api_files() {
+    log_info "Downloading API files from GitHub (${GITHUB_REPO}@${GITHUB_BRANCH})..."
 
     local files=(
         "requirements.txt"
@@ -103,15 +103,40 @@ download_files() {
         "api/services/__init__.py"
         "api/services/ansible_runner.py"
         "api/services/output_streamer.py"
-        "playbooks/linuxmuster.yml"
-        "playbooks/vars/linuxmuster_vars.yml"
     )
 
     for file in "${files[@]}"; do
         download_file "${file}"
     done
 
-    log_info "All files downloaded"
+    log_info "API files downloaded"
+}
+
+download_playbooks() {
+    log_info "Downloading playbooks from GitHub..."
+
+    local tree_url="https://api.github.com/repos/${GITHUB_REPO}/git/trees/${GITHUB_BRANCH}?recursive=1"
+    local prefix="edulution-lmninstaller/playbooks/"
+
+    local files
+    files=$(curl -sSL "${tree_url}" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for item in data.get('tree', []):
+    if item['path'].startswith('${prefix}') and item['type'] == 'blob':
+        print(item['path'].removeprefix('edulution-lmninstaller/'))
+")
+
+    if [[ -z "${files}" ]]; then
+        log_error "No playbooks found in repository"
+        exit 1
+    fi
+
+    while IFS= read -r file; do
+        download_file "${file}"
+    done <<< "${files}"
+
+    log_info "Playbooks downloaded"
 }
 
 setup_virtual_environment() {
@@ -176,7 +201,8 @@ main() {
     check_root
     install_system_packages
     setup_directory_structure
-    download_files
+    download_api_files
+    download_playbooks
     setup_virtual_environment
     start_api_server
 

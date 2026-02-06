@@ -4,9 +4,11 @@ from api.models import (
     JobStatus,
     PlaybookStartRequest,
     PlaybookStartResponse,
+    RequirementsResponse,
     StatusResponse,
 )
 from api.services.ansible_runner import runner_service
+from api.services.system_checker import system_checker
 
 router = APIRouter(prefix="/api", tags=["playbook"])
 
@@ -27,8 +29,10 @@ async def get_status() -> StatusResponse:
     )
 
 
-@router.post("/playbook/start", response_model=PlaybookStartResponse)
-async def start_playbook(request: PlaybookStartRequest) -> PlaybookStartResponse:
+@router.post("/playbook/{playbook}/start", response_model=PlaybookStartResponse)
+async def start_playbook(
+    playbook: str, request: PlaybookStartRequest
+) -> PlaybookStartResponse:
     if runner_service.status == JobStatus.RUNNING:
         raise HTTPException(
             status_code=409,
@@ -37,7 +41,7 @@ async def start_playbook(request: PlaybookStartRequest) -> PlaybookStartResponse
 
     try:
         job_id = await runner_service.run_playbook(
-            playbook=request.playbook,
+            playbook=playbook,
             extra_vars=request.variables.extra_vars,
         )
     except FileNotFoundError as e:
@@ -50,3 +54,10 @@ async def start_playbook(request: PlaybookStartRequest) -> PlaybookStartResponse
         status=JobStatus.RUNNING,
         message="Playbook started successfully",
     )
+
+
+@router.get(
+    "/playbook/{playbook}/requirements", response_model=RequirementsResponse
+)
+async def check_requirements(playbook: str) -> RequirementsResponse:
+    return system_checker.check_requirements(playbook)
