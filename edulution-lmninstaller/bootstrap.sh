@@ -12,7 +12,7 @@ set -e
 # =============================================================================
 
 GITHUB_REPO="hermanntoast/edulution-installer"
-GITHUB_BRANCH="main"
+GITHUB_BRANCH="add-lmn-installer"
 GITHUB_RAW="https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/edulution-lmninstaller"
 
 INSTALL_DIR="/opt/edulution-installer"
