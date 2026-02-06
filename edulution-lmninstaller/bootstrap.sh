@@ -103,6 +103,7 @@ download_api_files() {
         "api/services/__init__.py"
         "api/services/ansible_runner.py"
         "api/services/output_streamer.py"
+        "api/services/system_checker.py"
     )
 
     for file in "${files[@]}"; do
