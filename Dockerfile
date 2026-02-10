@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir --upgrade \
     requests ldap3 pyyaml
 
 COPY edulution-webinstaller/app /app
+COPY dist/apps/webinstaller /app/static
 COPY edulution-webinstaller/startup.sh /startup.sh
 RUN chmod +x /startup.sh
 

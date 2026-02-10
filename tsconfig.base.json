@@ -26,6 +26,7 @@
   },
   "references": [
     { "path": "./apps/public-page/tsconfig.json" },
+    { "path": "./apps/webinstaller/tsconfig.json" },
     { "path": "./libs/shared-ui/tsconfig.json" }
   ]
 }

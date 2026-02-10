@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  @apply text-background;
+  font-family: "Lato", sans-serif;
+}
+
+:root {
+  --background: #000000;
+  --foreground: #f8fafc;
+  --card: rgba(255, 255, 255, 1);
+  --card-foreground: #2d3748;
+  --primary: #0081c6;
+  --primary-foreground: #ffffff;
+  --secondary: #d1d5db;
+  --secondary-foreground: #2d2d30;
+  --muted: #2d3748;
+  --muted-transparent: #2d374850;
+  --accent: #2d2d30;
+  --accent-light: #3c3f45;
+  --border: #cbd4e4;
+  --ring: #8ca4b6;
+  --radius: 0.25rem;
+  --ci-light-green: #8fc046;
+  --ci-dark-blue: #0081c6;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Lato", sans-serif;
+  min-height: 100vh;
+  background: url("/img/backgroundDarkMode.webp") #000;
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  background-color: #000;
+  margin: 0;
+}
+
+.page-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  min-height: 100vh;
+}
+
+.installer-container {
+  width: 100%;
+  max-width: 600px;
+  background: rgba(255, 255, 255, 0.97);
+  border-radius: 12px;
+  border: 4px solid white;
+  padding: 40px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.logo {
+  max-width: 100%;
+  width: 100%;
+  max-width: 350px;
+  height: auto;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+}
+
+.logo:hover {
+  transform: scale(1.02);
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.15));
+}
+
+.footer-section {
+  text-align: center;
+  padding: 20px 0 0 0;
+  color: #718096;
+  font-size: 14px;
+  border-top: 1px solid #e2e8f0;
+  margin-top: 30px;
+}
+
+.footer-section a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.footer-section a:hover {
+  color: var(--secondary);
+  text-decoration: underline;
+}
+
+.valid-input {
+  box-shadow: 0 0 0 2px #74C000 !important;
+}
+
+@media (max-width: 768px) {
+  .logo {
+    max-width: 250px;
+  }
+
+  .installer-container {
+    padding: 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .logo {
+    max-width: 200px;
+  }
+
+  .installer-container {
+    padding: 16px;
+  }
+}
