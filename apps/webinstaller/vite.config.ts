@@ -6,7 +6,7 @@ import { resolve } from 'path';
 
 export default defineConfig({
   root: __dirname,
-  cacheDir: '../../node_modules/.vite/apps/public-page',
+  cacheDir: '../../node_modules/.vite/apps/webinstaller',
 
   plugins: [
     react(),
@@ -28,17 +28,24 @@ export default defineConfig({
   },
 
   server: {
-    port: 4200,
+    port: 4201,
     host: 'localhost',
+    proxy: {
+      '/api': {
+        target: 'https://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
 
   preview: {
-    port: 4300,
+    port: 4301,
     host: 'localhost',
   },
 
   build: {
-    outDir: '../../dist/apps/public-page',
+    outDir: '../../dist/apps/webinstaller',
     emptyOutDir: true,
     reportCompressedSize: true,
   },

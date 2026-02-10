@@ -35,6 +35,7 @@
         "alwaysTryTypes": true,
         "project": [
           "apps/public-page/tsconfig.json",
+          "apps/webinstaller/tsconfig.json",
           "libs/shared-ui/tsconfig.json"
         ]
       }
@@ -63,6 +64,17 @@
       "files": ["apps/public-page/**/*.ts", "apps/public-page/**/*.tsx"],
       "parserOptions": {
         "project": ["apps/public-page/tsconfig.app.json"]
+      }
+    },
+    {
+      "files": ["apps/webinstaller/**/*.ts", "apps/webinstaller/**/*.tsx"],
+      "parserOptions": {
+        "project": ["apps/webinstaller/tsconfig.app.json"]
+      },
+      "rules": {
+        "jsx-a11y/label-has-associated-control": ["error", {
+          "controlComponents": ["Input", "InputSH"]
+        }]
       }
     },
     {

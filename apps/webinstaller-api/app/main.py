@@ -14,9 +14,10 @@ import urllib3
 # Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-from fastapi import FastAPI, Form, BackgroundTasks, Depends, Request, File, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, BackgroundTasks, Depends, Request, File, UploadFile, APIRouter
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from ldap3 import Server, Connection, ALL, Tls
@@ -31,10 +32,12 @@ from pathlib import Path
 
 
 BASE_PATH = Path(__file__).parent
-PAGES_PATH = BASE_PATH / "html" / "pages"
+STATIC_PATH = BASE_PATH / "static"
 
 EDULUTION_DIRECTORY = os.environ.get("EDULUTION_DIRECTORY", "/srv/docker/edulution-ui")
 
+
+# --- Pydantic Models ---
 
 class Token(BaseModel):
     token: str
@@ -52,15 +55,21 @@ class LECertificate(BaseModel):
     email: str
 
 
-app = FastAPI()
+class ConfigurationRequest(BaseModel):
+    deploymentTarget: str
+    lmnExternalDomain: str
+    lmnBinduserDn: str
+    lmnBinduserPw: str
+    lmnLdapSchema: str
+    lmnLdapPort: int
+    edulutionExternalDomain: str
 
-app.mount("/css", StaticFiles(directory="css"), name="static")
-app.mount("/img", StaticFiles(directory="img"), name="static")
-app.mount("/js", StaticFiles(directory="js"), name="static")
 
-with open("./html/site.html") as f:
-    site = f.read()
+class AdminGroupRequest(BaseModel):
+    admin_group: str
 
+
+# --- Data Store ---
 
 class Data:
     def __init__(self):
@@ -84,173 +93,170 @@ def getData():
     return data
 
 
-def load_html(name: str) -> str:
-    file_path = PAGES_PATH / f"{name}.html"
+# --- FastAPI App ---
 
-    if not file_path.exists():
-        return f"<h2>Fehler: Datei nicht gefunden ({file_path})</h2>"
+app = FastAPI()
 
-    return file_path.read_text(encoding="utf-8")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:4201", "http://localhost:4301"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-
-def render_page(page_name: str, **kwargs) -> str:
-    html = load_html(page_name)
-    for key, value in kwargs.items():
-        html = html.replace(f"{{{{{key}}}}}", str(value or ""))
-    return html
-
-
-@app.get("/")
-def root():
-    html_content = load_html("01_start")
-    return HTMLResponse(
-        content=site.replace("##CONTENT##", html_content), status_code=200
-    )
+api = APIRouter(prefix="/api")
 
 
-@app.get("/token")
-def token():
-    html_content = load_html("02_token")
-    return HTMLResponse(
-        content=site.replace("##CONTENT##", html_content), status_code=200
-    )
+# --- API Endpoints ---
+
+@api.post("/check-token")
+def checkToken(token: Token):
+    try:
+        decoded = base64.b64decode(token.token.encode("utf-8"))
+        parsed = json.loads(decoded.decode("utf-8"))
+        _ = parsed["external_domain"]
+        _ = parsed["binduser_dn"]
+        _ = parsed["binduser_password"]
+        return True
+    except Exception:
+        return False
 
 
-@app.post("/configure")
-def configure(
-    targetType: str = Form(...),
-    edulutionsetuptoken: str = Form(None),
-    data: Data = Depends(getData),
-):
-    print("🔥 DEPLOYMENT TARGET =", targetType)
-    data.DATA_DEPLOYMENT_TARGET = targetType
-
-    if targetType == "generic":
-        data.DATA_LMN_EXTERNAL_DOMAIN = ""
-        data.DATA_LMN_BINDUSER_DN = ""
-        data.DATA_LMN_BINDUSER_PW = ""
-        data.DATA_LMN_LDAP_PORT = ""
-        data.DATA_EDULUTION_EXTERNAL_DOMAIN = ""
-    else:
-        if edulutionsetuptoken:
-            try:
-                token_raw = base64.b64decode(edulutionsetuptoken.encode("utf-8"))
-                token = json.loads(token_raw.decode("utf-8"))
-
-                data.DATA_LMN_EXTERNAL_DOMAIN = token.get("external_domain", "")
-                data.DATA_LMN_BINDUSER_DN = token.get("binduser_dn", "")
-                data.DATA_LMN_BINDUSER_PW = token.get("binduser_password", "")
-            except Exception as e:
-                print("Token-Fehler:", e)
-                data.DATA_LMN_EXTERNAL_DOMAIN = ""
-                data.DATA_LMN_BINDUSER_DN = ""
-                data.DATA_LMN_BINDUSER_PW = ""
-        else:
-            data.DATA_LMN_EXTERNAL_DOMAIN = ""
-            data.DATA_LMN_BINDUSER_DN = ""
-            data.DATA_LMN_BINDUSER_PW = ""
-
-    html_content = render_page(
-        "03_configure",
-        DATA_LMN_EXTERNAL_DOMAIN=data.DATA_LMN_EXTERNAL_DOMAIN,
-        DATA_LMN_BINDUSER_DN=data.DATA_LMN_BINDUSER_DN,
-        DATA_LMN_BINDUSER_PW=data.DATA_LMN_BINDUSER_PW,
-        DATA_LMN_LDAP_PORT=data.DATA_LMN_LDAP_PORT,
-        DATA_EDULUTION_EXTERNAL_DOMAIN=data.DATA_EDULUTION_EXTERNAL_DOMAIN,
-        DATA_DEPLOYMENT_TARGET=data.DATA_DEPLOYMENT_TARGET,
-    )
-
-    return HTMLResponse(
-        content=site.replace("##CONTENT##", html_content), status_code=200
-    )
+@api.post("/configure")
+def configure(config: ConfigurationRequest, data: Data = Depends(getData)):
+    data.DATA_DEPLOYMENT_TARGET = config.deploymentTarget
+    data.DATA_LMN_EXTERNAL_DOMAIN = config.lmnExternalDomain
+    data.DATA_LMN_BINDUSER_DN = config.lmnBinduserDn
+    data.DATA_LMN_BINDUSER_PW = config.lmnBinduserPw
+    data.DATA_LMN_LDAP_SCHEMA = config.lmnLdapSchema
+    data.DATA_LMN_LDAP_PORT = config.lmnLdapPort
+    data.DATA_EDULUTION_EXTERNAL_DOMAIN = config.edulutionExternalDomain
+    return {"status": True, "message": "Konfiguration gespeichert"}
 
 
-@app.post("/check")
-def check(
-    lmn_external_domain: str = Form(None),
-    lmn_binduser_dn: str = Form(None),
-    lmn_binduser_pw: str = Form(None),
-    lmn_ldap_schema: str = Form(None),
-    lmn_ldap_port: str = Form(None),
-    edulutionui_external_domain: str = Form(None),
-    data: Data = Depends(getData),
-):
-    if (
-        lmn_external_domain is not None
-        and lmn_binduser_dn is not None
-        and lmn_binduser_pw is not None
-        and lmn_ldap_schema is not None
-        and lmn_ldap_port is not None
-        and edulutionui_external_domain is not None
-    ):
-        data.DATA_LMN_EXTERNAL_DOMAIN = lmn_external_domain
-        data.DATA_LMN_BINDUSER_DN = lmn_binduser_dn
-        data.DATA_LMN_BINDUSER_PW = lmn_binduser_pw
-        data.DATA_LMN_LDAP_SCHEMA = lmn_ldap_schema
-        data.DATA_LMN_LDAP_PORT = lmn_ldap_port
-        data.DATA_EDULUTION_EXTERNAL_DOMAIN = edulutionui_external_domain
-    else:
-        return RedirectResponse("/")
-
-    html_content = load_html("04_check")
-
-    return HTMLResponse(
-        content=site.replace("##CONTENT##", html_content), status_code=200
-    )
-
-
-@app.get("/set-admin-group")
-def setAdminGroup(data: Data = Depends(getData)):
-    html_content = render_page(
-        "06_set_admin_group",
-        DATA_INITIAL_ADMIN_GROUP=data.DATA_INITIAL_ADMIN_GROUP,
-        DATA_DEPLOYMENT_TARGET=data.DATA_DEPLOYMENT_TARGET,
-    )
-    return HTMLResponse(
-        content=site.replace("##CONTENT##", html_content), status_code=200
-    )
-
-
-@app.post("/certificate")
-def certificate(
-    request: Request, admin_group: str = Form(None), data: Data = Depends(getData)
-):
-    if not data.DATA_EDULUTION_EXTERNAL_DOMAIN:
-        return RedirectResponse("/")
-
-    if data.DATA_DEPLOYMENT_TARGET == "generic":
-        if not admin_group or not admin_group.strip():
-            return RedirectResponse("/set-admin-group", status_code=303)
-
-    if admin_group:
-        data.DATA_INITIAL_ADMIN_GROUP = admin_group
-
-    proxyUsed = request.headers.get("x-forwarded-for") is not None
-    data.DATA_PROXY_USED = proxyUsed
-
-    html_content = "<h3>Zertifikat</h3><br>"
-
-    if proxyUsed:
-        html_content += """
-        <div class="alert alert-warning" role="alert">
-            Du verwendest einen Reverse-Proxy. Daher kann für edulution kein gültiges Zertifikat hinterlegt / ausgestellt werden.
-        </div>
-        <form method="GET" action="/finish">
-            <button type="submit" class="login-submit-btn" id="install_button">Installation starten</button>
-        </form>
-        """
-    else:
-        html_content = render_page(
-            "05_certificate",
-            DATA_EDULUTION_EXTERNAL_DOMAIN=data.DATA_EDULUTION_EXTERNAL_DOMAIN,
+@api.get("/check-api-status")
+def checkAPIStatus(data: Data = Depends(getData)):
+    try:
+        result = requests.get(
+            "https://" + data.DATA_LMN_EXTERNAL_DOMAIN + ":8001",
+            verify=False,
+            timeout=3,
         )
+        if result.status_code == 200:
+            return {"status": True, "message": "Successful"}
+        return {"status": False, "message": f"Got HTTP-Status {result.status_code}"}
+    except requests.exceptions.ConnectTimeout:
+        return {"status": False, "message": "Verbindungsfehler: Timeout!"}
+    except Exception as e:
+        print(e)
+        return {"status": False, "message": "Unbekannter Fehler!"}
 
-    return HTMLResponse(
-        content=site.replace("##CONTENT##", html_content), status_code=200
-    )
+
+@api.get("/check-webdav-status")
+def checkWebDAV(data: Data = Depends(getData)):
+    try:
+        result = requests.get(
+            "https://" + data.DATA_LMN_EXTERNAL_DOMAIN + ":443", verify=False, timeout=3
+        )
+        if result.status_code == 200:
+            return {"status": True, "message": "Successful"}
+        return {"status": False, "message": f"Got HTTP-Status {result.status_code}"}
+    except requests.exceptions.ConnectTimeout:
+        return {"status": False, "message": "Verbindungsfehler: Timeout!"}
+    except Exception as e:
+        print(e)
+        return {"status": False, "message": "Unbekannter Fehler!"}
 
 
-@app.post("/create-ss-certificate")
+@api.get("/check-ldap-status")
+def checkLDAPStatus(data: Data = Depends(getData)):
+    try:
+        if data.DATA_LMN_LDAP_SCHEMA == "ldaps":
+            server = Server(
+                data.DATA_LMN_EXTERNAL_DOMAIN,
+                port=int(data.DATA_LMN_LDAP_PORT),
+                get_info=ALL,
+                connect_timeout=3,
+                use_ssl=True,
+                tls=Tls(validate=ssl.CERT_REQUIRED),
+            )
+        else:
+            server = Server(
+                data.DATA_LMN_EXTERNAL_DOMAIN,
+                port=int(data.DATA_LMN_LDAP_PORT),
+                get_info=ALL,
+                connect_timeout=3,
+            )
+        conn = Connection(server, auto_bind=True)
+        if conn.bind():
+            return {"status": True, "message": "Successful"}
+        return {"status": False, "message": "Keine Verbindung zum LDAP-Server!"}
+    except LDAPSocketOpenError as e:
+        if "CERTIFICATE_VERIFY_FAILED" in str(e):
+            return {"status": False, "message": "Kein gültiges Zertifikat!"}
+        print(e)
+        return {"status": False, "message": "Unbekannter Fehler!"}
+    except Exception as e:
+        print(e)
+        return {"status": False, "message": "Unbekannter Fehler!"}
+
+
+@api.get("/check-ldap-access-status")
+def checkLDAPAccessStatus(data: Data = Depends(getData)):
+    try:
+        if data.DATA_LMN_LDAP_SCHEMA == "ldaps":
+            server = Server(
+                data.DATA_LMN_EXTERNAL_DOMAIN,
+                port=int(data.DATA_LMN_LDAP_PORT),
+                get_info=ALL,
+                connect_timeout=3,
+                use_ssl=True,
+                tls=Tls(validate=ssl.CERT_REQUIRED),
+            )
+        else:
+            server = Server(
+                data.DATA_LMN_EXTERNAL_DOMAIN,
+                port=int(data.DATA_LMN_LDAP_PORT),
+                get_info=ALL,
+                connect_timeout=3,
+            )
+        conn = Connection(
+            server,
+            user=data.DATA_LMN_BINDUSER_DN,
+            password=data.DATA_LMN_BINDUSER_PW,
+            auto_bind=True,
+        )
+        if conn.bind():
+            return {"status": True, "message": "Successful"}
+        return {"status": False, "message": "Keine Verbindung zum LDAP-Server!"}
+    except LDAPSocketOpenError as e:
+        if "CERTIFICATE_VERIFY_FAILED" in str(e):
+            return {"status": False, "message": "Kein gültiges Zertifikat!"}
+        print(e)
+        return {"status": False, "message": "Unbekannter Fehler!"}
+    except LDAPBindError as e:
+        if "invalidCredentials" in str(e):
+            return {"status": False, "message": "LDAP Zugangsdaten falsch!"}
+        print(e)
+        return {"status": False, "message": "Unbekannter Fehler!"}
+    except Exception as e:
+        print(e)
+        return {"status": False, "message": "Unbekannter Fehler!"}
+
+
+@api.post("/set-admin-group")
+def setAdminGroup(req: AdminGroupRequest, data: Data = Depends(getData)):
+    data.DATA_INITIAL_ADMIN_GROUP = req.admin_group
+    return {"status": True, "message": "Admin-Gruppe gespeichert"}
+
+
+@api.get("/proxy-check")
+def proxyCheck(request: Request):
+    return {"proxyDetected": request.headers.get("x-forwarded-for") is not None}
+
+
+@api.post("/create-ss-certificate")
 def createSSCertificate(ssdata: SSCertificate, data: Data = Depends(getData)):
     keyfile = "/edulution-ui/data/traefik/ssl/cert.key"
     certfile = "/edulution-ui/data/traefik/ssl/cert.cert"
@@ -305,10 +311,8 @@ def createSSCertificate(ssdata: SSCertificate, data: Data = Depends(getData)):
         return {"status": False, "message": "Unbekannter Fehler!"}
 
 
-@app.post("/create-le-certificate")
+@api.post("/create-le-certificate")
 def createLECertificate(ledata: LECertificate, data: Data = Depends(getData)):
-    # Traefik wird jetzt Let's Encrypt selbst verwalten
-    # Wir speichern nur die E-Mail für die Konfiguration
     data.DATA_LE_USED = True
     data.DATA_LE_EMAIL = ledata.email
     return {
@@ -317,8 +321,8 @@ def createLECertificate(ledata: LECertificate, data: Data = Depends(getData)):
     }
 
 
-@app.post("/upload-certificate")
-def uplaodCertificate(cert: UploadFile = File(...), key: UploadFile = File(...)):
+@api.post("/upload-certificate")
+def uploadCertificate(cert: UploadFile = File(...), key: UploadFile = File(...)):
     keyfile = "/edulution-ui/data/traefik/ssl/cert.key"
     certfile = "/edulution-ui/data/traefik/ssl/cert.cert"
 
@@ -336,130 +340,7 @@ def uplaodCertificate(cert: UploadFile = File(...), key: UploadFile = File(...))
         return {"status": False, "message": "Unbekannter Fehler!"}
 
 
-@app.post("/check-token")
-def checkToken(token: Token):
-    try:
-        data = base64.b64decode(token.token.encode("utf-8"))
-        data = json.loads(data.decode("utf-8"))
-        external_domain = data["external_domain"]
-        binduser_dn = data["binduser_dn"]
-        binduser_pw = data["binduser_password"]
-        return True
-    except Exception as e:
-        return False
-
-
-@app.get("/check-api-status")
-def checkAPIStatus(data: Data = Depends(getData)):
-    try:
-        result = requests.get(
-            "https://" + data.DATA_LMN_EXTERNAL_DOMAIN + ":8001",
-            verify=False,
-            timeout=3,
-        )
-        if result.status_code == 200:
-            return {"status": True, "message": "Successful"}
-        return {"status": False, "message": f"Got HTTP-Status {result.status_code}"}
-    except requests.exceptions.ConnectTimeout:
-        return {"status": False, "message": "Verbindungsfehler: Timeout!"}
-    except Exception as e:
-        print(e)
-        return {"status": False, "message": "Unbekannter Fehler!"}
-
-
-@app.get("/check-webdav-status")
-def checkWebDAV(data: Data = Depends(getData)):
-    try:
-        result = requests.get(
-            "https://" + data.DATA_LMN_EXTERNAL_DOMAIN + ":443", verify=False, timeout=3
-        )
-        if result.status_code == 200:
-            return {"status": True, "message": "Successful"}
-        return {"status": False, "message": f"Got HTTP-Status {result.status_code}"}
-    except requests.exceptions.ConnectTimeout:
-        return {"status": False, "message": "Verbindungsfehler: Timeout!"}
-    except Exception as e:
-        print(e)
-        return {"status": False, "message": "Unbekannter Fehler!"}
-
-
-@app.get("/check-ldap-status")
-def checkLDAP(data: Data = Depends(getData)):
-    try:
-        if data.DATA_LMN_LDAP_SCHEMA == "ldaps":
-            server = Server(
-                data.DATA_LMN_EXTERNAL_DOMAIN,
-                port=int(data.DATA_LMN_LDAP_PORT),
-                get_info=ALL,
-                connect_timeout=3,
-                use_ssl=True,
-                tls=Tls(validate=ssl.CERT_REQUIRED),
-            )
-        else:
-            server = Server(
-                data.DATA_LMN_EXTERNAL_DOMAIN,
-                port=int(data.DATA_LMN_LDAP_PORT),
-                get_info=ALL,
-                connect_timeout=3,
-            )
-        conn = Connection(server, auto_bind=True)
-        if conn.bind():
-            return {"status": True, "message": "Successful"}
-        return {"status": False, "message": "Keine Verbindung zum LDAP-Server!"}
-    except LDAPSocketOpenError as e:
-        if "CERTIFICATE_VERIFY_FAILED" in str(e):
-            return {"status": False, "message": "Kein gültiges Zertifikat!"}
-        print(e)
-        return {"status": False, "message": "Unbekannter Fehler!"}
-    except Exception as e:
-        print(e)
-        return {"status": False, "message": "Unbekannter Fehler!"}
-
-
-@app.get("/check-ldap-access-status")
-def checkLDAP(data: Data = Depends(getData)):
-    try:
-        if data.DATA_LMN_LDAP_SCHEMA == "ldaps":
-            server = Server(
-                data.DATA_LMN_EXTERNAL_DOMAIN,
-                port=int(data.DATA_LMN_LDAP_PORT),
-                get_info=ALL,
-                connect_timeout=3,
-                use_ssl=True,
-                tls=Tls(validate=ssl.CERT_REQUIRED),
-            )
-        else:
-            server = Server(
-                data.DATA_LMN_EXTERNAL_DOMAIN,
-                port=int(data.DATA_LMN_LDAP_PORT),
-                get_info=ALL,
-                connect_timeout=3,
-            )
-        conn = Connection(
-            server,
-            user=data.DATA_LMN_BINDUSER_DN,
-            password=data.DATA_LMN_BINDUSER_PW,
-            auto_bind=True,
-        )
-        if conn.bind():
-            return {"status": True, "message": "Successful"}
-        return {"status": False, "message": "Keine Verbindung zum LDAP-Server!"}
-    except LDAPSocketOpenError as e:
-        if "CERTIFICATE_VERIFY_FAILED" in str(e):
-            return {"status": False, "message": "Kein gültiges Zertifikat!"}
-        print(e)
-        return {"status": False, "message": "Unbekannter Fehler!"}
-    except LDAPBindError as e:
-        if "invalidCredentials" in str(e):
-            return {"status": False, "message": "LDAP Zugangsdaten falsch!"}
-        print(e)
-        return {"status": False, "message": "Unbekannter Fehler!"}
-    except Exception as e:
-        print(e)
-        return {"status": False, "message": "Unbekannter Fehler!"}
-
-
-@app.get("/finish")
+@api.post("/finish")
 def finish(background_tasks: BackgroundTasks, data: Data = Depends(getData)):
     if (
         data.DATA_LMN_EXTERNAL_DOMAIN is None
@@ -469,28 +350,32 @@ def finish(background_tasks: BackgroundTasks, data: Data = Depends(getData)):
         or data.DATA_LMN_LDAP_SCHEMA is None
         or data.DATA_EDULUTION_EXTERNAL_DOMAIN is None
     ):
-        return RedirectResponse("/")
+        return {"status": False, "message": "Konfiguration unvollständig"}
 
     background_tasks.add_task(createEdulutionEnvFile, data)
-
-    html_content = f"""
-        <h3>Konfiguration abgeschlossen</h3>
-        <h2><i class="fa-solid fa-spinner fa-spin"></i></h2>
-        <p>Die edulution UI wird nun installiert...</p>
-        <p>Sie werden automatisch weitergeleitet, wenn die Installation abgeschlossen ist.</p>
-        <script type="text/javascript">
-            waitforUI();
-        </script>
-    """
-    return HTMLResponse(
-        content=site.replace("##CONTENT##", html_content), status_code=200
-    )
+    return {"status": True, "message": "Installation gestartet"}
 
 
-@app.api_route("/{path_name:path}")
-def catch_all():
-    return RedirectResponse("/")
+# --- Register API Router ---
 
+app.include_router(api)
+
+
+# --- SPA Static File Serving ---
+
+if STATIC_PATH.exists():
+    app.mount("/assets", StaticFiles(directory=str(STATIC_PATH / "assets")), name="assets")
+    app.mount("/img", StaticFiles(directory=str(STATIC_PATH / "img")), name="img")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        file_path = STATIC_PATH / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(STATIC_PATH / "index.html"))
+
+
+# --- Helper Functions ---
 
 def generateSecret(length=32):
     characters = string.ascii_letters + string.digits
@@ -573,7 +458,7 @@ def createEdulutionEnvFile(data: Data):
     json.dump(realm_file, open("/edulution-ui/realm-edulution.json", "w"))
 
     environment_file = f"""EDULUTION_BASE_DOMAIN={data.DATA_EDULUTION_EXTERNAL_DOMAIN}
-    
+
 # edulution-api
 
 EDUI_DEPLOYMENT_TARGET={data.DATA_DEPLOYMENT_TARGET}
@@ -688,12 +573,9 @@ http:
 
     # Docker-compose für Let's Encrypt anpassen falls nötig
     if not data.DATA_PROXY_USED and data.DATA_LE_USED:
-        # docker-compose.yml anpassen um letsencrypt volume hinzuzufügen
         with open("/edulution-ui/docker-compose.yml", "r") as f:
             compose_content = f.read()
 
-        # Füge letsencrypt volume zu edu-traefik hinzu
-        # Suche nach den volumes von edu-traefik und füge die Zeile hinzu
         compose_content = compose_content.replace(
             "      - ./data/traefik/ssl:/etc/traefik/ssl\n    healthcheck:",
             "      - ./data/traefik/ssl:/etc/traefik/ssl\n      - ./data/letsencrypt:/letsencrypt\n    healthcheck:",
@@ -704,9 +586,6 @@ http:
 
     # Traefik-Konfiguration basierend auf Proxy und Let's Encrypt anpassen
     if not data.DATA_PROXY_USED and data.DATA_LE_USED:
-        # Let's Encrypt wird von Traefik verwaltet
-        # Traefik.yml muss VOR docker-compose angepasst werden
-        # Daher schreiben wir eine separate Datei
         traefik_le_config = f"""
 entryPoints:
   web:
@@ -743,7 +622,6 @@ certificatesResolvers:
         with open("/edulution-ui/traefik.yml", "w") as f:
             f.write(traefik_le_config)
 
-        # edulution-default.yml anpassen für Let's Encrypt
         le_config = f"""
 http:
   routers:
@@ -792,7 +670,6 @@ http:
         with open("/edulution-ui/data/traefik/config/edulution-default.yml", "w") as f:
             f.write(le_config)
 
-        # acme.json mit korrekten Berechtigungen erstellen
         os.makedirs("/edulution-ui/data/letsencrypt", exist_ok=True)
         acme_json_path = "/edulution-ui/data/letsencrypt/acme.json"
         with open(acme_json_path, "w") as f:
@@ -802,7 +679,6 @@ http:
     elif os.path.exists("/edulution-ui/data/traefik/ssl/cert.cert") and os.path.exists(
         "/edulution-ui/data/traefik/ssl/cert.key"
     ):
-        # Selbst-signiertes oder hochgeladenes Zertifikat
         cert_traefik = f"""
 tls:
   stores:
