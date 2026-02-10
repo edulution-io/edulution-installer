@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { Button } from '@edulution-io/ui-kit';
-import { Card, CardContent } from '@shared-ui';
+import { Card, CardContent, Input } from '@shared-ui';
 
 const INSTALL_COMMAND = 'bash <(curl -s https://get.edulution.io/installer)';
 
@@ -29,10 +29,7 @@ const App = () => {
 
   return (
     <div className="page-wrapper">
-      <Card
-        variant="modal"
-        className="static translate-x-0 translate-y-0 left-auto top-auto bg-white overflow-y-auto p-10"
-      >
+      <Card variant="modal">
         <CardContent className="flex flex-col items-center gap-6 p-0">
           <a
             href="https://edulution.io"
@@ -47,17 +44,18 @@ const App = () => {
           </a>
 
           <div className="w-full">
-            <h2 className="text-center text-lg font-semibold text-[#2d3748] mb-4">Quick Install</h2>
+            <h2 className="text-center text-lg font-semibold text-background mb-4">Quick Install</h2>
 
             <div className="mb-5">
-              <input
+              <Input
                 ref={inputRef}
                 type="text"
+                variant="login"
                 value={INSTALL_COMMAND}
                 readOnly
                 onClick={handleInputClick}
                 aria-label="Installation command"
-                className="link-field"
+                className="font-mono text-sm shadow-md"
               />
             </div>
 
