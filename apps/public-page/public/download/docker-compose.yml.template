@@ -1,0 +1,156 @@
+services:
+  edu-ui:
+    container_name: edulution-ui
+    image: ghcr.io/edulution-io/edulution-ui
+    restart: always
+    depends_on:
+      - edu-api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-k", "-I", "http://localhost:80"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  edu-api:
+    container_name: edulution-api
+    image: ghcr.io/edulution-io/edulution-api
+    restart: always
+    env_file:
+      - edulution.env
+    environment:
+      EDUI_PORT: 3000
+      EDUI_CORS_URL: '*'
+      # optional: error, warn, log, debug, verbose, default log
+      #EDUI_LOG_LEVEL:
+      # optional: for health check disk space between 0 and 1 (0 and 100%), default: 0.95
+      #EDUI_DISK_SPACE_THRESHOLD:
+      # optional: Timeout for IMAP fetch in ms, default 5000
+      #EDUI_MAIL_IMAP_TIMEOUT:
+      # Cache TTL for storing oidc config request in redis in ms, default 1h
+      #EDUI_OIDC_CONFIG_CACHE_TTL=
+      KEYCLOAK_API: http://edu-keycloak:8080/auth
+      KEYCLOAK_EDU_UI_REALM: edulution
+      KEYCLOAK_EDU_UI_CLIENT_ID: edu-ui
+      KEYCLOAK_EDU_API_CLIENT_ID: edu-api
+      REDIS_HOST: edu-redis
+      REDIS_PORT: 6379
+      MONGODB_DATABASE_NAME: edulution
+    depends_on:
+      - edu-keycloak
+      - edu-db
+      - edu-redis
+    volumes:
+      - ./data:/opt/edulution/api/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /srv/docker/edulution-mail/mailcow/data/conf/sogo:/data/apps/mail/sogo/overrides:rw
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/edu-api/health/check', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  edu-db:
+    container_name: edulution-db
+    image: mongo:7
+    restart: always
+    env_file:
+      - edulution.env
+    volumes:
+      - ./data/db:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      timeout: 1s
+      retries: 3
+      start_period: 10s
+
+  edu-redis:
+    container_name: edulution-redis
+    image: redis:8.2
+    restart: always
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 5s
+      timeout: 1s
+      retries: 3
+      start_period: 10s
+    command: >
+      redis-server
+        --save ""
+        --appendonly no
+        --io-threads 2
+        --io-threads-do-reads yes
+
+  edu-traefik:
+    image: traefik:v3.1
+    container_name: edulution-traefik
+    restart: always
+    ports:
+      - 80:80
+      - 443:443
+    env_file:
+      - edulution.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/etc/traefik/traefik.yml
+      - ./data/traefik/config:/etc/traefik/dynamic
+      - ./data/traefik/ssl:/etc/traefik/ssl
+      - ./data/letsencrypt:/letsencrypt
+    healthcheck:
+      test: [ "CMD", "traefik", "healthcheck", "--ping" ]
+      interval: 5s
+      timeout: 1s
+      retries: 3
+      start_period: 10s
+    
+  edu-keycloak:
+    image: quay.io/keycloak/keycloak:26.4
+    container_name: edulution-keycloak
+    restart: always
+    command:
+      [
+        'start',
+        '--proxy-headers=xforwarded',
+        '--http-enabled=true',
+        '--hostname-strict=false'
+      ]
+    env_file:
+      - edulution.env
+    environment:
+      KC_DB_URL: jdbc:postgresql://edu-keycloak-db/keycloak
+      KC_DB: postgres
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_SCHEMA: public
+      KC_HOSTNAME_STRICT: false
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_HEALTH_ENABLED: true
+    depends_on:
+      - edu-keycloak-db
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/9000"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+  edu-keycloak-db:
+    image: postgres:16
+    container_name: edulution-keycloak-db
+    restart: always
+    env_file:
+      - edulution.env
+    environment:
+      POSTGRES_DB: keycloak
+    volumes:
+      - ./data/keycloak/db:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-d", "keycloak", "-U", "keycloak" ]
+      interval: 5s
+      timeout: 1s
+      retries: 3
+      start_period: 10s
