@@ -6,7 +6,6 @@ services:
     volumes:
       - ./data:/edulution-ui
       - ./edulution-webinstaller/app:/app
-      - ./dist/apps/webinstaller:/app/static
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - 443:8000
