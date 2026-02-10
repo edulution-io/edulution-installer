@@ -1,13 +1,25 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { resolve } from 'path';
 
 export default defineConfig({
   root: __dirname,
   cacheDir: '../../node_modules/.vite/apps/webinstaller',
 
-  plugins: [react(), nxViteTsPaths()],
+  plugins: [
+    react(),
+    nxViteTsPaths(),
+    viteStaticCopy({
+      targets: [
+        {
+          src: resolve(__dirname, '../../assets/img/*'),
+          dest: 'img',
+        },
+      ],
+    }),
+  ],
 
   resolve: {
     alias: {
