@@ -1,7 +1,10 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
 
-RUN apt-get update && apt-get install -y curl openssl certbot
-RUN curl -sSL https://get.docker.com/ | CHANNEL=stable sh
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl openssl certbot && \
+    curl -sSL https://get.docker.com/ | CHANNEL=stable sh && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -11,10 +14,6 @@ RUN pip install --no-cache-dir --upgrade \
 
 COPY edulution-webinstaller/app /app
 COPY edulution-webinstaller/startup.sh /startup.sh
-
-RUN mkdir -p /app/css
-COPY public/css/style.css /app/css/style.css
-
 RUN chmod +x /startup.sh
 
 EXPOSE 8000 8080
