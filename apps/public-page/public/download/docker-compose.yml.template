@@ -25,8 +25,6 @@ services:
       #EDUI_LOG_LEVEL:
       # optional: for health check disk space between 0 and 1 (0 and 100%), default: 0.95
       #EDUI_DISK_SPACE_THRESHOLD:
-      # optional: Initial admin group to manage edulution
-      #EDUI_INITIAL_ADMIN_GROUP:
       # optional: Timeout for IMAP fetch in ms, default 5000
       #EDUI_MAIL_IMAP_TIMEOUT:
       # Cache TTL for storing oidc config request in redis in ms, default 1h
@@ -70,14 +68,23 @@ services:
 
   edu-redis:
     container_name: edulution-redis
-    image: redis:7.2
+    image: redis:8.2
     restart: always
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test:
+        - CMD
+        - redis-cli
+        - ping
       interval: 5s
       timeout: 1s
       retries: 3
       start_period: 10s
+    command: >
+      redis-server
+        --save ""
+        --appendonly no
+        --io-threads 2
+        --io-threads-do-reads yes
 
   edu-traefik:
     image: traefik:v3.1
