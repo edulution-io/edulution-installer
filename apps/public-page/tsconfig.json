@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true
+  },
+  "references": [
+    { "path": "./tsconfig.app.json" }
+  ],
+  "exclude": ["postcss.config.mjs", "tailwind.config.ts", "vite.config.ts"]
+}
