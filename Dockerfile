@@ -8,13 +8,12 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir --upgrade \
-    fastapi uvicorn[standard] cryptography python-multipart \
-    requests ldap3 pyyaml
+COPY apps/webinstaller-api/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --upgrade -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
-COPY edulution-webinstaller/app /app
+COPY apps/webinstaller-api/app /app
 COPY dist/apps/webinstaller /app/static
-COPY edulution-webinstaller/startup.sh /startup.sh
+COPY apps/webinstaller-api/startup.sh /startup.sh
 RUN chmod +x /startup.sh
 
 EXPOSE 8000 8080

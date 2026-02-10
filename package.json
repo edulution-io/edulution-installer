@@ -8,6 +8,7 @@
     "build:public": "nx build public-page",
     "dev:webinstaller": "nx serve webinstaller",
     "build:webinstaller": "nx build webinstaller",
+    "dev:webinstaller-api": "nx serve webinstaller-api",
     "lint": "nx run-many --target=lint"
   },
   "dependencies": {
