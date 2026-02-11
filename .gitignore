@@ -1,6 +1,12 @@
 # Custom
 data/
 
+# Node / NX
+node_modules/
+dist/
+.nx/
+.vite/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
