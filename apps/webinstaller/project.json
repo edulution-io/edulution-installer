@@ -1,0 +1,47 @@
+{
+  "name": "webinstaller",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/webinstaller/src",
+  "projectType": "application",
+  "tags": [],
+  "targets": {
+    "build": {
+      "executor": "@nx/vite:build",
+      "defaultConfiguration": "production",
+      "cache": true,
+      "options": {
+        "outputPath": "dist/apps/webinstaller",
+        "configFile": "apps/webinstaller/vite.config.ts"
+      },
+      "configurations": {
+        "development": {
+          "mode": "development"
+        },
+        "production": {
+          "mode": "production"
+        }
+      }
+    },
+    "serve": {
+      "executor": "@nx/vite:dev-server",
+      "defaultConfiguration": "development",
+      "options": {
+        "buildTarget": "webinstaller:build",
+        "hmr": true
+      },
+      "configurations": {
+        "development": {
+          "buildTarget": "webinstaller:build:development"
+        },
+        "production": {
+          "buildTarget": "webinstaller:build:production",
+          "hmr": false
+        }
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "cache": true
+    }
+  }
+}
