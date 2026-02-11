@@ -5,3 +5,6 @@ python-multipart
 requests
 ldap3
 pyyaml
+paramiko
+httpx
+websockets

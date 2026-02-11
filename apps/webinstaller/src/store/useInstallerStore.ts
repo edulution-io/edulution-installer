@@ -7,6 +7,8 @@ interface CheckResult {
 
 type CheckKey = 'api' | 'webdav' | 'ldap' | 'ldapAccess';
 
+type LmnStatus = 'idle' | 'running' | 'completed' | 'failed';
+
 interface InstallerState {
   deploymentTarget: 'linuxmuster' | 'generic' | null;
   lmnExternalDomain: string;
@@ -19,6 +21,15 @@ interface InstallerState {
   initialAdminGroup: string;
   certificateConfigured: boolean;
   proxyDetected: boolean;
+
+  lmnSshHost: string;
+  lmnSshPort: number;
+  lmnSshUser: string;
+  lmnSshPassword: string;
+  lmnBootstrapStatus: LmnStatus;
+  lmnPlaybookStatus: LmnStatus;
+  lmnOutputLog: string[];
+  lmnRequirementsPassed: boolean;
 
   setDeploymentTarget: (target: 'linuxmuster' | 'generic') => void;
   setTokenData: (data: { lmnExternalDomain: string; lmnBinduserDn: string; lmnBinduserPw: string }) => void;
@@ -35,6 +46,12 @@ interface InstallerState {
   setInitialAdminGroup: (group: string) => void;
   setCertificateConfigured: (value: boolean) => void;
   setProxyDetected: (value: boolean) => void;
+  setLmnSsh: (ssh: { host: string; port: number; user: string; password: string }) => void;
+  setLmnBootstrapStatus: (status: LmnStatus) => void;
+  setLmnPlaybookStatus: (status: LmnStatus) => void;
+  appendLmnOutput: (line: string) => void;
+  clearLmnOutput: () => void;
+  setLmnRequirementsPassed: (value: boolean) => void;
   reset: () => void;
 }
 
@@ -55,6 +72,14 @@ const initialState = {
   initialAdminGroup: '',
   certificateConfigured: false,
   proxyDetected: false,
+  lmnSshHost: '',
+  lmnSshPort: 22,
+  lmnSshUser: 'root',
+  lmnSshPassword: '',
+  lmnBootstrapStatus: 'idle' as LmnStatus,
+  lmnPlaybookStatus: 'idle' as LmnStatus,
+  lmnOutputLog: [] as string[],
+  lmnRequirementsPassed: false,
 };
 
 const useInstallerStore = create<InstallerState>((set) => ({
@@ -86,6 +111,25 @@ const useInstallerStore = create<InstallerState>((set) => ({
   setCertificateConfigured: (value) => set({ certificateConfigured: value }),
 
   setProxyDetected: (value) => set({ proxyDetected: value }),
+
+  setLmnSsh: (ssh) =>
+    set({
+      lmnSshHost: ssh.host,
+      lmnSshPort: ssh.port,
+      lmnSshUser: ssh.user,
+      lmnSshPassword: ssh.password,
+    }),
+
+  setLmnBootstrapStatus: (status) => set({ lmnBootstrapStatus: status }),
+
+  setLmnPlaybookStatus: (status) => set({ lmnPlaybookStatus: status }),
+
+  appendLmnOutput: (line) =>
+    set((state) => ({ lmnOutputLog: [...state.lmnOutputLog, line] })),
+
+  clearLmnOutput: () => set({ lmnOutputLog: [] }),
+
+  setLmnRequirementsPassed: (value) => set({ lmnRequirementsPassed: value }),
 
   reset: () => set(initialState),
 }));

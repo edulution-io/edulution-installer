@@ -89,3 +89,114 @@ export const startInstallation = (): Promise<StatusResponse> =>
 
 export const checkProxy = (): Promise<{ proxyDetected: boolean }> =>
   apiFetch<{ proxyDetected: boolean }>('/api/proxy-check');
+
+// --- LMN Installer API ---
+
+interface SSHConnection {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+}
+
+interface RequirementCheck {
+  name: string;
+  status: 'passed' | 'failed' | 'skipped';
+  required: string | null;
+  actual: string | null;
+  message: string;
+}
+
+interface DiskInfo {
+  name: string;
+  size_gb: number;
+}
+
+interface SystemInfo {
+  os: string | null;
+  os_version: string | null;
+  ram_gb: number | null;
+  disks: DiskInfo[];
+}
+
+export interface RequirementsResponse {
+  playbook: string;
+  all_passed: boolean;
+  checks: RequirementCheck[];
+  system_info: SystemInfo;
+}
+
+interface PlaybookStartResponse {
+  job_id: string;
+  status: string;
+  message: string;
+}
+
+export const bootstrapLmnServer = async (
+  ssh: SSHConnection,
+  onMessage: (line: string) => void,
+  onDone: () => void,
+  onError: (error: string) => void,
+): Promise<void> => {
+  const response = await fetch('/api/lmn/bootstrap', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(ssh),
+  });
+
+  if (!response.ok || !response.body) {
+    onError('Verbindung zum Server fehlgeschlagen');
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        onMessage(line.slice(6));
+      } else if (line.startsWith('event: done')) {
+        onDone();
+        return;
+      } else if (line.startsWith('event: error')) {
+        onError('Bootstrap fehlgeschlagen');
+        return;
+      }
+    }
+  }
+
+  onError('Verbindung unerwartet beendet');
+};
+
+export const getLmnHealth = (): Promise<StatusResponse> =>
+  apiFetch<StatusResponse>('/api/lmn/health');
+
+export const checkLmnRequirements = (playbook: string): Promise<RequirementsResponse> =>
+  apiFetch<RequirementsResponse>(`/api/lmn/playbook/${playbook}/requirements`);
+
+export const startLmnPlaybook = (
+  playbook: string,
+  extraVars: Record<string, unknown> = {},
+): Promise<PlaybookStartResponse> =>
+  apiFetch<PlaybookStartResponse>(`/api/lmn/playbook/${playbook}/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ variables: { extra_vars: extraVars } }),
+  });
+
+export const createLmnWebSocket = (): WebSocket => {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return new WebSocket(`${protocol}//${window.location.host}/ws/lmn/output`);
+};
+
+export const shutdownInstaller = (): Promise<StatusResponse> =>
+  apiFetch<StatusResponse>('/api/shutdown', { method: 'POST' });

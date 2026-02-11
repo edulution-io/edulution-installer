@@ -7,7 +7,8 @@ import CertificateForm from '../components/CertificateForm';
 
 const CertificatePage = () => {
   const navigate = useNavigate();
-  const { certificateConfigured, proxyDetected, setProxyDetected } = useInstallerStore();
+  const { certificateConfigured, proxyDetected, setProxyDetected, deploymentTarget } = useInstallerStore();
+  const nextPage = deploymentTarget === 'linuxmuster' ? '/lmn-setup' : '/finish';
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -43,7 +44,7 @@ const CertificatePage = () => {
           variant="btn-security"
           size="lg"
           className="w-full justify-center text-white"
-          onClick={() => navigate('/finish')}
+          onClick={() => navigate(nextPage)}
         >
           Installation starten
         </Button>
@@ -61,7 +62,7 @@ const CertificatePage = () => {
         variant="btn-security"
         size="lg"
         className="mt-2 w-full justify-center text-white"
-        onClick={() => navigate('/finish')}
+        onClick={() => navigate(nextPage)}
         disabled={!certificateConfigured}
       >
         Installation starten

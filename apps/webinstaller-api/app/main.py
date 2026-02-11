@@ -9,16 +9,21 @@ import secrets
 import string
 import ssl
 import shutil
+import asyncio
+import threading
 import urllib3
 
 # Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-from fastapi import FastAPI, BackgroundTasks, Depends, Request, File, UploadFile, APIRouter
+from fastapi import FastAPI, BackgroundTasks, Depends, Request, File, UploadFile, APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+import paramiko
+import httpx
 
 from ldap3 import Server, Connection, ALL, Tls
 from ldap3.core.exceptions import LDAPSocketOpenError, LDAPBindError
@@ -69,6 +74,13 @@ class AdminGroupRequest(BaseModel):
     admin_group: str
 
 
+class SSHConnection(BaseModel):
+    host: str
+    port: int = 22
+    user: str = "root"
+    password: str
+
+
 # --- Data Store ---
 
 class Data:
@@ -84,6 +96,7 @@ class Data:
         self.DATA_PROXY_USED = False
         self.DATA_DEPLOYMENT_TARGET = None
         self.DATA_INITIAL_ADMIN_GROUP = None
+        self.DATA_LMN_TARGET_HOST = None
 
 
 data = Data()
@@ -356,9 +369,182 @@ def finish(background_tasks: BackgroundTasks, data: Data = Depends(getData)):
     return {"status": True, "message": "Installation gestartet"}
 
 
+@api.post("/shutdown")
+def shutdown():
+    def delayed_shutdown():
+        time.sleep(2)
+        os.kill(os.getpid(), signal.SIGTERM)
+    threading.Thread(target=delayed_shutdown, daemon=True).start()
+    return {"status": True, "message": "Server wird heruntergefahren"}
+
+
+# --- LMN Bootstrap & Proxy ---
+
+BOOTSTRAP_BRANCH = os.environ.get("BOOTSTRAP_BRANCH", "main")
+BOOTSTRAP_URL = f"https://raw.githubusercontent.com/edulution-io/edulution-installer/{BOOTSTRAP_BRANCH}/edulution-lmninstaller/bootstrap.sh"
+
+
+@api.post("/lmn/bootstrap")
+async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
+    def stream_bootstrap():
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            yield f"data: Verbinde mit {ssh.host}:{ssh.port}...\n\n"
+            client.connect(
+                hostname=ssh.host,
+                port=ssh.port,
+                username=ssh.user,
+                password=ssh.password,
+                timeout=10,
+            )
+            yield "data: Verbindung hergestellt. Starte Bootstrap...\n\n"
+
+            # If not root, use sudo -S to read password from stdin
+            bootstrap_cmd = f"curl -fsSL {BOOTSTRAP_URL} | GITHUB_BRANCH={BOOTSTRAP_BRANCH} bash"
+            if ssh.user != "root":
+                command = f"sudo -S GITHUB_BRANCH={BOOTSTRAP_BRANCH} bash -c '{bootstrap_cmd}'"
+                yield "data: Nicht als root verbunden, verwende sudo...\n\n"
+            else:
+                command = bootstrap_cmd
+
+            stdin, stdout, stderr = client.exec_command(command, get_pty=True)
+
+            # If using sudo, send the password when prompted
+            if ssh.user != "root":
+                time.sleep(1)
+                stdin.write(ssh.password + "\n")
+                stdin.flush()
+
+            for line in stdout:
+                line_stripped = line.rstrip()
+                # Filter out the sudo password prompt from output
+                if "[sudo]" in line_stripped and "password" in line_stripped:
+                    continue
+                yield f"data: {line_stripped}\n\n"
+
+            exit_status = stdout.channel.recv_exit_status()
+
+            if exit_status != 0:
+                for line in stderr:
+                    yield f"data: [STDERR] {line.rstrip()}\n\n"
+                yield f"data: [ERROR] Bootstrap fehlgeschlagen (Exit-Code: {exit_status})\n\n"
+                yield "event: error\ndata: Bootstrap fehlgeschlagen\n\n"
+                return
+
+            # Wait for target API to become available
+            yield "data: Warte auf LMN-Installer API...\n\n"
+            for attempt in range(30):
+                try:
+                    resp = requests.get(f"http://{ssh.host}:8000/api/health", timeout=3)
+                    if resp.status_code == 200:
+                        data.DATA_LMN_TARGET_HOST = ssh.host
+                        yield "data: LMN-Installer API ist bereit!\n\n"
+                        yield "event: done\ndata: Bootstrap erfolgreich\n\n"
+                        return
+                except Exception:
+                    pass
+                time.sleep(2)
+                yield f"data: Warte auf API... (Versuch {attempt + 1}/30)\n\n"
+
+            yield "data: [ERROR] API nicht erreichbar nach Bootstrap\n\n"
+            yield "event: error\ndata: API nicht erreichbar\n\n"
+
+        except paramiko.AuthenticationException:
+            yield "data: [ERROR] SSH-Authentifizierung fehlgeschlagen\n\n"
+            yield "event: error\ndata: SSH-Authentifizierung fehlgeschlagen\n\n"
+        except paramiko.SSHException as e:
+            yield f"data: [ERROR] SSH-Fehler: {e}\n\n"
+            yield f"event: error\ndata: SSH-Fehler: {e}\n\n"
+        except Exception as e:
+            yield f"data: [ERROR] Fehler: {e}\n\n"
+            yield f"event: error\ndata: {e}\n\n"
+        finally:
+            client.close()
+
+    return StreamingResponse(stream_bootstrap(), media_type="text/event-stream")
+
+
+@api.api_route("/lmn/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def lmn_proxy(path: str, request: Request, data: Data = Depends(getData)):
+    if not data.DATA_LMN_TARGET_HOST:
+        return JSONResponse(
+            status_code=503,
+            content={"status": False, "message": "LMN-Server nicht verbunden. Bootstrap zuerst ausfuehren."},
+        )
+
+    target_url = f"http://{data.DATA_LMN_TARGET_HOST}:8000/api/{path}"
+    body = await request.body()
+    headers = dict(request.headers)
+    headers.pop("host", None)
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        try:
+            response = await client.request(
+                method=request.method,
+                url=target_url,
+                content=body,
+                headers=headers,
+                params=dict(request.query_params),
+            )
+            return JSONResponse(
+                status_code=response.status_code,
+                content=response.json(),
+            )
+        except httpx.ConnectError:
+            return JSONResponse(
+                status_code=503,
+                content={"status": False, "message": "LMN-Server nicht erreichbar"},
+            )
+        except Exception as e:
+            return JSONResponse(
+                status_code=502,
+                content={"status": False, "message": f"Proxy-Fehler: {e}"},
+            )
+
+
 # --- Register API Router ---
 
 app.include_router(api)
+
+
+# --- WebSocket Proxy (registered on app, not api router) ---
+
+@app.websocket("/ws/lmn/{path:path}")
+async def lmn_ws_proxy(websocket: WebSocket, path: str):
+    if not data.DATA_LMN_TARGET_HOST:
+        await websocket.close(code=1008, reason="LMN-Server nicht verbunden")
+        return
+
+    await websocket.accept()
+    target_url = f"ws://{data.DATA_LMN_TARGET_HOST}:8000/ws/{path}"
+
+    try:
+        import websockets
+        async with websockets.connect(target_url) as target_ws:
+            async def forward_to_target():
+                try:
+                    while True:
+                        msg = await websocket.receive_text()
+                        await target_ws.send(msg)
+                except (WebSocketDisconnect, Exception):
+                    pass
+
+            async def forward_to_client():
+                try:
+                    async for msg in target_ws:
+                        await websocket.send_text(msg)
+                except (WebSocketDisconnect, Exception):
+                    pass
+
+            await asyncio.gather(forward_to_target(), forward_to_client())
+    except Exception:
+        pass
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
 # --- SPA Static File Serving ---
@@ -690,5 +876,4 @@ tls:
         with open("/edulution-ui/data/traefik/config/cert.yml", "w") as f:
             f.write(cert_traefik)
 
-    time.sleep(5)
-    os.kill(os.getpid(), signal.SIGTERM)
+    # Shutdown is now triggered explicitly via POST /api/shutdown
