@@ -14,6 +14,15 @@ const validatePassword = (pw: string): string[] => {
   return errors;
 };
 
+const isValidIp = (ip: string): boolean =>
+  /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(ip) &&
+  ip.split('.').every((octet) => Number(octet) <= 255);
+
+const ipInputClass = (value: string): string => {
+  if (!value) return '';
+  return isValidIp(value) ? 'valid-input' : 'invalid-input';
+};
+
 const TIMEZONES = ['Europe/Berlin', 'Europe/Vienna'];
 
 const LOCALES = ['de_DE.UTF-8', 'de_AT.UTF-8'];
@@ -41,9 +50,9 @@ const LmnConfigPage = () => {
   const pwMatch = adminpw === adminpwConfirm;
 
   const isValid =
-    serverIp.trim() !== '' &&
-    netmask.trim() !== '' &&
-    gateway.trim() !== '' &&
+    isValidIp(serverIp) &&
+    isValidIp(netmask) &&
+    isValidIp(gateway) &&
     servername.trim() !== '' &&
     domainname.trim() !== '' &&
     schoolname.trim() !== '' &&
@@ -92,6 +101,7 @@ const LmnConfigPage = () => {
             variant="login"
             value={serverIp}
             onChange={(e) => setServerIp(e.target.value)}
+            className={ipInputClass(serverIp)}
           />
         </div>
         <div>
@@ -106,6 +116,7 @@ const LmnConfigPage = () => {
             variant="login"
             value={netmask}
             onChange={(e) => setNetmask(e.target.value)}
+            className={ipInputClass(netmask)}
           />
         </div>
         <div>
@@ -120,6 +131,7 @@ const LmnConfigPage = () => {
             variant="login"
             value={gateway}
             onChange={(e) => setGateway(e.target.value)}
+            className={ipInputClass(gateway)}
           />
         </div>
       </div>
