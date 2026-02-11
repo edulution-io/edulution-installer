@@ -11,6 +11,8 @@ import ssl
 import shutil
 import asyncio
 import threading
+import socket
+import select
 import urllib3
 
 # Disable SSL warnings for self-signed certificates
@@ -81,6 +83,88 @@ class SSHConnection(BaseModel):
     password: str
 
 
+# --- SSH Tunnel ---
+
+class SSHTunnel:
+    """Forwards a local port through SSH to a remote host:port."""
+
+    def __init__(self, ssh_client, remote_host="localhost", remote_port=8000):
+        self.transport = ssh_client.get_transport()
+        self.remote_host = remote_host
+        self.remote_port = remote_port
+        self.local_port = self._find_free_port()
+        self._server = None
+        self._thread = None
+        self._running = False
+
+    @staticmethod
+    def _find_free_port():
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            return s.getsockname()[1]
+
+    def start(self):
+        self._server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._server.bind(("127.0.0.1", self.local_port))
+        self._server.listen(10)
+        self._server.settimeout(1.0)
+        self._running = True
+        self._thread = threading.Thread(target=self._accept_loop, daemon=True)
+        self._thread.start()
+
+    def _accept_loop(self):
+        while self._running:
+            try:
+                client_sock, addr = self._server.accept()
+                try:
+                    channel = self.transport.open_channel(
+                        "direct-tcpip",
+                        (self.remote_host, self.remote_port),
+                        addr,
+                    )
+                except Exception:
+                    client_sock.close()
+                    continue
+                threading.Thread(
+                    target=self._bridge,
+                    args=(client_sock, channel),
+                    daemon=True,
+                ).start()
+            except socket.timeout:
+                continue
+            except Exception:
+                if self._running:
+                    continue
+                break
+
+    @staticmethod
+    def _bridge(sock, channel):
+        try:
+            while True:
+                r, _, _ = select.select([sock, channel], [], [], 1.0)
+                if sock in r:
+                    data = sock.recv(32768)
+                    if not data:
+                        break
+                    channel.sendall(data)
+                if channel in r:
+                    data = channel.recv(32768)
+                    if not data:
+                        break
+                    sock.sendall(data)
+        except Exception:
+            pass
+        finally:
+            sock.close()
+            channel.close()
+
+    def stop(self):
+        self._running = False
+        if self._server:
+            self._server.close()
+
+
 # --- Data Store ---
 
 class Data:
@@ -97,6 +181,8 @@ class Data:
         self.DATA_DEPLOYMENT_TARGET = None
         self.DATA_INITIAL_ADMIN_GROUP = None
         self.DATA_LMN_TARGET_HOST = None
+        self.DATA_LMN_SSH_CLIENT = None
+        self.DATA_LMN_SSH_TUNNEL = None
 
 
 data = Data()
@@ -370,8 +456,13 @@ def finish(background_tasks: BackgroundTasks, data: Data = Depends(getData)):
 
 
 @api.post("/shutdown")
-def shutdown():
+def shutdown(data: Data = Depends(getData)):
     def delayed_shutdown():
+        # Clean up SSH tunnel and client
+        if data.DATA_LMN_SSH_TUNNEL:
+            data.DATA_LMN_SSH_TUNNEL.stop()
+        if data.DATA_LMN_SSH_CLIENT:
+            data.DATA_LMN_SSH_CLIENT.close()
         time.sleep(2)
         os.kill(os.getpid(), signal.SIGTERM)
     threading.Thread(target=delayed_shutdown, daemon=True).start()
@@ -387,6 +478,14 @@ BOOTSTRAP_URL = f"https://raw.githubusercontent.com/edulution-io/edulution-insta
 @api.post("/lmn/bootstrap")
 async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
     def stream_bootstrap():
+        # Close any previous SSH tunnel/client
+        if data.DATA_LMN_SSH_TUNNEL:
+            data.DATA_LMN_SSH_TUNNEL.stop()
+            data.DATA_LMN_SSH_TUNNEL = None
+        if data.DATA_LMN_SSH_CLIENT:
+            data.DATA_LMN_SSH_CLIENT.close()
+            data.DATA_LMN_SSH_CLIENT = None
+
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
@@ -438,13 +537,21 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
                 yield "event: error\ndata: Bootstrap fehlgeschlagen\n\n"
                 return
 
-            # Wait for target API to become available
+            # Start SSH tunnel to forward local port -> target localhost:8000
+            yield "data: Starte SSH-Tunnel...\n\n"
+            tunnel = SSHTunnel(client, remote_host="localhost", remote_port=8000)
+            tunnel.start()
+
+            # Wait for target API to become available (through SSH tunnel)
             yield "data: Warte auf LMN-Installer API...\n\n"
+            tunnel_url = f"http://127.0.0.1:{tunnel.local_port}"
             for attempt in range(30):
                 try:
-                    resp = requests.get(f"http://{ssh.host}:8000/api/health", timeout=3)
+                    resp = requests.get(f"{tunnel_url}/api/health", timeout=3)
                     if resp.status_code == 200:
                         data.DATA_LMN_TARGET_HOST = ssh.host
+                        data.DATA_LMN_SSH_CLIENT = client
+                        data.DATA_LMN_SSH_TUNNEL = tunnel
                         yield "data: LMN-Installer API ist bereit!\n\n"
                         yield "event: done\ndata: Bootstrap erfolgreich\n\n"
                         return
@@ -453,6 +560,8 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
                 time.sleep(2)
                 yield f"data: Warte auf API... (Versuch {attempt + 1}/30)\n\n"
 
+            # Health check failed - clean up tunnel
+            tunnel.stop()
             yield "data: [ERROR] API nicht erreichbar nach Bootstrap\n\n"
             yield "event: error\ndata: API nicht erreichbar\n\n"
 
@@ -466,20 +575,23 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
             yield f"data: [ERROR] Fehler: {e}\n\n"
             yield f"event: error\ndata: {e}\n\n"
         finally:
-            client.close()
+            # Only close client if tunnel was NOT established (otherwise keep alive)
+            if not data.DATA_LMN_SSH_CLIENT:
+                client.close()
 
     return StreamingResponse(stream_bootstrap(), media_type="text/event-stream")
 
 
 @api.api_route("/lmn/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def lmn_proxy(path: str, request: Request, data: Data = Depends(getData)):
-    if not data.DATA_LMN_TARGET_HOST:
+    if not data.DATA_LMN_SSH_TUNNEL:
         return JSONResponse(
             status_code=503,
             content={"status": False, "message": "LMN-Server nicht verbunden. Bootstrap zuerst ausfuehren."},
         )
 
-    target_url = f"http://{data.DATA_LMN_TARGET_HOST}:8000/api/{path}"
+    tunnel_port = data.DATA_LMN_SSH_TUNNEL.local_port
+    target_url = f"http://127.0.0.1:{tunnel_port}/api/{path}"
     body = await request.body()
     headers = dict(request.headers)
     headers.pop("host", None)
@@ -518,12 +630,13 @@ app.include_router(api)
 
 @app.websocket("/ws/lmn/{path:path}")
 async def lmn_ws_proxy(websocket: WebSocket, path: str):
-    if not data.DATA_LMN_TARGET_HOST:
+    if not data.DATA_LMN_SSH_TUNNEL:
         await websocket.close(code=1008, reason="LMN-Server nicht verbunden")
         return
 
     await websocket.accept()
-    target_url = f"ws://{data.DATA_LMN_TARGET_HOST}:8000/ws/{path}"
+    tunnel_port = data.DATA_LMN_SSH_TUNNEL.local_port
+    target_url = f"ws://127.0.0.1:{tunnel_port}/ws/{path}"
 
     try:
         import websockets
