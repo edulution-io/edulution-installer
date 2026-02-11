@@ -62,7 +62,22 @@ const LmnInstallPage = () => {
 
     // Start the playbook
     try {
-      await startLmnPlaybook('linuxmuster.yml');
+      const currentStore = useInstallerStore.getState();
+      await startLmnPlaybook('linuxmuster.yml', {
+        lmn_server_ip: currentStore.lmnServerIp,
+        lmn_netmask: currentStore.lmnNetmask,
+        lmn_gateway: currentStore.lmnGateway,
+        lmn_servername: currentStore.lmnServername,
+        lmn_domainname: currentStore.lmnDomainname,
+        lmn_schoolname: currentStore.lmnSchoolname,
+        lmn_location: currentStore.lmnLocation,
+        lmn_country: currentStore.lmnCountry,
+        lmn_state: currentStore.lmnState,
+        lmn_dhcprange: currentStore.lmnDhcprange,
+        lmn_adminpw: currentStore.lmnAdminpw,
+        lmn_timezone: currentStore.lmnTimezone,
+        lmn_locale: currentStore.lmnLocale,
+      });
     } catch {
       store.appendLmnOutput('[ERROR] Playbook konnte nicht gestartet werden');
       store.setLmnPlaybookStatus('failed');

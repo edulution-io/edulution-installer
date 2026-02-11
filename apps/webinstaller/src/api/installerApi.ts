@@ -153,28 +153,37 @@ export const bootstrapLmnServer = async (
   const decoder = new TextDecoder();
   let buffer = '';
 
-  while (true) {
+  const processChunk = async (): Promise<void> => {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      onError('Verbindung unerwartet beendet');
+      return;
+    }
 
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
     buffer = lines.pop() ?? '';
 
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        onMessage(line.slice(6));
-      } else if (line.startsWith('event: done')) {
-        onDone();
-        return;
-      } else if (line.startsWith('event: error')) {
-        onError('Bootstrap fehlgeschlagen');
-        return;
-      }
+    if (lines.some((line) => line.startsWith('event: error'))) {
+      onError('Bootstrap fehlgeschlagen');
+      return;
     }
-  }
 
-  onError('Verbindung unerwartet beendet');
+    const isDone = lines.some((line) => line.startsWith('event: done'));
+
+    lines
+      .filter((line) => line.startsWith('data: '))
+      .forEach((line) => onMessage(line.slice(6)));
+
+    if (isDone) {
+      onDone();
+      return;
+    }
+
+    await processChunk();
+  };
+
+  await processChunk();
 };
 
 export const getLmnHealth = (): Promise<StatusResponse> =>

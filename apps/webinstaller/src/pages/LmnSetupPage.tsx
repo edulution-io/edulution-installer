@@ -249,7 +249,7 @@ const LmnSetupPage = () => {
           variant="btn-security"
           size="lg"
           className="mt-2 w-full justify-center text-white"
-          onClick={() => navigate('/lmn-install')}
+          onClick={() => navigate('/lmn-config')}
         >
           Installation starten
         </Button>

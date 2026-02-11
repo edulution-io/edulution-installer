@@ -40,6 +40,20 @@ interface InstallerState {
   lmnOutputLog: LogEntry[];
   lmnRequirementsPassed: boolean;
 
+  lmnServerIp: string;
+  lmnNetmask: string;
+  lmnGateway: string;
+  lmnServername: string;
+  lmnDomainname: string;
+  lmnSchoolname: string;
+  lmnLocation: string;
+  lmnCountry: string;
+  lmnState: string;
+  lmnDhcprange: string;
+  lmnAdminpw: string;
+  lmnTimezone: string;
+  lmnLocale: string;
+
   setOrganizationType: (type: OrganizationType) => void;
   setAdType: (type: AdType) => void;
   setDeploymentTarget: (target: 'linuxmuster' | 'generic') => void;
@@ -63,6 +77,21 @@ interface InstallerState {
   appendLmnOutput: (line: string) => void;
   clearLmnOutput: () => void;
   setLmnRequirementsPassed: (value: boolean) => void;
+  setLmnConfig: (config: {
+    lmnServerIp: string;
+    lmnNetmask: string;
+    lmnGateway: string;
+    lmnServername: string;
+    lmnDomainname: string;
+    lmnSchoolname: string;
+    lmnLocation: string;
+    lmnCountry: string;
+    lmnState: string;
+    lmnDhcprange: string;
+    lmnAdminpw: string;
+    lmnTimezone: string;
+    lmnLocale: string;
+  }) => void;
   reset: () => void;
 }
 
@@ -93,6 +122,19 @@ const initialState = {
   lmnPlaybookStatus: 'idle' as LmnStatus,
   lmnOutputLog: [] as LogEntry[],
   lmnRequirementsPassed: false,
+  lmnServerIp: '10.0.0.1',
+  lmnNetmask: '255.255.0.0',
+  lmnGateway: '10.0.0.254',
+  lmnServername: 'server',
+  lmnDomainname: 'linuxmuster.lan',
+  lmnSchoolname: 'Meine Schule',
+  lmnLocation: 'Musterstadt',
+  lmnCountry: 'de',
+  lmnState: 'BW',
+  lmnDhcprange: '10.0.100.1 10.0.100.254',
+  lmnAdminpw: '',
+  lmnTimezone: 'Europe/Berlin',
+  lmnLocale: 'de_DE.UTF-8',
 };
 
 let logIdCounter = 0;
@@ -156,6 +198,8 @@ const useInstallerStore = create<InstallerState>((set) => ({
   },
 
   setLmnRequirementsPassed: (value) => set({ lmnRequirementsPassed: value }),
+
+  setLmnConfig: (config) => set(config),
 
   reset: () => set(initialState),
 }));

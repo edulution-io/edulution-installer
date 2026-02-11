@@ -8,6 +8,7 @@ import CheckPage from './pages/CheckPage';
 import AdminGroupPage from './pages/AdminGroupPage';
 import CertificatePage from './pages/CertificatePage';
 import LmnSetupPage from './pages/LmnSetupPage';
+import LmnConfigPage from './pages/LmnConfigPage';
 import LmnInstallPage from './pages/LmnInstallPage';
 import FinishPage from './pages/FinishPage';
 
@@ -61,6 +62,10 @@ const App = () => (
           <Route
             path="/lmn-setup"
             element={<LmnSetupPage />}
+          />
+          <Route
+            path="/lmn-config"
+            element={<LmnConfigPage />}
           />
           <Route
             path="/lmn-install"
