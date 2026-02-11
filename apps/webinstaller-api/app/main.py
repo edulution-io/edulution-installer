@@ -400,10 +400,16 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
             )
             yield "data: Verbindung hergestellt. Starte Bootstrap...\n\n"
 
-            # If not root, use sudo -S to read password from stdin
-            bootstrap_cmd = f"curl -fsSL {BOOTSTRAP_URL} | GITHUB_BRANCH={BOOTSTRAP_BRANCH} bash"
+            # Download script to temp file first, then run with env var set
+            # (piping to bash loses env var assignments in some shell/PTY configurations)
+            bootstrap_cmd = (
+                f"tmpfile=$(mktemp) && "
+                f"curl -fsSL {BOOTSTRAP_URL} -o $tmpfile && "
+                f"GITHUB_BRANCH={BOOTSTRAP_BRANCH} bash $tmpfile; "
+                f"rm -f $tmpfile"
+            )
             if ssh.user != "root":
-                command = f"sudo -S GITHUB_BRANCH={BOOTSTRAP_BRANCH} bash -c '{bootstrap_cmd}'"
+                command = f"sudo -S bash -c 'export GITHUB_BRANCH={BOOTSTRAP_BRANCH} && tmpfile=$(mktemp) && curl -fsSL {BOOTSTRAP_URL} -o $tmpfile && bash $tmpfile; rm -f $tmpfile'"
                 yield "data: Nicht als root verbunden, verwende sudo...\n\n"
             else:
                 command = bootstrap_cmd
