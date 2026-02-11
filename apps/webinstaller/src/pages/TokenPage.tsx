@@ -4,14 +4,13 @@ import { Button } from '@edulution-io/ui-kit';
 import useInstallerStore from '../store/useInstallerStore';
 import { checkToken } from '../api/installerApi';
 
-type Step = 'organization' | 'adType' | 'deploymentTarget' | 'tokenEntry';
+type Step = 'adType' | 'deploymentTarget' | 'tokenEntry';
 
 const TokenPage = () => {
   const navigate = useNavigate();
   const store = useInstallerStore();
 
-  const [step, setStep] = useState<Step>('organization');
-  const [orgType, setOrgType] = useState<'schule' | 'unternehmen' | 'verwaltung'>(store.organizationType ?? 'schule');
+  const [step, setStep] = useState<Step>('adType');
   const [adType, setAdType] = useState<'existing' | 'new'>(store.adType ?? 'existing');
   const [target, setTarget] = useState<'linuxmuster' | 'generic'>(store.deploymentTarget ?? 'linuxmuster');
 
@@ -35,7 +34,6 @@ const TokenPage = () => {
   );
 
   const handleSubmitToken = useCallback(() => {
-    store.setOrganizationType(orgType);
     store.setAdType(adType);
     store.setDeploymentTarget(target);
     if (token) {
@@ -55,68 +53,22 @@ const TokenPage = () => {
       }
     }
     void navigate('/configure');
-  }, [orgType, adType, target, token, store, navigate]);
+  }, [adType, target, token, store, navigate]);
 
   const handleManualEntry = useCallback(() => {
-    store.setOrganizationType(orgType);
     store.setAdType(adType);
     store.setDeploymentTarget(target);
     store.setTokenData({ lmnExternalDomain: '', lmnBinduserDn: '', lmnBinduserPw: '' });
     void navigate('/configure');
-  }, [orgType, adType, target, store, navigate]);
+  }, [adType, target, store, navigate]);
 
   const handleNewAd = useCallback(() => {
-    store.setOrganizationType(orgType);
     store.setAdType('new');
     store.setDeploymentTarget('linuxmuster');
     void navigate('/lmn-setup');
-  }, [orgType, store, navigate]);
+  }, [store, navigate]);
 
-  // Step 1: Organization type
-  if (step === 'organization') {
-    return (
-      <div className="flex flex-col gap-4">
-        <div>
-          <label
-            htmlFor="orgType"
-            className="mb-1 block text-sm font-bold text-gray-800"
-          >
-            Für wen ist die Installation?
-          </label>
-          <select
-            id="orgType"
-            value={orgType}
-            onChange={(e) => setOrgType(e.target.value as typeof orgType)}
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm"
-          >
-            <option value="schule">Schule</option>
-            <option value="unternehmen">Unternehmen</option>
-            <option value="verwaltung">Verwaltung</option>
-          </select>
-        </div>
-
-        <Button
-          variant="btn-security"
-          size="lg"
-          className="mt-2 w-full justify-center text-white"
-          onClick={() => setStep('adType')}
-        >
-          Weiter
-        </Button>
-
-        <Button
-          variant="btn-outline"
-          size="lg"
-          className="w-full justify-center"
-          onClick={() => navigate('/')}
-        >
-          Zurück
-        </Button>
-      </div>
-    );
-  }
-
-  // Step 2: AD type
+  // Step 1: AD type
   if (step === 'adType') {
     return (
       <div className="flex flex-col gap-4">
@@ -157,7 +109,7 @@ const TokenPage = () => {
           variant="btn-outline"
           size="lg"
           className="w-full justify-center"
-          onClick={() => setStep('organization')}
+          onClick={() => navigate('/organization')}
         >
           Zurück
         </Button>
@@ -165,7 +117,7 @@ const TokenPage = () => {
     );
   }
 
-  // Step 3: Deployment target (only for existing AD)
+  // Step 2: Deployment target (only for existing AD)
   if (step === 'deploymentTarget') {
     return (
       <div className="flex flex-col gap-4">
@@ -214,7 +166,7 @@ const TokenPage = () => {
     );
   }
 
-  // Step 4: Token entry (only for existing AD + Linuxmuster)
+  // Step 3: Token entry (only for existing AD + Linuxmuster)
   return (
     <div className="flex flex-col gap-4">
       <div>

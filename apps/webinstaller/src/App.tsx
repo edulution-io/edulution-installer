@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Card, CardContent } from '@shared-ui';
 import StartPage from './pages/StartPage';
+import OrganizationPage from './pages/OrganizationPage';
 import TokenPage from './pages/TokenPage';
 import ConfigurePage from './pages/ConfigurePage';
 import CheckPage from './pages/CheckPage';
@@ -32,6 +33,10 @@ const App = () => (
           <Route
             path="/"
             element={<StartPage />}
+          />
+          <Route
+            path="/organization"
+            element={<OrganizationPage />}
           />
           <Route
             path="/token"
