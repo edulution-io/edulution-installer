@@ -14,6 +14,10 @@ const validatePassword = (pw: string): string[] => {
   return errors;
 };
 
+const TIMEZONES = ['Europe/Berlin', 'Europe/Vienna'];
+
+const LOCALES = ['de_DE.UTF-8', 'de_AT.UTF-8'];
+
 const LmnConfigPage = () => {
   const navigate = useNavigate();
   const store = useInstallerStore();
@@ -88,7 +92,6 @@ const LmnConfigPage = () => {
             variant="login"
             value={serverIp}
             onChange={(e) => setServerIp(e.target.value)}
-            className={serverIp.trim() ? 'valid-input' : ''}
           />
         </div>
         <div>
@@ -103,7 +106,6 @@ const LmnConfigPage = () => {
             variant="login"
             value={netmask}
             onChange={(e) => setNetmask(e.target.value)}
-            className={netmask.trim() ? 'valid-input' : ''}
           />
         </div>
         <div>
@@ -118,7 +120,6 @@ const LmnConfigPage = () => {
             variant="login"
             value={gateway}
             onChange={(e) => setGateway(e.target.value)}
-            className={gateway.trim() ? 'valid-input' : ''}
           />
         </div>
       </div>
@@ -138,7 +139,6 @@ const LmnConfigPage = () => {
             variant="login"
             value={servername}
             onChange={(e) => setServername(e.target.value)}
-            className={servername.trim() ? 'valid-input' : ''}
           />
         </div>
         <div>
@@ -153,7 +153,6 @@ const LmnConfigPage = () => {
             variant="login"
             value={domainname}
             onChange={(e) => setDomainname(e.target.value)}
-            className={domainname.trim() ? 'valid-input' : ''}
           />
         </div>
       </div>
@@ -172,7 +171,6 @@ const LmnConfigPage = () => {
           variant="login"
           value={schoolname}
           onChange={(e) => setSchoolname(e.target.value)}
-          className={schoolname.trim() ? 'valid-input' : ''}
         />
       </div>
       <div className="grid grid-cols-3 gap-3">
@@ -234,7 +232,6 @@ const LmnConfigPage = () => {
           variant="login"
           value={dhcprange}
           onChange={(e) => setDhcprange(e.target.value)}
-          className={dhcprange.trim() ? 'valid-input' : ''}
         />
         <p className="mt-1 text-xs text-gray-500">Format: START-IP END-IP</p>
       </div>
@@ -254,7 +251,6 @@ const LmnConfigPage = () => {
           type="password"
           value={adminpw}
           onChange={(e) => setAdminpw(e.target.value)}
-          className={adminpw && pwErrors.length === 0 ? 'valid-input' : ''}
         />
       </div>
       <div>
@@ -292,12 +288,21 @@ const LmnConfigPage = () => {
           >
             Zeitzone:
           </label>
-          <Input
+          <select
             id="lmn_timezone"
-            variant="login"
             value={timezone}
             onChange={(e) => setTimezone(e.target.value)}
-          />
+            className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm"
+          >
+            {TIMEZONES.map((tz) => (
+              <option
+                key={tz}
+                value={tz}
+              >
+                {tz}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label
@@ -306,12 +311,21 @@ const LmnConfigPage = () => {
           >
             Locale:
           </label>
-          <Input
+          <select
             id="lmn_locale"
-            variant="login"
             value={locale}
             onChange={(e) => setLocale(e.target.value)}
-          />
+            className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm"
+          >
+            {LOCALES.map((loc) => (
+              <option
+                key={loc}
+                value={loc}
+              >
+                {loc}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
