@@ -89,19 +89,29 @@ const LmnInstallPage = () => {
       <div className="flex items-center gap-2 text-sm text-gray-600">
         {isRunning && (
           <>
-            <FontAwesomeIcon icon={faSpinner} spin className="text-gray-500" />
+            <FontAwesomeIcon
+              icon={faSpinner}
+              spin
+              className="text-gray-500"
+            />
             Installation laeuft...
           </>
         )}
         {isCompleted && (
           <>
-            <FontAwesomeIcon icon={faCircleCheck} className="text-green-500" />
+            <FontAwesomeIcon
+              icon={faCircleCheck}
+              className="text-green-500"
+            />
             <span className="text-green-700">Installation erfolgreich abgeschlossen</span>
           </>
         )}
         {isFailed && (
           <>
-            <FontAwesomeIcon icon={faCircleXmark} className="text-red-500" />
+            <FontAwesomeIcon
+              icon={faCircleXmark}
+              className="text-red-500"
+            />
             <span className="text-red-700">Installation fehlgeschlagen</span>
           </>
         )}
@@ -111,14 +121,15 @@ const LmnInstallPage = () => {
         ref={logRef}
         className="h-72 overflow-y-auto rounded-lg bg-gray-900 p-3 font-mono text-xs text-green-400"
       >
-        {store.lmnOutputLog.map((line, i) => (
-          <div key={i} className={line.includes('[ERROR]') || line.includes('FAILED') ? 'text-red-400' : ''}>
-            {line}
+        {store.lmnOutputLog.map((line) => (
+          <div
+            key={line.id}
+            className={line.text.includes('[ERROR]') || line.text.includes('FAILED') ? 'text-red-400' : ''}
+          >
+            {line.text}
           </div>
         ))}
-        {isRunning && (
-          <div className="animate-pulse text-gray-500">_</div>
-        )}
+        {isRunning && <div className="animate-pulse text-gray-500">_</div>}
       </div>
 
       {isCompleted && (
@@ -126,7 +137,7 @@ const LmnInstallPage = () => {
           variant="btn-security"
           size="lg"
           className="w-full justify-center text-white"
-          onClick={() => navigate('/finish')}
+          onClick={() => navigate('/certificate')}
         >
           Weiter
         </Button>
@@ -139,7 +150,7 @@ const LmnInstallPage = () => {
           className="w-full justify-center"
           onClick={() => navigate('/lmn-setup')}
         >
-          Zurueck zur Einrichtung
+          Zurück zur Einrichtung
         </Button>
       )}
     </div>

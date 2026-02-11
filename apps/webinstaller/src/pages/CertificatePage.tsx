@@ -7,8 +7,9 @@ import CertificateForm from '../components/CertificateForm';
 
 const CertificatePage = () => {
   const navigate = useNavigate();
-  const { certificateConfigured, proxyDetected, setProxyDetected, deploymentTarget } = useInstallerStore();
-  const nextPage = deploymentTarget === 'linuxmuster' ? '/lmn-setup' : '/finish';
+  const { certificateConfigured, proxyDetected, setProxyDetected, adType } = useInstallerStore();
+  const nextPage = '/finish';
+  const backPage = adType === 'new' ? '/lmn-install' : '/admin-group';
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -72,7 +73,7 @@ const CertificatePage = () => {
         variant="btn-outline"
         size="lg"
         className="w-full justify-center"
-        onClick={() => navigate('/admin-group')}
+        onClick={() => navigate(backPage)}
       >
         Zurück
       </Button>

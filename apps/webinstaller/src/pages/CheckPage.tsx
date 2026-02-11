@@ -95,7 +95,7 @@ const CheckPage = () => {
         variant="btn-outline"
         size="lg"
         className="w-full justify-center"
-        onClick={() => navigate('/token')}
+        onClick={() => navigate('/configure')}
       >
         Zurück
       </Button>

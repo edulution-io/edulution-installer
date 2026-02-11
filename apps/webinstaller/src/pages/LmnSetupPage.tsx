@@ -70,7 +70,10 @@ const LmnSetupPage = () => {
       <h3 className="text-lg font-bold text-gray-800">Linuxmuster-Server einrichten</h3>
 
       <div>
-        <label htmlFor="ssh_host" className="mb-1 block text-sm font-bold text-gray-800">
+        <label
+          htmlFor="ssh_host"
+          className="mb-1 block text-sm font-bold text-gray-800"
+        >
           SSH Host:
         </label>
         <Input
@@ -85,7 +88,10 @@ const LmnSetupPage = () => {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label htmlFor="ssh_port" className="mb-1 block text-sm font-bold text-gray-800">
+          <label
+            htmlFor="ssh_port"
+            className="mb-1 block text-sm font-bold text-gray-800"
+          >
             SSH Port:
           </label>
           <Input
@@ -96,13 +102,15 @@ const LmnSetupPage = () => {
             max={65535}
             value={port}
             onChange={(e) => setPort(Number(e.target.value))}
-            className={port > 0 ? 'valid-input' : ''}
             disabled={bootstrapRunning}
           />
         </div>
 
         <div>
-          <label htmlFor="ssh_user" className="mb-1 block text-sm font-bold text-gray-800">
+          <label
+            htmlFor="ssh_user"
+            className="mb-1 block text-sm font-bold text-gray-800"
+          >
             SSH Benutzer:
           </label>
           <Input
@@ -110,14 +118,16 @@ const LmnSetupPage = () => {
             variant="login"
             value={user}
             onChange={(e) => setUser(e.target.value)}
-            className={user.trim() ? 'valid-input' : ''}
             disabled={bootstrapRunning}
           />
         </div>
       </div>
 
       <div>
-        <label htmlFor="ssh_password" className="mb-1 block text-sm font-bold text-gray-800">
+        <label
+          htmlFor="ssh_password"
+          className="mb-1 block text-sm font-bold text-gray-800"
+        >
           SSH Passwort:
         </label>
         <Input
@@ -136,19 +146,23 @@ const LmnSetupPage = () => {
           variant="btn-security"
           size="lg"
           className="mt-2 w-full justify-center text-white"
-          onClick={() => { void handleBootstrap(); }}
+          onClick={() => {
+            void handleBootstrap();
+          }}
           disabled={!isValidSsh || bootstrapRunning}
         >
-          {bootstrapRunning ? (
+          {bootstrapRunning && (
             <>
-              <FontAwesomeIcon icon={faSpinner} spin className="mr-2" />
+              <FontAwesomeIcon
+                icon={faSpinner}
+                spin
+                className="mr-2"
+              />
               Bootstrap wird ausgefuehrt...
             </>
-          ) : bootstrapFailed ? (
-            'Bootstrap erneut starten'
-          ) : (
-            'Bootstrap starten'
           )}
+          {!bootstrapRunning && bootstrapFailed && 'Bootstrap erneut starten'}
+          {!bootstrapRunning && !bootstrapFailed && 'Bootstrap starten'}
         </Button>
       )}
 
@@ -157,9 +171,12 @@ const LmnSetupPage = () => {
           ref={logRef}
           className="max-h-48 overflow-y-auto rounded-lg bg-gray-900 p-3 font-mono text-xs text-green-400"
         >
-          {store.lmnOutputLog.map((line, i) => (
-            <div key={i} className={line.includes('[ERROR]') ? 'text-red-400' : ''}>
-              {line}
+          {store.lmnOutputLog.map((line) => (
+            <div
+              key={line.id}
+              className={line.text.includes('[ERROR]') ? 'text-red-400' : ''}
+            >
+              {line.text}
             </div>
           ))}
         </div>
@@ -167,14 +184,20 @@ const LmnSetupPage = () => {
 
       {bootstrapDone && (
         <div className="flex items-center gap-2 rounded-lg bg-green-50 p-3 text-sm text-green-800">
-          <FontAwesomeIcon icon={faCircleCheck} className="text-green-500" />
+          <FontAwesomeIcon
+            icon={faCircleCheck}
+            className="text-green-500"
+          />
           Bootstrap erfolgreich abgeschlossen
         </div>
       )}
 
       {bootstrapFailed && (
         <div className="flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-800">
-          <FontAwesomeIcon icon={faCircleXmark} className="text-red-500" />
+          <FontAwesomeIcon
+            icon={faCircleXmark}
+            className="text-red-500"
+          />
           Bootstrap fehlgeschlagen
         </div>
       )}
@@ -184,12 +207,18 @@ const LmnSetupPage = () => {
           variant="btn-security"
           size="lg"
           className="w-full justify-center text-white"
-          onClick={() => { void handleCheckRequirements(); }}
+          onClick={() => {
+            void handleCheckRequirements();
+          }}
           disabled={checkingRequirements}
         >
           {checkingRequirements ? (
             <>
-              <FontAwesomeIcon icon={faSpinner} spin className="mr-2" />
+              <FontAwesomeIcon
+                icon={faSpinner}
+                spin
+                className="mr-2"
+              />
               Requirements werden geprueft...
             </>
           ) : (
@@ -207,7 +236,9 @@ const LmnSetupPage = () => {
               label={check.message}
               status={{ status: check.status === 'passed', message: check.message }}
               loading={false}
-              onRetry={() => { void handleCheckRequirements(); }}
+              onRetry={() => {
+                void handleCheckRequirements();
+              }}
             />
           ))}
         </div>
@@ -234,10 +265,10 @@ const LmnSetupPage = () => {
         variant="btn-outline"
         size="lg"
         className="w-full justify-center"
-        onClick={() => navigate('/certificate')}
+        onClick={() => navigate('/token')}
         disabled={bootstrapRunning}
       >
-        Zurueck
+        Zurück
       </Button>
     </div>
   );

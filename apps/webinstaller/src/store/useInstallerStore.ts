@@ -9,7 +9,16 @@ type CheckKey = 'api' | 'webdav' | 'ldap' | 'ldapAccess';
 
 type LmnStatus = 'idle' | 'running' | 'completed' | 'failed';
 
+interface LogEntry {
+  id: number;
+  text: string;
+}
+type OrganizationType = 'schule' | 'unternehmen' | 'verwaltung';
+type AdType = 'existing' | 'new';
+
 interface InstallerState {
+  organizationType: OrganizationType | null;
+  adType: AdType | null;
   deploymentTarget: 'linuxmuster' | 'generic' | null;
   lmnExternalDomain: string;
   lmnBinduserDn: string;
@@ -28,9 +37,11 @@ interface InstallerState {
   lmnSshPassword: string;
   lmnBootstrapStatus: LmnStatus;
   lmnPlaybookStatus: LmnStatus;
-  lmnOutputLog: string[];
+  lmnOutputLog: LogEntry[];
   lmnRequirementsPassed: boolean;
 
+  setOrganizationType: (type: OrganizationType) => void;
+  setAdType: (type: AdType) => void;
   setDeploymentTarget: (target: 'linuxmuster' | 'generic') => void;
   setTokenData: (data: { lmnExternalDomain: string; lmnBinduserDn: string; lmnBinduserPw: string }) => void;
   setConfiguration: (config: {
@@ -56,6 +67,8 @@ interface InstallerState {
 }
 
 const initialState = {
+  organizationType: null as OrganizationType | null,
+  adType: null as AdType | null,
   deploymentTarget: null as 'linuxmuster' | 'generic' | null,
   lmnExternalDomain: '',
   lmnBinduserDn: '',
@@ -78,12 +91,18 @@ const initialState = {
   lmnSshPassword: '',
   lmnBootstrapStatus: 'idle' as LmnStatus,
   lmnPlaybookStatus: 'idle' as LmnStatus,
-  lmnOutputLog: [] as string[],
+  lmnOutputLog: [] as LogEntry[],
   lmnRequirementsPassed: false,
 };
 
+let logIdCounter = 0;
+
 const useInstallerStore = create<InstallerState>((set) => ({
   ...initialState,
+
+  setOrganizationType: (type) => set({ organizationType: type }),
+
+  setAdType: (type) => set({ adType: type }),
 
   setDeploymentTarget: (target) => set({ deploymentTarget: target }),
 
@@ -125,9 +144,16 @@ const useInstallerStore = create<InstallerState>((set) => ({
   setLmnPlaybookStatus: (status) => set({ lmnPlaybookStatus: status }),
 
   appendLmnOutput: (line) =>
-    set((state) => ({ lmnOutputLog: [...state.lmnOutputLog, line] })),
+    set((state) => {
+      const id = logIdCounter;
+      logIdCounter += 1;
+      return { lmnOutputLog: [...state.lmnOutputLog, { id, text: line }] };
+    }),
 
-  clearLmnOutput: () => set({ lmnOutputLog: [] }),
+  clearLmnOutput: () => {
+    logIdCounter = 0;
+    set({ lmnOutputLog: [] });
+  },
 
   setLmnRequirementsPassed: (value) => set({ lmnRequirementsPassed: value }),
 
