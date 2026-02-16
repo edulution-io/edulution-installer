@@ -36,7 +36,8 @@
         "project": [
           "apps/public-page/tsconfig.json",
           "apps/webinstaller/tsconfig.json",
-          "libs/shared-ui/tsconfig.json"
+          "libs/shared-ui/tsconfig.json",
+          "libs/shared-types/tsconfig.json"
         ]
       }
     }
@@ -81,6 +82,12 @@
       "files": ["libs/shared-ui/**/*.ts", "libs/shared-ui/**/*.tsx"],
       "parserOptions": {
         "project": ["libs/shared-ui/tsconfig.json"]
+      }
+    },
+    {
+      "files": ["libs/shared-types/**/*.ts"],
+      "parserOptions": {
+        "project": ["libs/shared-types/tsconfig.json"]
       }
     }
   ]

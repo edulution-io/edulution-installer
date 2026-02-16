@@ -46,7 +46,7 @@ const ConfigurePage = () => {
     edulutionExternalDomain.trim() !== '';
 
   const handleSubmit = useCallback(async () => {
-    if (!isValid || !store.deploymentTarget) return;
+    if (!isValid || !store.deploymentTarget || !store.organizationType) return;
     setSubmitting(true);
 
     store.setConfiguration({
@@ -59,6 +59,7 @@ const ConfigurePage = () => {
     });
 
     await submitConfiguration({
+      organizationType: store.organizationType,
       deploymentTarget: store.deploymentTarget,
       lmnExternalDomain,
       lmnBinduserDn,

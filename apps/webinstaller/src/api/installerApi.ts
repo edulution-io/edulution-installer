@@ -1,10 +1,13 @@
+import type { DeploymentTarget, OrganizationType } from '@shared-types';
+
 interface StatusResponse {
   status: boolean;
   message: string;
 }
 
 interface ConfigurationRequest {
-  deploymentTarget: 'linuxmuster' | 'generic';
+  organizationType: OrganizationType;
+  deploymentTarget: DeploymentTarget;
   lmnExternalDomain: string;
   lmnBinduserDn: string;
   lmnBinduserPw: string;

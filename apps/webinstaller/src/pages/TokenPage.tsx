@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@edulution-io/ui-kit';
+import type { DeploymentTarget } from '@shared-types';
 import useInstallerStore from '../store/useInstallerStore';
 import { checkToken } from '../api/installerApi';
 
@@ -12,26 +13,23 @@ const TokenPage = () => {
 
   const [step, setStep] = useState<Step>('adType');
   const [adType, setAdType] = useState<'existing' | 'new'>(store.adType ?? 'existing');
-  const [target, setTarget] = useState<'linuxmuster' | 'generic'>(store.deploymentTarget ?? 'linuxmuster');
+  const [target, setTarget] = useState<DeploymentTarget>(store.deploymentTarget ?? 'linuxmuster');
 
   const [token, setToken] = useState('');
   const [tokenValid, setTokenValid] = useState(false);
   const [checking, setChecking] = useState(false);
 
-  const handleTokenChange = useCallback(
-    async (value: string) => {
-      setToken(value);
-      if (!value.trim()) {
-        setTokenValid(false);
-        return;
-      }
-      setChecking(true);
-      const result = await checkToken(value);
-      setTokenValid(result === true);
-      setChecking(false);
-    },
-    [],
-  );
+  const handleTokenChange = useCallback(async (value: string) => {
+    setToken(value);
+    if (!value.trim()) {
+      setTokenValid(false);
+      return;
+    }
+    setChecking(true);
+    const result = await checkToken(value);
+    setTokenValid(result === true);
+    setChecking(false);
+  }, []);
 
   const handleSubmitToken = useCallback(() => {
     store.setAdType(adType);
@@ -95,6 +93,7 @@ const TokenPage = () => {
           size="lg"
           className="mt-2 w-full justify-center text-white"
           onClick={() => {
+            console.info('Selected AD type:', adType);
             if (adType === 'new') {
               handleNewAd();
             } else {
@@ -144,6 +143,7 @@ const TokenPage = () => {
           size="lg"
           className="mt-2 w-full justify-center text-white"
           onClick={() => {
+            console.info('Selected deployment target:', target);
             if (target === 'linuxmuster') {
               setStep('tokenEntry');
             } else {
@@ -180,7 +180,9 @@ const TokenPage = () => {
           id="edulutionsetuptoken"
           rows={5}
           value={token}
-          onChange={(e) => { void handleTokenChange(e.target.value); }}
+          onChange={(e) => {
+            void handleTokenChange(e.target.value);
+          }}
           className={`w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm ${tokenValid ? 'valid-input' : ''}`}
         />
 

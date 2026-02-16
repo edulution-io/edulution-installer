@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { DeploymentTarget, OrganizationType } from '@shared-types';
 
 interface CheckResult {
   status: boolean;
@@ -13,13 +14,12 @@ interface LogEntry {
   id: number;
   text: string;
 }
-type OrganizationType = 'schule' | 'unternehmen' | 'verwaltung';
 type AdType = 'existing' | 'new';
 
 interface InstallerState {
   organizationType: OrganizationType | null;
   adType: AdType | null;
-  deploymentTarget: 'linuxmuster' | 'generic' | null;
+  deploymentTarget: DeploymentTarget | null;
   lmnExternalDomain: string;
   lmnBinduserDn: string;
   lmnBinduserPw: string;
@@ -56,7 +56,7 @@ interface InstallerState {
 
   setOrganizationType: (type: OrganizationType) => void;
   setAdType: (type: AdType) => void;
-  setDeploymentTarget: (target: 'linuxmuster' | 'generic') => void;
+  setDeploymentTarget: (target: DeploymentTarget) => void;
   setTokenData: (data: { lmnExternalDomain: string; lmnBinduserDn: string; lmnBinduserPw: string }) => void;
   setConfiguration: (config: {
     lmnExternalDomain: string;
@@ -98,7 +98,7 @@ interface InstallerState {
 const initialState = {
   organizationType: null as OrganizationType | null,
   adType: null as AdType | null,
-  deploymentTarget: null as 'linuxmuster' | 'generic' | null,
+  deploymentTarget: null as DeploymentTarget | null,
   lmnExternalDomain: '',
   lmnBinduserDn: '',
   lmnBinduserPw: '',
