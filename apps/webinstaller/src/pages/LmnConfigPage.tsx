@@ -15,8 +15,7 @@ const validatePassword = (pw: string): string[] => {
 };
 
 const isValidIp = (ip: string): boolean =>
-  /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(ip) &&
-  ip.split('.').every((octet) => Number(octet) <= 255);
+  /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(ip) && ip.split('.').every((octet) => Number(octet) <= 255);
 
 const ipInputClass = (value: string): string => {
   if (!value) return '';
@@ -57,11 +56,7 @@ const LmnConfigPage = () => {
     servername.trim() !== '' &&
     domainname.trim() !== '';
 
-  const step2Valid =
-    schoolname.trim() !== '' &&
-    adminpw.trim() !== '' &&
-    pwErrors.length === 0 &&
-    pwMatch;
+  const step2Valid = schoolname.trim() !== '' && adminpw.trim() !== '' && pwErrors.length === 0 && pwMatch;
 
   const handleSubmit = () => {
     if (!step1Valid || !step2Valid) return;
@@ -87,9 +82,7 @@ const LmnConfigPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-lg font-bold text-gray-800">
-        Linuxmuster Konfiguration (Schritt {step}/2)
-      </h3>
+      <h3 className="text-lg font-bold text-gray-800">linuxmuster.net Konfiguration (Schritt {step}/2)</h3>
 
       {step === 1 && (
         <>

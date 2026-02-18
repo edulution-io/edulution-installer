@@ -1,18 +1,21 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faServer } from '@fortawesome/free-solid-svg-icons';
 import { Button } from '@edulution-io/ui-kit';
+import { Card, CardContent } from '@shared-ui';
 import type { DeploymentTarget } from '@shared-types';
 import useInstallerStore from '../store/useInstallerStore';
 import { checkToken } from '../api/installerApi';
 
-type Step = 'adType' | 'deploymentTarget' | 'tokenEntry';
+type Step = 'adType' | 'tokenEntry';
 
 const TokenPage = () => {
   const navigate = useNavigate();
   const store = useInstallerStore();
 
   const [step, setStep] = useState<Step>('adType');
-  const [adType, setAdType] = useState<'existing' | 'new'>(store.adType ?? 'existing');
+  const [adType, setAdType] = useState<'existing' | 'new' | ''>(store.adType ?? '');
   const [target, setTarget] = useState<DeploymentTarget>(store.deploymentTarget ?? 'linuxmuster');
 
   const [token, setToken] = useState('');
@@ -32,6 +35,7 @@ const TokenPage = () => {
   }, []);
 
   const handleSubmitToken = useCallback(() => {
+    if (!adType) return;
     store.setAdType(adType);
     store.setDeploymentTarget(target);
     if (token) {
@@ -54,6 +58,7 @@ const TokenPage = () => {
   }, [adType, target, token, store, navigate]);
 
   const handleManualEntry = useCallback(() => {
+    if (!adType) return;
     store.setAdType(adType);
     store.setDeploymentTarget(target);
     store.setTokenData({ lmnExternalDomain: '', lmnBinduserDn: '', lmnBinduserPw: '' });
@@ -66,7 +71,22 @@ const TokenPage = () => {
     void navigate('/lmn-setup');
   }, [store, navigate]);
 
-  // Step 1: AD type
+  const handleNext = useCallback(() => {
+    if (!adType) return;
+    console.info('Selected AD Type:', adType);
+    if (adType === 'new') {
+      console.info('Selected Deployment Target:', target);
+      handleNewAd();
+    } else if (target === 'linuxmuster') {
+      console.info('Selected Deployment Target:', target);
+      setStep('tokenEntry');
+    } else {
+      console.info('Selected Deployment Target:', 'manual');
+      handleManualEntry();
+    }
+  }, [adType, target, handleNewAd, handleManualEntry]);
+
+  // Step 1: AD type + deployment target
   if (step === 'adType') {
     return (
       <div className="flex flex-col gap-4">
@@ -75,31 +95,82 @@ const TokenPage = () => {
             htmlFor="adType"
             className="mb-1 block text-sm font-bold text-gray-800"
           >
-            Active Directory Anbindung
+            Verzeichnisdienst anbinden
           </label>
           <select
             id="adType"
             value={adType}
             onChange={(e) => setAdType(e.target.value as typeof adType)}
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm"
+            className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm"
           >
-            <option value="existing">Bestehendes AD anbinden</option>
-            <option value="new">Neues AD aufsetzen</option>
+            <option
+              value=""
+              disabled
+            >
+              Bitte wählen…
+            </option>
+            <option value="existing">Bestehenden Verzeichnisdienst anbinden</option>
+            <option value="new">linuxmuster.net aufsetzen</option>
           </select>
         </div>
+
+        {adType === 'existing' && (
+          <div>
+            <span className="mb-2 block text-sm font-bold text-gray-800">
+              Welcher Verzeichnisdienst wird verwendet?
+            </span>
+            <div className="grid grid-cols-2 gap-3">
+              <Card
+                variant={target === 'linuxmuster' ? 'gridSelected' : 'text'}
+                className="cursor-pointer"
+                onClick={() => setTarget('linuxmuster')}
+              >
+                <CardContent className="flex flex-col items-center justify-center gap-2 p-4">
+                  <img
+                    src="/img/edu_Linuxmuster.svg"
+                    alt="linuxmuster.net Logo"
+                    className="h-12 w-12 dark:invert-0"
+                    style={{ filter: 'brightness(0)' }}
+                  />
+                  <span className="text-sm font-medium">linuxmuster.net</span>
+                </CardContent>
+              </Card>
+              <Card
+                variant={target === 'generic' ? 'gridSelected' : 'text'}
+                className="cursor-pointer"
+                onClick={() => setTarget('generic')}
+              >
+                <CardContent className="flex flex-col items-center justify-center gap-2 p-4">
+                  <div className="flex h-12 w-12 items-center justify-center">
+                    <FontAwesomeIcon
+                      icon={faServer}
+                      className="text-3xl"
+                    />
+                  </div>
+                  <span className="text-sm font-medium">Generisch</span>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {target === 'linuxmuster' ? (
+          <p className="mt-2 text-sm text-gray-600">
+            Hier kann im nächsten Schritt entweder ein edulution Setup-Token eingegeben oder die Konfiguration manuell
+            durchgeführt werden.
+          </p>
+        ) : (
+          <p className="mt-2 text-sm text-gray-600">
+            Hier kann ein Verzeichnisdienst mit Active Directory angebunden werden.
+          </p>
+        )}
 
         <Button
           variant="btn-security"
           size="lg"
           className="mt-2 w-full justify-center text-white"
-          onClick={() => {
-            console.info('Selected AD type:', adType);
-            if (adType === 'new') {
-              handleNewAd();
-            } else {
-              setStep('deploymentTarget');
-            }
-          }}
+          onClick={handleNext}
+          disabled={!adType}
         >
           Weiter
         </Button>
@@ -116,57 +187,7 @@ const TokenPage = () => {
     );
   }
 
-  // Step 2: Deployment target (only for existing AD)
-  if (step === 'deploymentTarget') {
-    return (
-      <div className="flex flex-col gap-4">
-        <div>
-          <label
-            htmlFor="deploymentTarget"
-            className="mb-1 block text-sm font-bold text-gray-800"
-          >
-            Welches AD wird verwendet?
-          </label>
-          <select
-            id="deploymentTarget"
-            value={target}
-            onChange={(e) => setTarget(e.target.value as typeof target)}
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm"
-          >
-            <option value="linuxmuster">Linuxmuster</option>
-            <option value="generic">Generisch</option>
-          </select>
-        </div>
-
-        <Button
-          variant="btn-security"
-          size="lg"
-          className="mt-2 w-full justify-center text-white"
-          onClick={() => {
-            console.info('Selected deployment target:', target);
-            if (target === 'linuxmuster') {
-              setStep('tokenEntry');
-            } else {
-              handleManualEntry();
-            }
-          }}
-        >
-          {target === 'linuxmuster' ? 'Weiter' : 'Manuell konfigurieren'}
-        </Button>
-
-        <Button
-          variant="btn-outline"
-          size="lg"
-          className="w-full justify-center"
-          onClick={() => setStep('adType')}
-        >
-          Zurück
-        </Button>
-      </div>
-    );
-  }
-
-  // Step 3: Token entry (only for existing AD + Linuxmuster)
+  // Step 2: Token entry (only for existing AD + linuxmuster.net)
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -213,7 +234,7 @@ const TokenPage = () => {
         variant="btn-outline"
         size="lg"
         className="w-full justify-center"
-        onClick={() => setStep('deploymentTarget')}
+        onClick={() => setStep('adType')}
       >
         Zurück
       </Button>

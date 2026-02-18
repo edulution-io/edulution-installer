@@ -67,7 +67,7 @@ const LmnSetupPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-lg font-bold text-gray-800">Linuxmuster-Server einrichten</h3>
+      <h3 className="text-lg font-bold text-gray-800">linuxmuster.net-Server einrichten</h3>
 
       <div>
         <label

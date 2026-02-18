@@ -90,7 +90,9 @@ const ConfigurePage = () => {
           htmlFor="lmn_external_domain"
           className="mb-1 block text-sm font-bold text-gray-800"
         >
-          Externe Domain des Linuxmuster-Servers:
+          {store.deploymentTarget === 'linuxmuster'
+            ? 'Externe Domain des linuxmuster.net-Servers:'
+            : 'Externe Domain des Verzeichnis-Servers:'}
         </label>
         <Input
           id="lmn_external_domain"
@@ -193,7 +195,9 @@ const ConfigurePage = () => {
         variant="btn-security"
         size="lg"
         className="mt-2 w-full justify-center text-white"
-        onClick={() => { void handleSubmit(); }}
+        onClick={() => {
+          void handleSubmit();
+        }}
         disabled={!isValid || submitting}
       >
         {submitting ? 'Wird überprüft...' : 'Überprüfen'}

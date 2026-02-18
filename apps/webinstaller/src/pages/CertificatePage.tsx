@@ -73,6 +73,15 @@ const CertificatePage = () => {
         variant="btn-outline"
         size="lg"
         className="w-full justify-center"
+        onClick={() => navigate(nextPage)}
+      >
+        Überspringen
+      </Button>
+
+      <Button
+        variant="btn-outline"
+        size="lg"
+        className="w-full justify-center"
         onClick={() => navigate(backPage)}
       >
         Zurück

@@ -99,7 +99,7 @@ const LmnInstallPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-lg font-bold text-gray-800">Linuxmuster Installation</h3>
+      <h3 className="text-lg font-bold text-gray-800">linuxmuster.net Installation</h3>
 
       <div className="flex items-center gap-2 text-sm text-gray-600">
         {isRunning && (

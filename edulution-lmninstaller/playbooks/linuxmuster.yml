@@ -20,7 +20,7 @@
 #
 # =============================================================================
 
-- name: Linuxmuster.net 7.3 Installation
+- name: linuxmuster.net 7.3 Installation
   hosts: localhost
   connection: local
   become: true
@@ -38,29 +38,29 @@
     # Extra-vars via -e oder API überschreiben diese Werte automatisch
 
     # Netzwerk
-    lmn_server_ip: "10.0.0.1"
-    lmn_netmask: "255.255.0.0"
-    lmn_gateway: "10.0.0.254"
+    lmn_server_ip: '10.0.0.1'
+    lmn_netmask: '255.255.0.0'
+    lmn_gateway: '10.0.0.254'
 
     # Server
-    lmn_servername: "server"
-    lmn_domainname: "linuxmuster.lan"
+    lmn_servername: 'server'
+    lmn_domainname: 'linuxmuster.lan'
 
     # Schule
-    lmn_schoolname: "Meine Schule"
-    lmn_location: "Musterstadt"
-    lmn_country: "de"
-    lmn_state: "BW"
+    lmn_schoolname: 'Meine Schule'
+    lmn_location: 'Musterstadt'
+    lmn_country: 'de'
+    lmn_state: 'BW'
 
     # DHCP
-    lmn_dhcprange: "10.0.100.1 10.0.100.254"
+    lmn_dhcprange: '10.0.100.1 10.0.100.254'
 
     # Admin-Passwort (MUSS überschrieben werden!)
-    lmn_adminpw: "Muster!"
+    lmn_adminpw: 'Muster!'
 
     # System
-    lmn_timezone: "Europe/Berlin"
-    lmn_locale: "de_DE.UTF-8"
+    lmn_timezone: 'Europe/Berlin'
+    lmn_locale: 'de_DE.UTF-8'
 
     # Erweiterte Optionen
     lmn_skip_firewall: true
@@ -71,10 +71,10 @@
     # Die Firewall muss separat eingerichtet werden.
 
     # Repository (normalerweise nicht ändern)
-    lmn_repo_url: "https://deb.linuxmuster.net/"
-    lmn_repo_gpg_url: "https://deb.linuxmuster.net/pub.gpg"
-    lmn_repo_distribution: "lmn73"
-    lmn_appliance_url: "https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/master/lmn-appliance"
+    lmn_repo_url: 'https://deb.linuxmuster.net/'
+    lmn_repo_gpg_url: 'https://deb.linuxmuster.net/pub.gpg'
+    lmn_repo_distribution: 'lmn73'
+    lmn_appliance_url: 'https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/master/lmn-appliance'
 
     # Pakete
     lmn_additional_packages:
@@ -98,12 +98,12 @@
         that:
           - ansible_distribution == "Ubuntu"
           - ansible_distribution_version is version('24.04', '>=')
-        fail_msg: "Linuxmuster.net 7.3 benötigt Ubuntu 24.04 LTS oder neuer"
-        success_msg: "Ubuntu {{ ansible_distribution_version }} erkannt"
+        fail_msg: 'linuxmuster.net 7.3 benötigt Ubuntu 24.04 LTS oder neuer'
+        success_msg: 'Ubuntu {{ ansible_distribution_version }} erkannt'
 
     - name: Zeitzone konfigurieren
       community.general.timezone:
-        name: "{{ lmn_timezone }}"
+        name: '{{ lmn_timezone }}'
 
     - name: Cloud-init deaktivieren
       ansible.builtin.file:
@@ -121,7 +121,7 @@
 
     - name: Cloud-init Verzeichnisse entfernen
       ansible.builtin.file:
-        path: "{{ item }}"
+        path: '{{ item }}'
         state: absent
       loop:
         - /etc/cloud
@@ -130,13 +130,13 @@
 
     - name: Erforderliche Pakete installieren
       ansible.builtin.apt:
-        name: "{{ lmn_additional_packages }}"
+        name: '{{ lmn_additional_packages }}'
         state: present
         update_cache: true
 
     - name: Locale generieren
       community.general.locale_gen:
-        name: "{{ lmn_locale }}"
+        name: '{{ lmn_locale }}'
         state: present
 
     - name: Locale als Standard setzen
@@ -194,7 +194,7 @@
 
     - name: GPG-Schlüssel herunterladen
       ansible.builtin.get_url:
-        url: "{{ lmn_repo_gpg_url }}"
+        url: '{{ lmn_repo_gpg_url }}'
         dest: /tmp/linuxmuster.gpg
         mode: '0644'
 
@@ -204,9 +204,9 @@
       args:
         creates: /usr/share/keyrings/linuxmuster.net.gpg
 
-    - name: Linuxmuster Repository hinzufügen
+    - name: linuxmuster Repository hinzufügen
       ansible.builtin.apt_repository:
-        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/linuxmuster.net.gpg] {{ lmn_repo_url }} {{ lmn_repo_distribution }} main"
+        repo: 'deb [arch=amd64 signed-by=/usr/share/keyrings/linuxmuster.net.gpg] {{ lmn_repo_url }} {{ lmn_repo_distribution }} main'
         filename: lmn
         state: present
 
@@ -220,7 +220,7 @@
 
     - name: lmn-appliance Script herunterladen
       ansible.builtin.get_url:
-        url: "{{ lmn_appliance_url }}"
+        url: '{{ lmn_appliance_url }}'
         dest: /root/lmn-appliance
         mode: '0755'
 
@@ -280,7 +280,7 @@
 
     - name: Setup-Logdateien sichern
       ansible.builtin.file:
-        path: "{{ item }}"
+        path: '{{ item }}'
         mode: '0600'
       loop:
         - /var/log/linuxmuster/setup.log

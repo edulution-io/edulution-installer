@@ -23,7 +23,7 @@ const App = () => (
             rel="noopener noreferrer"
           >
             <img
-              src="/img/edulution.io_USER_INTERFACE.svg"
+              src="/img/edulution.io_INSTALLER.svg"
               alt="edulution.io Logo"
               className="logo"
             />
