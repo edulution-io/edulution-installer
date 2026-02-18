@@ -14,7 +14,7 @@ const StartPage = () => {
         variant="btn-security"
         size="lg"
         className="w-full justify-center text-white"
-        onClick={() => navigate('/token')}
+        onClick={() => navigate('/organization')}
       >
         Installation starten
       </Button>

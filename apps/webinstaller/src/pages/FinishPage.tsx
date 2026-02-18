@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner } from '@fortawesome/free-solid-svg-icons';
-import { startInstallation } from '../api/installerApi';
+import { startInstallation, shutdownInstaller } from '../api/installerApi';
 
 const FinishPage = () => {
   const [started, setStarted] = useState(false);
@@ -14,8 +14,15 @@ const FinishPage = () => {
       try {
         await startInstallation();
       } catch {
-        // Backend terminates itself after creating the env file, so errors are expected
+        // Errors may occur if backend processes the request asynchronously
       }
+
+      // Give the backend time to write files, then trigger shutdown
+      setTimeout(() => {
+        void shutdownInstaller().catch(() => {
+          // Shutdown may fail if server already terminated
+        });
+      }, 10000);
     };
     void run();
   }, [started]);

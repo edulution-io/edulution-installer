@@ -11,3 +11,4 @@ services:
     entrypoint: /startup.sh
     environment:
       - EDULUTION_DIRECTORY=/srv/docker/edulution-installer/data
+      - BOOTSTRAP_BRANCH=${BOOTSTRAP_BRANCH:-main}

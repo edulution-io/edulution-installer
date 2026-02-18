@@ -7,7 +7,9 @@ import CertificateForm from '../components/CertificateForm';
 
 const CertificatePage = () => {
   const navigate = useNavigate();
-  const { certificateConfigured, proxyDetected, setProxyDetected } = useInstallerStore();
+  const { certificateConfigured, proxyDetected, setProxyDetected, adType } = useInstallerStore();
+  const nextPage = '/finish';
+  const backPage = adType === 'new' ? '/lmn-install' : '/admin-group';
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -43,7 +45,7 @@ const CertificatePage = () => {
           variant="btn-security"
           size="lg"
           className="w-full justify-center text-white"
-          onClick={() => navigate('/finish')}
+          onClick={() => navigate(nextPage)}
         >
           Installation starten
         </Button>
@@ -61,7 +63,7 @@ const CertificatePage = () => {
         variant="btn-security"
         size="lg"
         className="mt-2 w-full justify-center text-white"
-        onClick={() => navigate('/finish')}
+        onClick={() => navigate(nextPage)}
         disabled={!certificateConfigured}
       >
         Installation starten
@@ -71,7 +73,16 @@ const CertificatePage = () => {
         variant="btn-outline"
         size="lg"
         className="w-full justify-center"
-        onClick={() => navigate('/admin-group')}
+        onClick={() => navigate(nextPage)}
+      >
+        Überspringen
+      </Button>
+
+      <Button
+        variant="btn-outline"
+        size="lg"
+        className="w-full justify-center"
+        onClick={() => navigate(backPage)}
       >
         Zurück
       </Button>

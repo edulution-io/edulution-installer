@@ -1,0 +1,8 @@
+os:
+  distribution: "Ubuntu"
+  min_version: "24.04"
+ram:
+  min_gb: 4
+disks:
+  min_count: 2
+  min_size_gb: 25

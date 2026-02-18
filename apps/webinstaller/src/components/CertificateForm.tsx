@@ -9,6 +9,14 @@ import { createSsCertificate, createLeCertificate, uploadCertificate } from '../
 type CertType = 'self-signed' | 'letsencrypt' | 'upload';
 type OperationStatus = 'idle' | 'loading' | 'success' | 'error';
 
+interface AcmeDnsRegistration {
+  username: string;
+  password: string;
+  fulldomain: string;
+  subdomain: string;
+  allowfrom: string[];
+}
+
 const CertificateForm = () => {
   const { edulutionExternalDomain, setCertificateConfigured } = useInstallerStore();
 
@@ -24,7 +32,9 @@ const CertificateForm = () => {
   const [validDays, setValidDays] = useState('');
 
   // Let's Encrypt fields
+  const [dnsProvider, setDnsProvider] = useState('netzint-dns');
   const [email, setEmail] = useState('');
+  const [acmeDnsRegistration, setAcmeDnsRegistration] = useState<AcmeDnsRegistration | null>(null);
 
   // Upload fields
   const [certFile, setCertFile] = useState<File | null>(null);
@@ -33,6 +43,7 @@ const CertificateForm = () => {
   const resetStatus = useCallback(() => {
     setStatus('idle');
     setErrorMessage('');
+    setAcmeDnsRegistration(null);
     setCertificateConfigured(false);
   }, [setCertificateConfigured]);
 
@@ -52,7 +63,7 @@ const CertificateForm = () => {
     validDays.trim() !== '' &&
     Number(validDays) > 0;
 
-  const isLeValid = email.trim() !== '';
+  const isLeValid = email.trim() !== '' && dnsProvider.trim() !== '';
 
   const isUploadValid = certFile !== null && keyFile !== null;
 
@@ -76,15 +87,20 @@ const CertificateForm = () => {
 
   const handleCreateLe = useCallback(async () => {
     setStatus('loading');
-    const result = await createLeCertificate({ email });
+    setAcmeDnsRegistration(null);
+    const result = await createLeCertificate({ email, dns_provider: dnsProvider });
     if (result.status) {
       setStatus('success');
       setCertificateConfigured(true);
+      const reg = result.registration as unknown;
+      if (reg) {
+        setAcmeDnsRegistration(reg as AcmeDnsRegistration);
+      }
     } else {
       setStatus('error');
       setErrorMessage(result.message);
     }
-  }, [email, setCertificateConfigured]);
+  }, [email, dnsProvider, setCertificateConfigured]);
 
   const handleUpload = useCallback(async () => {
     if (!certFile || !keyFile) return;
@@ -202,8 +218,11 @@ const CertificateForm = () => {
           <div className="flex items-center gap-3">
             <Button
               variant="btn-security"
+              size="md"
               className="text-white"
-              onClick={() => { void handleGenerateSs(); }}
+              onClick={() => {
+                void handleGenerateSs();
+              }}
               disabled={!isSsValid || status === 'loading'}
             >
               Zertifikat generieren
@@ -231,6 +250,17 @@ const CertificateForm = () => {
       {certType === 'letsencrypt' && (
         <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
           <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
+            <span className="text-sm text-gray-600">DNS-Provider:</span>
+            <select
+              value={dnsProvider}
+              onChange={(e) => {
+                setDnsProvider(e.target.value);
+                resetStatus();
+              }}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800"
+            >
+              <option value="netzint-dns">Netzint DNS</option>
+            </select>
             <span className="text-sm text-gray-600">Domain:</span>
             <Input
               variant="login"
@@ -249,14 +279,55 @@ const CertificateForm = () => {
           <div className="flex items-center gap-3">
             <Button
               variant="btn-security"
+              size="md"
               className="text-white"
-              onClick={() => { void handleCreateLe(); }}
+              onClick={() => {
+                void handleCreateLe();
+              }}
               disabled={!isLeValid || status === 'loading'}
             >
               Zertifikat erstellen
             </Button>
             {statusIcon}
           </div>
+
+          {acmeDnsRegistration && (
+            <div className="flex flex-col gap-2 rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <p className="text-sm font-bold text-blue-800">ACME-DNS Registrierung erfolgreich</p>
+              <p className="text-sm text-blue-800">Bitte erstelle folgenden CNAME-Eintrag bei deinem DNS-Provider:</p>
+              <div className="rounded bg-white p-3 font-mono text-xs text-gray-800">
+                <span className="font-bold">_acme-challenge.{edulutionExternalDomain}</span> &rarr;{' '}
+                <span className="font-bold">{acmeDnsRegistration.fulldomain}</span>
+              </div>
+              <p className="mt-2 text-sm font-bold text-blue-800">Registrierungsdaten:</p>
+              <div className="overflow-x-auto rounded bg-white p-3 font-mono text-xs text-gray-800">
+                <table className="w-full">
+                  <tbody>
+                    <tr>
+                      <td className="pr-3 font-bold">Username:</td>
+                      <td className="select-all">{acmeDnsRegistration.username}</td>
+                    </tr>
+                    <tr>
+                      <td className="pr-3 font-bold">Password:</td>
+                      <td className="select-all">{acmeDnsRegistration.password}</td>
+                    </tr>
+                    <tr>
+                      <td className="pr-3 font-bold">Fulldomain:</td>
+                      <td className="select-all">{acmeDnsRegistration.fulldomain}</td>
+                    </tr>
+                    <tr>
+                      <td className="pr-3 font-bold">Subdomain:</td>
+                      <td className="select-all">{acmeDnsRegistration.subdomain}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-1 text-xs text-blue-600">
+                Diese Daten werden automatisch in die Traefik-Konfiguration übernommen. Der CNAME-Eintrag muss manuell
+                beim DNS-Provider hinterlegt werden.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -297,7 +368,10 @@ const CertificateForm = () => {
             <Button
               variant="btn-security"
               className="text-white"
-              onClick={() => { void handleUpload(); }}
+              size="md"
+              onClick={() => {
+                void handleUpload();
+              }}
               disabled={!isUploadValid || status === 'loading'}
             >
               Dateien hochladen

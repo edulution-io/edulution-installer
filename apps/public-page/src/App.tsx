@@ -37,14 +37,14 @@ const App = () => {
             rel="noopener noreferrer"
           >
             <img
-              src="/img/edulution.io_USER_INTERFACE.svg"
+              src="/img/edulution.io_INSTALLER.svg"
               alt="edulution.io User Interface Logo"
               className="logo"
             />
           </a>
 
           <div className="w-full">
-            <h2 className="text-center text-lg font-semibold text-background mb-4">Quick Install</h2>
+            <h2 className="mb-4 text-center text-lg font-semibold text-background">Quick Install</h2>
 
             <div className="mb-5">
               <Input

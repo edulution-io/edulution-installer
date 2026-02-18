@@ -9,16 +9,23 @@ import secrets
 import string
 import ssl
 import shutil
+import asyncio
+import threading
+import socket
+import select
 import urllib3
 
 # Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-from fastapi import FastAPI, BackgroundTasks, Depends, Request, File, UploadFile, APIRouter
+from fastapi import FastAPI, BackgroundTasks, Depends, Request, File, UploadFile, APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+import paramiko
+import httpx
 
 from ldap3 import Server, Connection, ALL, Tls
 from ldap3.core.exceptions import LDAPSocketOpenError, LDAPBindError
@@ -53,9 +60,11 @@ class SSCertificate(BaseModel):
 
 class LECertificate(BaseModel):
     email: str
+    dns_provider: str
 
 
 class ConfigurationRequest(BaseModel):
+    organizationType: str
     deploymentTarget: str
     lmnExternalDomain: str
     lmnBinduserDn: str
@@ -67,6 +76,95 @@ class ConfigurationRequest(BaseModel):
 
 class AdminGroupRequest(BaseModel):
     admin_group: str
+
+
+class SSHConnection(BaseModel):
+    host: str
+    port: int = 22
+    user: str = "root"
+    password: str
+
+
+# --- SSH Tunnel ---
+
+class SSHTunnel:
+    """Forwards a local port through SSH to a remote host:port."""
+
+    def __init__(self, ssh_client, remote_host="localhost", remote_port=8000):
+        self.transport = ssh_client.get_transport()
+        self.remote_host = remote_host
+        self.remote_port = remote_port
+        self.local_port = self._find_free_port()
+        self._server = None
+        self._thread = None
+        self._running = False
+
+    @staticmethod
+    def _find_free_port():
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            return s.getsockname()[1]
+
+    def start(self):
+        self._server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._server.bind(("127.0.0.1", self.local_port))
+        self._server.listen(10)
+        self._server.settimeout(1.0)
+        self._running = True
+        self._thread = threading.Thread(target=self._accept_loop, daemon=True)
+        self._thread.start()
+
+    def _accept_loop(self):
+        while self._running:
+            try:
+                client_sock, addr = self._server.accept()
+                try:
+                    channel = self.transport.open_channel(
+                        "direct-tcpip",
+                        (self.remote_host, self.remote_port),
+                        addr,
+                    )
+                except Exception:
+                    client_sock.close()
+                    continue
+                threading.Thread(
+                    target=self._bridge,
+                    args=(client_sock, channel),
+                    daemon=True,
+                ).start()
+            except socket.timeout:
+                continue
+            except Exception:
+                if self._running:
+                    continue
+                break
+
+    @staticmethod
+    def _bridge(sock, channel):
+        try:
+            while True:
+                r, _, _ = select.select([sock, channel], [], [], 1.0)
+                if sock in r:
+                    data = sock.recv(32768)
+                    if not data:
+                        break
+                    channel.sendall(data)
+                if channel in r:
+                    data = channel.recv(32768)
+                    if not data:
+                        break
+                    sock.sendall(data)
+        except Exception:
+            pass
+        finally:
+            sock.close()
+            channel.close()
+
+    def stop(self):
+        self._running = False
+        if self._server:
+            self._server.close()
 
 
 # --- Data Store ---
@@ -81,9 +179,15 @@ class Data:
         self.DATA_EDULUTION_EXTERNAL_DOMAIN = None
         self.DATA_LE_USED = False
         self.DATA_LE_EMAIL = None
+        self.DATA_LE_DNS_PROVIDER = None
+        self.DATA_LE_ACME_DNS_REGISTRATION = None
         self.DATA_PROXY_USED = False
+        self.DATA_ORGANISATION_TYPE = None
         self.DATA_DEPLOYMENT_TARGET = None
         self.DATA_INITIAL_ADMIN_GROUP = None
+        self.DATA_LMN_TARGET_HOST = None
+        self.DATA_LMN_SSH_CLIENT = None
+        self.DATA_LMN_SSH_TUNNEL = None
 
 
 data = Data()
@@ -125,6 +229,7 @@ def checkToken(token: Token):
 
 @api.post("/configure")
 def configure(config: ConfigurationRequest, data: Data = Depends(getData)):
+    data.DATA_ORGANISATION_TYPE = config.organizationType
     data.DATA_DEPLOYMENT_TARGET = config.deploymentTarget
     data.DATA_LMN_EXTERNAL_DOMAIN = config.lmnExternalDomain
     data.DATA_LMN_BINDUSER_DN = config.lmnBinduserDn
@@ -315,10 +420,37 @@ def createSSCertificate(ssdata: SSCertificate, data: Data = Depends(getData)):
 def createLECertificate(ledata: LECertificate, data: Data = Depends(getData)):
     data.DATA_LE_USED = True
     data.DATA_LE_EMAIL = ledata.email
-    return {
-        "status": True,
-        "message": "Let's Encrypt wird beim Start von Traefik konfiguriert",
-    }
+    data.DATA_LE_DNS_PROVIDER = ledata.dns_provider
+
+    # Register with acme-dns
+    try:
+        acme_dns_url = "https://acme-dns.netzint.de/register"
+        response = requests.post(acme_dns_url, timeout=15)
+        if response.status_code not in (200, 201):
+            return {
+                "status": False,
+                "message": f"ACME-DNS Registrierung fehlgeschlagen (HTTP {response.status_code})",
+            }
+
+        registration = response.json()
+        data.DATA_LE_ACME_DNS_REGISTRATION = registration
+
+        return {
+            "status": True,
+            "message": "Let's Encrypt wird beim Start von Traefik konfiguriert",
+            "registration": registration,
+        }
+    except requests.exceptions.Timeout:
+        return {
+            "status": False,
+            "message": "ACME-DNS Registrierung fehlgeschlagen: Timeout",
+        }
+    except Exception as e:
+        print(e)
+        return {
+            "status": False,
+            "message": f"ACME-DNS Registrierung fehlgeschlagen: {str(e)}",
+        }
 
 
 @api.post("/upload-certificate")
@@ -356,9 +488,215 @@ def finish(background_tasks: BackgroundTasks, data: Data = Depends(getData)):
     return {"status": True, "message": "Installation gestartet"}
 
 
+@api.post("/shutdown")
+def shutdown(data: Data = Depends(getData)):
+    def delayed_shutdown():
+        # Clean up SSH tunnel and client
+        if data.DATA_LMN_SSH_TUNNEL:
+            data.DATA_LMN_SSH_TUNNEL.stop()
+        if data.DATA_LMN_SSH_CLIENT:
+            data.DATA_LMN_SSH_CLIENT.close()
+        time.sleep(2)
+        os.kill(os.getpid(), signal.SIGTERM)
+    threading.Thread(target=delayed_shutdown, daemon=True).start()
+    return {"status": True, "message": "Server wird heruntergefahren"}
+
+
+# --- LMN Bootstrap & Proxy ---
+
+BOOTSTRAP_BRANCH = os.environ.get("BOOTSTRAP_BRANCH", "main")
+BOOTSTRAP_URL = f"https://raw.githubusercontent.com/edulution-io/edulution-installer/{BOOTSTRAP_BRANCH}/edulution-lmninstaller/bootstrap.sh"
+
+
+@api.post("/lmn/bootstrap")
+async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
+    def stream_bootstrap():
+        # Close any previous SSH tunnel/client
+        if data.DATA_LMN_SSH_TUNNEL:
+            data.DATA_LMN_SSH_TUNNEL.stop()
+            data.DATA_LMN_SSH_TUNNEL = None
+        if data.DATA_LMN_SSH_CLIENT:
+            data.DATA_LMN_SSH_CLIENT.close()
+            data.DATA_LMN_SSH_CLIENT = None
+
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            yield f"data: Verbinde mit {ssh.host}:{ssh.port}...\n\n"
+            client.connect(
+                hostname=ssh.host,
+                port=ssh.port,
+                username=ssh.user,
+                password=ssh.password,
+                timeout=10,
+            )
+            yield "data: Verbindung hergestellt. Starte Bootstrap...\n\n"
+
+            # Download script to temp file first, then run with env var set
+            # (piping to bash loses env var assignments in some shell/PTY configurations)
+            bootstrap_cmd = (
+                f"tmpfile=$(mktemp) && "
+                f"curl -fsSL {BOOTSTRAP_URL} -o $tmpfile && "
+                f"GITHUB_BRANCH={BOOTSTRAP_BRANCH} bash $tmpfile; "
+                f"rm -f $tmpfile"
+            )
+            if ssh.user != "root":
+                command = f"sudo -S bash -c 'export GITHUB_BRANCH={BOOTSTRAP_BRANCH} && tmpfile=$(mktemp) && curl -fsSL {BOOTSTRAP_URL} -o $tmpfile && bash $tmpfile; rm -f $tmpfile'"
+                yield "data: Nicht als root verbunden, verwende sudo...\n\n"
+            else:
+                command = bootstrap_cmd
+
+            stdin, stdout, stderr = client.exec_command(command, get_pty=True)
+
+            # If using sudo, send the password when prompted
+            if ssh.user != "root":
+                time.sleep(1)
+                stdin.write(ssh.password + "\n")
+                stdin.flush()
+
+            for line in stdout:
+                line_stripped = line.rstrip()
+                # Filter out the sudo password prompt from output
+                if "[sudo]" in line_stripped and "password" in line_stripped:
+                    continue
+                yield f"data: {line_stripped}\n\n"
+
+            exit_status = stdout.channel.recv_exit_status()
+
+            if exit_status != 0:
+                for line in stderr:
+                    yield f"data: [STDERR] {line.rstrip()}\n\n"
+                yield f"data: [ERROR] Bootstrap fehlgeschlagen (Exit-Code: {exit_status})\n\n"
+                yield "event: error\ndata: Bootstrap fehlgeschlagen\n\n"
+                return
+
+            # Start SSH tunnel to forward local port -> target localhost:8000
+            yield "data: Starte SSH-Tunnel...\n\n"
+            tunnel = SSHTunnel(client, remote_host="localhost", remote_port=8000)
+            tunnel.start()
+
+            # Wait for target API to become available (through SSH tunnel)
+            yield "data: Warte auf LMN-Installer API...\n\n"
+            tunnel_url = f"http://127.0.0.1:{tunnel.local_port}"
+            for attempt in range(30):
+                try:
+                    resp = requests.get(f"{tunnel_url}/api/health", timeout=3)
+                    if resp.status_code == 200:
+                        data.DATA_LMN_TARGET_HOST = ssh.host
+                        data.DATA_LMN_SSH_CLIENT = client
+                        data.DATA_LMN_SSH_TUNNEL = tunnel
+                        yield "data: LMN-Installer API ist bereit!\n\n"
+                        yield "event: done\ndata: Bootstrap erfolgreich\n\n"
+                        return
+                except Exception:
+                    pass
+                time.sleep(2)
+                yield f"data: Warte auf API... (Versuch {attempt + 1}/30)\n\n"
+
+            # Health check failed - clean up tunnel
+            tunnel.stop()
+            yield "data: [ERROR] API nicht erreichbar nach Bootstrap\n\n"
+            yield "event: error\ndata: API nicht erreichbar\n\n"
+
+        except paramiko.AuthenticationException:
+            yield "data: [ERROR] SSH-Authentifizierung fehlgeschlagen\n\n"
+            yield "event: error\ndata: SSH-Authentifizierung fehlgeschlagen\n\n"
+        except paramiko.SSHException as e:
+            yield f"data: [ERROR] SSH-Fehler: {e}\n\n"
+            yield f"event: error\ndata: SSH-Fehler: {e}\n\n"
+        except Exception as e:
+            yield f"data: [ERROR] Fehler: {e}\n\n"
+            yield f"event: error\ndata: {e}\n\n"
+        finally:
+            # Only close client if tunnel was NOT established (otherwise keep alive)
+            if not data.DATA_LMN_SSH_CLIENT:
+                client.close()
+
+    return StreamingResponse(stream_bootstrap(), media_type="text/event-stream")
+
+
+@api.api_route("/lmn/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def lmn_proxy(path: str, request: Request, data: Data = Depends(getData)):
+    if not data.DATA_LMN_SSH_TUNNEL:
+        return JSONResponse(
+            status_code=503,
+            content={"status": False, "message": "LMN-Server nicht verbunden. Bootstrap zuerst ausfuehren."},
+        )
+
+    tunnel_port = data.DATA_LMN_SSH_TUNNEL.local_port
+    target_url = f"http://127.0.0.1:{tunnel_port}/api/{path}"
+    body = await request.body()
+    headers = dict(request.headers)
+    headers.pop("host", None)
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        try:
+            response = await client.request(
+                method=request.method,
+                url=target_url,
+                content=body,
+                headers=headers,
+                params=dict(request.query_params),
+            )
+            return JSONResponse(
+                status_code=response.status_code,
+                content=response.json(),
+            )
+        except httpx.ConnectError:
+            return JSONResponse(
+                status_code=503,
+                content={"status": False, "message": "LMN-Server nicht erreichbar"},
+            )
+        except Exception as e:
+            return JSONResponse(
+                status_code=502,
+                content={"status": False, "message": f"Proxy-Fehler: {e}"},
+            )
+
+
 # --- Register API Router ---
 
 app.include_router(api)
+
+
+# --- WebSocket Proxy (registered on app, not api router) ---
+
+@app.websocket("/ws/lmn/{path:path}")
+async def lmn_ws_proxy(websocket: WebSocket, path: str):
+    if not data.DATA_LMN_SSH_TUNNEL:
+        await websocket.close(code=1008, reason="LMN-Server nicht verbunden")
+        return
+
+    await websocket.accept()
+    tunnel_port = data.DATA_LMN_SSH_TUNNEL.local_port
+    target_url = f"ws://127.0.0.1:{tunnel_port}/ws/{path}"
+
+    try:
+        import websockets
+        async with websockets.connect(target_url) as target_ws:
+            async def forward_to_target():
+                try:
+                    while True:
+                        msg = await websocket.receive_text()
+                        await target_ws.send(msg)
+                except (WebSocketDisconnect, Exception):
+                    pass
+
+            async def forward_to_client():
+                try:
+                    async for msg in target_ws:
+                        await websocket.send_text(msg)
+                except (WebSocketDisconnect, Exception):
+                    pass
+
+            await asyncio.gather(forward_to_target(), forward_to_client())
+    except Exception:
+        pass
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
 # --- SPA Static File Serving ---
@@ -461,6 +799,7 @@ def createEdulutionEnvFile(data: Data):
 
 # edulution-api
 
+EDUI_ORGANISATION_TYPE={data.DATA_ORGANISATION_TYPE}
 EDUI_DEPLOYMENT_TARGET={data.DATA_DEPLOYMENT_TARGET}
 
 EDUI_WEBDAV_URL=https://{data.DATA_LMN_EXTERNAL_DOMAIN}/webdav/
@@ -516,9 +855,11 @@ EDULUTION_ONLYOFFICE_JWT_SECRET={onlyoffice_jwt_secret}
 EDULUTION_ONLYOFFICE_POSTGRES_PASSWORD={onlyoffice_postgres_secret}
 """
 
-    # Let's Encrypt E-Mail hinzufügen wenn verwendet
+    # Let's Encrypt E-Mail und ACME-DNS Konfiguration hinzufügen wenn verwendet
     if data.DATA_LE_USED and data.DATA_LE_EMAIL:
         environment_file += f"\n# Let's Encrypt\n\nLE_EMAIL={data.DATA_LE_EMAIL}\n"
+        environment_file += "ACME_DNS_API_BASE=https://acme-dns.netzint.de\n"
+        environment_file += "ACME_DNS_STORAGE_PATH=/etc/traefik/ssl/acmedns.json\n"
 
     with open("/edulution-ui/edulution.env", "w") as f:
         f.write(environment_file)
@@ -571,31 +912,30 @@ http:
     with open("/edulution-ui/data/traefik/config/webdav.yml", "w") as f:
         f.write(webdav_traefik)
 
-    # Docker-compose für Let's Encrypt anpassen falls nötig
-    if not data.DATA_PROXY_USED and data.DATA_LE_USED:
-        with open("/edulution-ui/docker-compose.yml", "r") as f:
-            compose_content = f.read()
-
-        compose_content = compose_content.replace(
-            "      - ./data/traefik/ssl:/etc/traefik/ssl\n    healthcheck:",
-            "      - ./data/traefik/ssl:/etc/traefik/ssl\n      - ./data/letsencrypt:/letsencrypt\n    healthcheck:",
-        )
-
-        with open("/edulution-ui/docker-compose.yml", "w") as f:
-            f.write(compose_content)
-
     # Traefik-Konfiguration basierend auf Proxy und Let's Encrypt anpassen
     if not data.DATA_PROXY_USED and data.DATA_LE_USED:
-        traefik_le_config = f"""
-entryPoints:
+        # traefik.yml: Basis-Template + certificatesResolvers mit DNS-Challenge anhängen
+        traefik_le_config = f"""entryPoints:
   web:
     address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: "websecure"
+          scheme: "https"
   websecure:
     address: ":443"
     http:
       tls: {{}}
+    transport:
+      respondingTimeouts:
+        readTimeout: 0s
+        writeTimeout: 0s
+        idleTimeout: 0s
   imap:
     address: ":143"
+  imaps:
+    address: ":993"
 
 providers:
   file:
@@ -614,67 +954,35 @@ certificatesResolvers:
   letsencrypt:
     acme:
       email: {data.DATA_LE_EMAIL}
-      storage: /letsencrypt/acme.json
-      httpChallenge:
-        entryPoint: web
+      storage: /etc/traefik/ssl/acme.json
+      dnsChallenge:
+        provider: acme-dns
 """
 
-        with open("/edulution-ui/traefik.yml", "w") as f:
+        with open(f"{EDULUTION_DIRECTORY}/traefik.yml", "w") as f:
             f.write(traefik_le_config)
 
-        le_config = f"""
-http:
-  routers:
-    edulution-api:
-      rule: "PathPrefix(`/edu-api`)"
-      service: edulution-api
-      entryPoints:
-        - websecure
-      tls:
-        certResolver: letsencrypt
-        domains:
-          - main: "{data.DATA_EDULUTION_EXTERNAL_DOMAIN}"
-    edulution-keycloak:
-      rule: "PathPrefix(`/auth`)"
-      service: edulution-keycloak
-      entryPoints:
-        - websecure
-      tls:
-        certResolver: letsencrypt
-        domains:
-          - main: "{data.DATA_EDULUTION_EXTERNAL_DOMAIN}"
-    edulution-ui:
-      rule: "PathPrefix(`/`)"
-      service: edulution-ui
-      entryPoints:
-        - websecure
-      tls:
-        certResolver: letsencrypt
-        domains:
-          - main: "{data.DATA_EDULUTION_EXTERNAL_DOMAIN}"
+        # edulution-default.yml aus LE-Template ableiten mit Domain-Ersetzung
+        le_template_path = Path(EDULUTION_DIRECTORY) / "edulution-default-le.yml"
+        le_config = le_template_path.read_text().replace("{{DOMAIN}}", data.DATA_EDULUTION_EXTERNAL_DOMAIN)
 
-  services:
-    edulution-api:
-      loadBalancer:
-        servers:
-          - url: "http://edu-api:3000"
-    edulution-ui:
-      loadBalancer:
-        servers:
-          - url: "http://edu-ui:80"
-    edulution-keycloak:
-      loadBalancer:
-        servers:
-          - url: "http://edu-keycloak:8080"
-"""
-        with open("/edulution-ui/data/traefik/config/edulution-default.yml", "w") as f:
+        with open(f"{EDULUTION_DIRECTORY}/data/traefik/config/edulution-default.yml", "w") as f:
             f.write(le_config)
 
-        os.makedirs("/edulution-ui/data/letsencrypt", exist_ok=True)
-        acme_json_path = "/edulution-ui/data/letsencrypt/acme.json"
+        # acme.json für ACME-Zertifikatsspeicher erstellen
+        acme_json_path = f"{EDULUTION_DIRECTORY}/data/traefik/ssl/acme.json"
         with open(acme_json_path, "w") as f:
             f.write("{}")
         os.chmod(acme_json_path, 0o600)
+
+        # acmedns.json mit Registrierungsdaten für ACME-DNS-Provider schreiben
+        if data.DATA_LE_ACME_DNS_REGISTRATION:
+            acmedns_data = {
+                data.DATA_EDULUTION_EXTERNAL_DOMAIN: data.DATA_LE_ACME_DNS_REGISTRATION
+            }
+            acmedns_json_path = f"{EDULUTION_DIRECTORY}/data/traefik/ssl/acmedns.json"
+            with open(acmedns_json_path, "w") as f:
+                json.dump(acmedns_data, f, indent=2)
 
     elif os.path.exists("/edulution-ui/data/traefik/ssl/cert.cert") and os.path.exists(
         "/edulution-ui/data/traefik/ssl/cert.key"
@@ -690,5 +998,4 @@ tls:
         with open("/edulution-ui/data/traefik/config/cert.yml", "w") as f:
             f.write(cert_traefik)
 
-    time.sleep(5)
-    os.kill(os.getpid(), signal.SIGTERM)
+    # Shutdown is now triggered explicitly via POST /api/shutdown

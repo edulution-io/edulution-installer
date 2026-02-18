@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { DeploymentTarget, OrganizationType } from '@shared-types';
 
 interface CheckResult {
   status: boolean;
@@ -7,8 +8,18 @@ interface CheckResult {
 
 type CheckKey = 'api' | 'webdav' | 'ldap' | 'ldapAccess';
 
+type LmnStatus = 'idle' | 'running' | 'completed' | 'failed';
+
+interface LogEntry {
+  id: number;
+  text: string;
+}
+type AdType = 'existing' | 'new';
+
 interface InstallerState {
-  deploymentTarget: 'linuxmuster' | 'generic' | null;
+  organizationType: OrganizationType | null;
+  adType: AdType | null;
+  deploymentTarget: DeploymentTarget | null;
   lmnExternalDomain: string;
   lmnBinduserDn: string;
   lmnBinduserPw: string;
@@ -20,7 +31,32 @@ interface InstallerState {
   certificateConfigured: boolean;
   proxyDetected: boolean;
 
-  setDeploymentTarget: (target: 'linuxmuster' | 'generic') => void;
+  lmnSshHost: string;
+  lmnSshPort: number;
+  lmnSshUser: string;
+  lmnSshPassword: string;
+  lmnBootstrapStatus: LmnStatus;
+  lmnPlaybookStatus: LmnStatus;
+  lmnOutputLog: LogEntry[];
+  lmnRequirementsPassed: boolean;
+
+  lmnServerIp: string;
+  lmnNetmask: string;
+  lmnGateway: string;
+  lmnServername: string;
+  lmnDomainname: string;
+  lmnSchoolname: string;
+  lmnLocation: string;
+  lmnCountry: string;
+  lmnState: string;
+  lmnDhcprange: string;
+  lmnAdminpw: string;
+  lmnTimezone: string;
+  lmnLocale: string;
+
+  setOrganizationType: (type: OrganizationType) => void;
+  setAdType: (type: AdType) => void;
+  setDeploymentTarget: (target: DeploymentTarget) => void;
   setTokenData: (data: { lmnExternalDomain: string; lmnBinduserDn: string; lmnBinduserPw: string }) => void;
   setConfiguration: (config: {
     lmnExternalDomain: string;
@@ -35,11 +71,34 @@ interface InstallerState {
   setInitialAdminGroup: (group: string) => void;
   setCertificateConfigured: (value: boolean) => void;
   setProxyDetected: (value: boolean) => void;
+  setLmnSsh: (ssh: { host: string; port: number; user: string; password: string }) => void;
+  setLmnBootstrapStatus: (status: LmnStatus) => void;
+  setLmnPlaybookStatus: (status: LmnStatus) => void;
+  appendLmnOutput: (line: string) => void;
+  clearLmnOutput: () => void;
+  setLmnRequirementsPassed: (value: boolean) => void;
+  setLmnConfig: (config: {
+    lmnServerIp: string;
+    lmnNetmask: string;
+    lmnGateway: string;
+    lmnServername: string;
+    lmnDomainname: string;
+    lmnSchoolname: string;
+    lmnLocation: string;
+    lmnCountry: string;
+    lmnState: string;
+    lmnDhcprange: string;
+    lmnAdminpw: string;
+    lmnTimezone: string;
+    lmnLocale: string;
+  }) => void;
   reset: () => void;
 }
 
 const initialState = {
-  deploymentTarget: null as 'linuxmuster' | 'generic' | null,
+  organizationType: null as OrganizationType | null,
+  adType: null as AdType | null,
+  deploymentTarget: null as DeploymentTarget | null,
   lmnExternalDomain: '',
   lmnBinduserDn: '',
   lmnBinduserPw: '',
@@ -55,10 +114,37 @@ const initialState = {
   initialAdminGroup: '',
   certificateConfigured: false,
   proxyDetected: false,
+  lmnSshHost: '',
+  lmnSshPort: 22,
+  lmnSshUser: 'root',
+  lmnSshPassword: '',
+  lmnBootstrapStatus: 'idle' as LmnStatus,
+  lmnPlaybookStatus: 'idle' as LmnStatus,
+  lmnOutputLog: [] as LogEntry[],
+  lmnRequirementsPassed: false,
+  lmnServerIp: '10.0.0.1',
+  lmnNetmask: '255.255.0.0',
+  lmnGateway: '10.0.0.254',
+  lmnServername: 'server',
+  lmnDomainname: 'linuxmuster.lan',
+  lmnSchoolname: 'Meine Schule',
+  lmnLocation: 'Musterstadt',
+  lmnCountry: 'de',
+  lmnState: 'BW',
+  lmnDhcprange: '10.0.100.1 10.0.100.254',
+  lmnAdminpw: '',
+  lmnTimezone: 'Europe/Berlin',
+  lmnLocale: 'de_DE.UTF-8',
 };
+
+let logIdCounter = 0;
 
 const useInstallerStore = create<InstallerState>((set) => ({
   ...initialState,
+
+  setOrganizationType: (type) => set({ organizationType: type }),
+
+  setAdType: (type) => set({ adType: type }),
 
   setDeploymentTarget: (target) => set({ deploymentTarget: target }),
 
@@ -86,6 +172,34 @@ const useInstallerStore = create<InstallerState>((set) => ({
   setCertificateConfigured: (value) => set({ certificateConfigured: value }),
 
   setProxyDetected: (value) => set({ proxyDetected: value }),
+
+  setLmnSsh: (ssh) =>
+    set({
+      lmnSshHost: ssh.host,
+      lmnSshPort: ssh.port,
+      lmnSshUser: ssh.user,
+      lmnSshPassword: ssh.password,
+    }),
+
+  setLmnBootstrapStatus: (status) => set({ lmnBootstrapStatus: status }),
+
+  setLmnPlaybookStatus: (status) => set({ lmnPlaybookStatus: status }),
+
+  appendLmnOutput: (line) =>
+    set((state) => {
+      const id = logIdCounter;
+      logIdCounter += 1;
+      return { lmnOutputLog: [...state.lmnOutputLog, { id, text: line }] };
+    }),
+
+  clearLmnOutput: () => {
+    logIdCounter = 0;
+    set({ lmnOutputLog: [] });
+  },
+
+  setLmnRequirementsPassed: (value) => set({ lmnRequirementsPassed: value }),
+
+  setLmnConfig: (config) => set(config),
 
   reset: () => set(initialState),
 }));

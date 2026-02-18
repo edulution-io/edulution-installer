@@ -31,7 +31,7 @@ const AdminGroupPage = () => {
           htmlFor="set_admin_group"
           className="mb-1 block text-sm font-bold text-gray-800"
         >
-          Hier kann eine initiale Admin-Gruppe definiert werden.
+          Optional: Hier kann eine initiale Admin-Gruppe für edulution definiert werden.
         </label>
         <Input
           id="set_admin_group"
@@ -41,7 +41,8 @@ const AdminGroupPage = () => {
           onChange={(e) => setAdminGroup(e.target.value)}
         />
         <p className="mt-2 text-sm text-gray-600">
-          Bei Linuxmuster-Installationen ist &quot;role-globaladministrator&quot; standardmäßig aktiviert.
+          Bei linuxmuster.net-Installationen ist &quot;role-globaladministrator&quot; standardmäßig aktiviert. Die hier
+          definierte Gruppe hat nur erweiterte Rechte innerhalb von edulution.
         </p>
         {isGeneric && !adminGroup.trim() && (
           <p className="mt-1 text-sm font-bold text-red-600">
@@ -54,7 +55,9 @@ const AdminGroupPage = () => {
         variant="btn-security"
         size="lg"
         className="mt-2 w-full justify-center text-white"
-        onClick={() => { void handleSubmit(); }}
+        onClick={() => {
+          void handleSubmit();
+        }}
         disabled={!isValid || submitting}
       >
         Weiter

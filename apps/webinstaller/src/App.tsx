@@ -1,11 +1,15 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Card, CardContent } from '@shared-ui';
 import StartPage from './pages/StartPage';
+import OrganizationPage from './pages/OrganizationPage';
 import TokenPage from './pages/TokenPage';
 import ConfigurePage from './pages/ConfigurePage';
 import CheckPage from './pages/CheckPage';
 import AdminGroupPage from './pages/AdminGroupPage';
 import CertificatePage from './pages/CertificatePage';
+import LmnSetupPage from './pages/LmnSetupPage';
+import LmnConfigPage from './pages/LmnConfigPage';
+import LmnInstallPage from './pages/LmnInstallPage';
 import FinishPage from './pages/FinishPage';
 
 const App = () => (
@@ -19,7 +23,7 @@ const App = () => (
             rel="noopener noreferrer"
           >
             <img
-              src="/img/edulution.io_USER_INTERFACE.svg"
+              src="/img/edulution.io_INSTALLER.svg"
               alt="edulution.io Logo"
               className="logo"
             />
@@ -30,6 +34,10 @@ const App = () => (
           <Route
             path="/"
             element={<StartPage />}
+          />
+          <Route
+            path="/organization"
+            element={<OrganizationPage />}
           />
           <Route
             path="/token"
@@ -50,6 +58,18 @@ const App = () => (
           <Route
             path="/certificate"
             element={<CertificatePage />}
+          />
+          <Route
+            path="/lmn-setup"
+            element={<LmnSetupPage />}
+          />
+          <Route
+            path="/lmn-config"
+            element={<LmnConfigPage />}
+          />
+          <Route
+            path="/lmn-install"
+            element={<LmnInstallPage />}
           />
           <Route
             path="/finish"
