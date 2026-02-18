@@ -60,6 +60,7 @@ class SSCertificate(BaseModel):
 
 class LECertificate(BaseModel):
     email: str
+    dns_provider: str
 
 
 class ConfigurationRequest(BaseModel):
@@ -178,6 +179,8 @@ class Data:
         self.DATA_EDULUTION_EXTERNAL_DOMAIN = None
         self.DATA_LE_USED = False
         self.DATA_LE_EMAIL = None
+        self.DATA_LE_DNS_PROVIDER = None
+        self.DATA_LE_ACME_DNS_REGISTRATION = None
         self.DATA_PROXY_USED = False
         self.DATA_ORGANISATION_TYPE = None
         self.DATA_DEPLOYMENT_TARGET = None
@@ -417,10 +420,37 @@ def createSSCertificate(ssdata: SSCertificate, data: Data = Depends(getData)):
 def createLECertificate(ledata: LECertificate, data: Data = Depends(getData)):
     data.DATA_LE_USED = True
     data.DATA_LE_EMAIL = ledata.email
-    return {
-        "status": True,
-        "message": "Let's Encrypt wird beim Start von Traefik konfiguriert",
-    }
+    data.DATA_LE_DNS_PROVIDER = ledata.dns_provider
+
+    # Register with acme-dns
+    try:
+        acme_dns_url = "https://acme-dns.netzint.de/register"
+        response = requests.post(acme_dns_url, timeout=15)
+        if response.status_code not in (200, 201):
+            return {
+                "status": False,
+                "message": f"ACME-DNS Registrierung fehlgeschlagen (HTTP {response.status_code})",
+            }
+
+        registration = response.json()
+        data.DATA_LE_ACME_DNS_REGISTRATION = registration
+
+        return {
+            "status": True,
+            "message": "Let's Encrypt wird beim Start von Traefik konfiguriert",
+            "registration": registration,
+        }
+    except requests.exceptions.Timeout:
+        return {
+            "status": False,
+            "message": "ACME-DNS Registrierung fehlgeschlagen: Timeout",
+        }
+    except Exception as e:
+        print(e)
+        return {
+            "status": False,
+            "message": f"ACME-DNS Registrierung fehlgeschlagen: {str(e)}",
+        }
 
 
 @api.post("/upload-certificate")
@@ -825,9 +855,11 @@ EDULUTION_ONLYOFFICE_JWT_SECRET={onlyoffice_jwt_secret}
 EDULUTION_ONLYOFFICE_POSTGRES_PASSWORD={onlyoffice_postgres_secret}
 """
 
-    # Let's Encrypt E-Mail hinzufügen wenn verwendet
+    # Let's Encrypt E-Mail und ACME-DNS Konfiguration hinzufügen wenn verwendet
     if data.DATA_LE_USED and data.DATA_LE_EMAIL:
         environment_file += f"\n# Let's Encrypt\n\nLE_EMAIL={data.DATA_LE_EMAIL}\n"
+        environment_file += "ACME_DNS_API_BASE=https://acme-dns.netzint.de\n"
+        environment_file += "ACME_DNS_STORAGE_PATH=/etc/traefik/ssl/acmedns.json\n"
 
     with open("/edulution-ui/edulution.env", "w") as f:
         f.write(environment_file)
@@ -880,31 +912,30 @@ http:
     with open("/edulution-ui/data/traefik/config/webdav.yml", "w") as f:
         f.write(webdav_traefik)
 
-    # Docker-compose für Let's Encrypt anpassen falls nötig
-    if not data.DATA_PROXY_USED and data.DATA_LE_USED:
-        with open("/edulution-ui/docker-compose.yml", "r") as f:
-            compose_content = f.read()
-
-        compose_content = compose_content.replace(
-            "      - ./data/traefik/ssl:/etc/traefik/ssl\n    healthcheck:",
-            "      - ./data/traefik/ssl:/etc/traefik/ssl\n      - ./data/letsencrypt:/letsencrypt\n    healthcheck:",
-        )
-
-        with open("/edulution-ui/docker-compose.yml", "w") as f:
-            f.write(compose_content)
-
     # Traefik-Konfiguration basierend auf Proxy und Let's Encrypt anpassen
     if not data.DATA_PROXY_USED and data.DATA_LE_USED:
-        traefik_le_config = f"""
-entryPoints:
+        # traefik.yml: Basis-Template + certificatesResolvers mit DNS-Challenge anhängen
+        traefik_le_config = f"""entryPoints:
   web:
     address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: "websecure"
+          scheme: "https"
   websecure:
     address: ":443"
     http:
       tls: {{}}
+    transport:
+      respondingTimeouts:
+        readTimeout: 0s
+        writeTimeout: 0s
+        idleTimeout: 0s
   imap:
     address: ":143"
+  imaps:
+    address: ":993"
 
 providers:
   file:
@@ -923,67 +954,35 @@ certificatesResolvers:
   letsencrypt:
     acme:
       email: {data.DATA_LE_EMAIL}
-      storage: /letsencrypt/acme.json
-      httpChallenge:
-        entryPoint: web
+      storage: /etc/traefik/ssl/acme.json
+      dnsChallenge:
+        provider: acme-dns
 """
 
-        with open("/edulution-ui/traefik.yml", "w") as f:
+        with open(f"{EDULUTION_DIRECTORY}/traefik.yml", "w") as f:
             f.write(traefik_le_config)
 
-        le_config = f"""
-http:
-  routers:
-    edulution-api:
-      rule: "PathPrefix(`/edu-api`)"
-      service: edulution-api
-      entryPoints:
-        - websecure
-      tls:
-        certResolver: letsencrypt
-        domains:
-          - main: "{data.DATA_EDULUTION_EXTERNAL_DOMAIN}"
-    edulution-keycloak:
-      rule: "PathPrefix(`/auth`)"
-      service: edulution-keycloak
-      entryPoints:
-        - websecure
-      tls:
-        certResolver: letsencrypt
-        domains:
-          - main: "{data.DATA_EDULUTION_EXTERNAL_DOMAIN}"
-    edulution-ui:
-      rule: "PathPrefix(`/`)"
-      service: edulution-ui
-      entryPoints:
-        - websecure
-      tls:
-        certResolver: letsencrypt
-        domains:
-          - main: "{data.DATA_EDULUTION_EXTERNAL_DOMAIN}"
+        # edulution-default.yml aus LE-Template ableiten mit Domain-Ersetzung
+        le_template_path = Path(EDULUTION_DIRECTORY) / "edulution-default-le.yml"
+        le_config = le_template_path.read_text().replace("{{DOMAIN}}", data.DATA_EDULUTION_EXTERNAL_DOMAIN)
 
-  services:
-    edulution-api:
-      loadBalancer:
-        servers:
-          - url: "http://edu-api:3000"
-    edulution-ui:
-      loadBalancer:
-        servers:
-          - url: "http://edu-ui:80"
-    edulution-keycloak:
-      loadBalancer:
-        servers:
-          - url: "http://edu-keycloak:8080"
-"""
-        with open("/edulution-ui/data/traefik/config/edulution-default.yml", "w") as f:
+        with open(f"{EDULUTION_DIRECTORY}/data/traefik/config/edulution-default.yml", "w") as f:
             f.write(le_config)
 
-        os.makedirs("/edulution-ui/data/letsencrypt", exist_ok=True)
-        acme_json_path = "/edulution-ui/data/letsencrypt/acme.json"
+        # acme.json für ACME-Zertifikatsspeicher erstellen
+        acme_json_path = f"{EDULUTION_DIRECTORY}/data/traefik/ssl/acme.json"
         with open(acme_json_path, "w") as f:
             f.write("{}")
         os.chmod(acme_json_path, 0o600)
+
+        # acmedns.json mit Registrierungsdaten für ACME-DNS-Provider schreiben
+        if data.DATA_LE_ACME_DNS_REGISTRATION:
+            acmedns_data = {
+                data.DATA_EDULUTION_EXTERNAL_DOMAIN: data.DATA_LE_ACME_DNS_REGISTRATION
+            }
+            acmedns_json_path = f"{EDULUTION_DIRECTORY}/data/traefik/ssl/acmedns.json"
+            with open(acmedns_json_path, "w") as f:
+                json.dump(acmedns_data, f, indent=2)
 
     elif os.path.exists("/edulution-ui/data/traefik/ssl/cert.cert") and os.path.exists(
         "/edulution-ui/data/traefik/ssl/cert.key"

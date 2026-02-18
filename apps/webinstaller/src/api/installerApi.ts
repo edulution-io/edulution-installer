@@ -26,6 +26,19 @@ interface SsCertificateRequest {
 
 interface LeCertificateRequest {
   email: string;
+  dns_provider: string;
+}
+
+export interface AcmeDnsRegistration {
+  username: string;
+  password: string;
+  fulldomain: string;
+  subdomain: string;
+  allowfrom: string[];
+}
+
+interface LeCertificateResponse extends StatusResponse {
+  registration?: AcmeDnsRegistration;
 }
 
 const apiFetch = async <T>(url: string, options?: RequestInit): Promise<T> => {
@@ -70,8 +83,8 @@ export const createSsCertificate = (data: SsCertificateRequest): Promise<StatusR
     body: JSON.stringify(data),
   });
 
-export const createLeCertificate = (data: LeCertificateRequest): Promise<StatusResponse> =>
-  apiFetch<StatusResponse>('/api/create-le-certificate', {
+export const createLeCertificate = (data: LeCertificateRequest): Promise<LeCertificateResponse> =>
+  apiFetch<LeCertificateResponse>('/api/create-le-certificate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
