@@ -190,7 +190,7 @@ echo "[*] Starte den edulution Web-Installer..."
 docker pull ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
 
 docker run -d --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
-    -e EDULUTION_DIRECTORY=${DIRECTORY} ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
+    -e EDULUTION_DIRECTORY=${DIRECTORY} -e BOOTSTRAP_BRANCH=${EDULUTION_INSTALLER_TAG} ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
 
 # Warte bis der Installer bereit ist
 attempt=0
