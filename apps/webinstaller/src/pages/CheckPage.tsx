@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@edulution-io/ui-kit';
 import useInstallerStore from '../store/useInstallerStore';
 import { checkApiStatus, checkWebDavStatus, checkLdapStatus, checkLdapAccessStatus } from '../api/installerApi';
@@ -9,6 +10,7 @@ type CheckKey = 'api' | 'webdav' | 'ldap' | 'ldapAccess';
 
 const CheckPage = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { checks, setCheckResult, resetChecks } = useInstallerStore();
 
   const [loading, setLoading] = useState<Record<CheckKey, boolean>>({
@@ -25,7 +27,7 @@ const CheckPage = () => {
         const result = await checkFn();
         setCheckResult(key, result);
       } catch {
-        setCheckResult(key, { status: false, message: 'Verbindungsfehler!' });
+        setCheckResult(key, { status: false, message: t('check.connectionError') });
       }
       setLoading((prev) => ({ ...prev, [key]: false }));
     },
@@ -52,29 +54,29 @@ const CheckPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-lg font-bold text-gray-800">Überprüfung der Abhängigkeiten</h3>
+      <h3 className="text-lg font-bold text-gray-800">{t('check.title')}</h3>
 
       <div className="flex flex-col gap-2">
         <StatusCard
-          label="Überprüfung der Linuxmuster-API"
+          label={t('check.checkApi')}
           status={checks.api}
           loading={loading.api}
           onRetry={() => { void runCheck('api', checkApiStatus); }}
         />
         <StatusCard
-          label="Überprüfung des WebDAV-Servers"
+          label={t('check.checkWebDav')}
           status={checks.webdav}
           loading={loading.webdav}
           onRetry={() => { void runCheck('webdav', checkWebDavStatus); }}
         />
         <StatusCard
-          label="Überprüfung des LDAP(s)-Servers"
+          label={t('check.checkLdap')}
           status={checks.ldap}
           loading={loading.ldap}
           onRetry={() => { void runCheck('ldap', checkLdapStatus); }}
         />
         <StatusCard
-          label="Überprüfung der LDAP(s) Zugangsdaten"
+          label={t('check.checkLdapAccess')}
           status={checks.ldapAccess}
           loading={loading.ldapAccess}
           onRetry={() => { void runCheck('ldapAccess', checkLdapAccessStatus); }}
@@ -88,7 +90,7 @@ const CheckPage = () => {
         onClick={() => navigate('/admin-group')}
         disabled={!allPassed}
       >
-        Weiter
+        {t('common.next')}
       </Button>
 
       <Button
@@ -97,7 +99,7 @@ const CheckPage = () => {
         className="w-full justify-center"
         onClick={() => navigate('/configure')}
       >
-        Zurück
+        {t('common.back')}
       </Button>
     </div>
   );

@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@edulution-io/ui-kit';
 import { Input } from '@shared-ui';
 import useInstallerStore from '../store/useInstallerStore';
@@ -7,6 +8,7 @@ import { submitAdminGroup } from '../api/installerApi';
 
 const AdminGroupPage = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { deploymentTarget, initialAdminGroup, setInitialAdminGroup } = useInstallerStore();
 
   const [adminGroup, setAdminGroup] = useState(initialAdminGroup);
@@ -31,22 +33,21 @@ const AdminGroupPage = () => {
           htmlFor="set_admin_group"
           className="mb-1 block text-sm font-bold text-gray-800"
         >
-          Optional: Hier kann eine initiale Admin-Gruppe für edulution definiert werden.
+          {t('adminGroup.label')}
         </label>
         <Input
           id="set_admin_group"
           variant="login"
-          placeholder="z.B. Verwaltung, role-admins, etc."
+          placeholder={t('adminGroup.placeholder')}
           value={adminGroup}
           onChange={(e) => setAdminGroup(e.target.value)}
         />
         <p className="mt-2 text-sm text-gray-600">
-          Bei linuxmuster.net-Installationen ist &quot;role-globaladministrator&quot; standardmäßig aktiviert. Die hier
-          definierte Gruppe hat nur erweiterte Rechte innerhalb von edulution.
+          {t('adminGroup.hint')}
         </p>
         {isGeneric && !adminGroup.trim() && (
           <p className="mt-1 text-sm font-bold text-red-600">
-            Bei Unternehmens-Installationen muss eine Admin-Gruppe angegeben werden!
+            {t('adminGroup.requiredError')}
           </p>
         )}
       </div>
@@ -60,7 +61,7 @@ const AdminGroupPage = () => {
         }}
         disabled={!isValid || submitting}
       >
-        Weiter
+        {t('common.next')}
       </Button>
 
       <Button
@@ -69,7 +70,7 @@ const AdminGroupPage = () => {
         className="w-full justify-center"
         onClick={() => navigate('/token')}
       >
-        Abbrechen
+        {t('common.cancel')}
       </Button>
     </div>
   );

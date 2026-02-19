@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@edulution-io/ui-kit';
 import useInstallerStore from '../store/useInstallerStore';
 import { checkProxy } from '../api/installerApi';
@@ -7,6 +8,7 @@ import CertificateForm from '../components/CertificateForm';
 
 const CertificatePage = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { certificateConfigured, proxyDetected, setProxyDetected, adType } = useInstallerStore();
   const nextPage = '/finish';
   const backPage = adType === 'new' ? '/lmn-install' : '/admin-group';
@@ -28,7 +30,7 @@ const CertificatePage = () => {
   if (loading) {
     return (
       <div className="flex flex-col items-center gap-4">
-        <p className="text-gray-600">Prüfe Netzwerk-Konfiguration...</p>
+        <p className="text-gray-600">{t('certificate.checkingNetwork')}</p>
       </div>
     );
   }
@@ -36,10 +38,9 @@ const CertificatePage = () => {
   if (proxyDetected) {
     return (
       <div className="flex flex-col gap-4">
-        <h3 className="text-lg font-bold text-gray-800">Zertifikat</h3>
+        <h3 className="text-lg font-bold text-gray-800">{t('certificate.title')}</h3>
         <div className="rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800">
-          Du verwendest einen Reverse-Proxy. Daher kann für edulution kein gültiges Zertifikat hinterlegt / ausgestellt
-          werden.
+          {t('certificate.proxyWarning')}
         </div>
         <Button
           variant="btn-security"
@@ -47,7 +48,7 @@ const CertificatePage = () => {
           className="w-full justify-center text-white"
           onClick={() => navigate(nextPage)}
         >
-          Installation starten
+          {t('common.startInstallation')}
         </Button>
       </div>
     );
@@ -55,7 +56,7 @@ const CertificatePage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-lg font-bold text-gray-800">Zertifikat</h3>
+      <h3 className="text-lg font-bold text-gray-800">{t('certificate.title')}</h3>
 
       <CertificateForm />
 
@@ -66,7 +67,7 @@ const CertificatePage = () => {
         onClick={() => navigate(nextPage)}
         disabled={!certificateConfigured}
       >
-        Installation starten
+        {t('common.startInstallation')}
       </Button>
 
       <Button
@@ -75,7 +76,7 @@ const CertificatePage = () => {
         className="w-full justify-center"
         onClick={() => navigate(nextPage)}
       >
-        Überspringen
+        {t('common.skip')}
       </Button>
 
       <Button
@@ -84,7 +85,7 @@ const CertificatePage = () => {
         className="w-full justify-center"
         onClick={() => navigate(backPage)}
       >
-        Zurück
+        {t('common.back')}
       </Button>
     </div>
   );

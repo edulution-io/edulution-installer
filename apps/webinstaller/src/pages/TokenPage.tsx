@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faServer } from '@fortawesome/free-solid-svg-icons';
 import { Button } from '@edulution-io/ui-kit';
@@ -12,6 +13,7 @@ type Step = 'adType' | 'tokenEntry';
 
 const TokenPage = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const store = useInstallerStore();
 
   const [step, setStep] = useState<Step>('adType');
@@ -95,7 +97,7 @@ const TokenPage = () => {
             htmlFor="adType"
             className="mb-1 block text-sm font-bold text-gray-800"
           >
-            Verzeichnisdienst anbinden
+            {t('token.bindDirectory')}
           </label>
           <select
             id="adType"
@@ -107,17 +109,17 @@ const TokenPage = () => {
               value=""
               disabled
             >
-              Bitte wählen…
+              {t('token.pleaseChoose')}
             </option>
-            <option value="existing">Bestehenden Verzeichnisdienst anbinden</option>
-            <option value="new">linuxmuster.net aufsetzen</option>
+            <option value="existing">{t('token.bindExisting')}</option>
+            <option value="new">{t('token.setupLinuxmuster')}</option>
           </select>
         </div>
 
         {adType === 'existing' && (
           <div>
             <span className="mb-2 block text-sm font-bold text-gray-800">
-              Welcher Verzeichnisdienst wird verwendet?
+              {t('token.whichDirectory')}
             </span>
             <div className="grid grid-cols-2 gap-3">
               <Card
@@ -147,7 +149,7 @@ const TokenPage = () => {
                       className="text-3xl"
                     />
                   </div>
-                  <span className="text-sm font-medium">Generisch</span>
+                  <span className="text-sm font-medium">{t('token.generic')}</span>
                 </CardContent>
               </Card>
             </div>
@@ -156,12 +158,11 @@ const TokenPage = () => {
 
         {target === 'linuxmuster' ? (
           <p className="mt-2 text-sm text-gray-600">
-            Hier kann im nächsten Schritt entweder ein edulution Setup-Token eingegeben oder die Konfiguration manuell
-            durchgeführt werden.
+            {t('token.descriptionLinuxmuster')}
           </p>
         ) : (
           <p className="mt-2 text-sm text-gray-600">
-            Hier kann ein Verzeichnisdienst mit Active Directory angebunden werden.
+            {t('token.descriptionGeneric')}
           </p>
         )}
 
@@ -172,7 +173,7 @@ const TokenPage = () => {
           onClick={handleNext}
           disabled={!adType}
         >
-          Weiter
+          {t('common.next')}
         </Button>
 
         <Button
@@ -181,7 +182,7 @@ const TokenPage = () => {
           className="w-full justify-center"
           onClick={() => navigate('/organization')}
         >
-          Zurück
+          {t('common.back')}
         </Button>
       </div>
     );
@@ -195,7 +196,7 @@ const TokenPage = () => {
           htmlFor="edulutionsetuptoken"
           className="mb-1 block text-sm font-bold text-gray-800"
         >
-          Füge hier deinen edulution Setup-Token ein:
+          {t('token.enterToken')}
         </label>
         <textarea
           id="edulutionsetuptoken"
@@ -214,19 +215,19 @@ const TokenPage = () => {
           onClick={handleSubmitToken}
           disabled={!tokenValid || checking}
         >
-          Überprüfen
+          {t('common.verify')}
         </Button>
       </div>
 
       <div className="mt-2 border-t border-gray-200 pt-4">
-        <span className="mb-2 block text-sm font-bold text-gray-800">Hier gehts zur manuellen Eingabe:</span>
+        <span className="mb-2 block text-sm font-bold text-gray-800">{t('token.manualEntryLabel')}</span>
         <Button
           variant="btn-outline"
           size="lg"
           className="w-full justify-center"
           onClick={handleManualEntry}
         >
-          Manuell eingeben
+          {t('token.manualEntry')}
         </Button>
       </div>
 
@@ -236,7 +237,7 @@ const TokenPage = () => {
         className="w-full justify-center"
         onClick={() => setStep('adType')}
       >
-        Zurück
+        {t('common.back')}
       </Button>
     </div>
   );

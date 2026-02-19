@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner } from '@fortawesome/free-solid-svg-icons';
 import { startInstallation, shutdownInstaller } from '../api/installerApi';
 
 const FinishPage = () => {
   const [started, setStarted] = useState(false);
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (started) return;
@@ -49,15 +51,15 @@ const FinishPage = () => {
 
   return (
     <div className="flex flex-col items-center gap-6">
-      <h3 className="text-lg font-bold text-gray-800">Konfiguration abgeschlossen</h3>
+      <h3 className="text-lg font-bold text-gray-800">{t('finish.title')}</h3>
       <FontAwesomeIcon
         icon={faSpinner}
         spin
         className="text-4xl text-gray-500"
       />
-      <p className="text-center text-gray-600">Die edulution UI wird nun installiert...</p>
+      <p className="text-center text-gray-600">{t('finish.installing')}</p>
       <p className="text-center text-sm text-gray-500">
-        Sie werden automatisch weitergeleitet, wenn die Installation abgeschlossen ist.
+        {t('finish.redirect')}
       </p>
     </div>
   );

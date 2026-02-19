@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSchool, faBuilding, faLandmarkDome } from '@fortawesome/free-solid-svg-icons';
 import { Button } from '@edulution-io/ui-kit';
@@ -7,20 +8,21 @@ import { Card, CardContent } from '@shared-ui';
 import type { OrganizationType } from '@shared-types';
 import useInstallerStore from '../store/useInstallerStore';
 
-const options: { value: OrganizationType; label: string; icon: typeof faSchool }[] = [
-  { value: 'school', label: 'Schule/Schulträger', icon: faSchool },
-  { value: 'business', label: 'Unternehmen', icon: faBuilding },
-  { value: 'public-administration', label: 'Verwaltung', icon: faLandmarkDome },
-];
-
 const OrganizationPage = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const store = useInstallerStore();
   const [selected, setSelected] = useState<OrganizationType>(store.organizationType ?? 'school');
 
+  const options: { value: OrganizationType; label: string; icon: typeof faSchool }[] = [
+    { value: 'school', label: t('organization.school'), icon: faSchool },
+    { value: 'business', label: t('organization.business'), icon: faBuilding },
+    { value: 'public-administration', label: t('organization.publicAdmin'), icon: faLandmarkDome },
+  ];
+
   return (
     <div className="flex flex-col gap-4">
-      <span className="mb-1 block text-sm font-bold text-gray-800">Für wen ist die Installation?</span>
+      <span className="mb-1 block text-sm font-bold text-gray-800">{t('organization.label')}</span>
 
       <div className="grid grid-cols-3 gap-3">
         {options.map((opt) => (
@@ -51,7 +53,7 @@ const OrganizationPage = () => {
           void navigate('/token');
         }}
       >
-        Weiter
+        {t('common.next')}
       </Button>
 
       <Button
@@ -60,7 +62,7 @@ const OrganizationPage = () => {
         className="w-full justify-center"
         onClick={() => navigate('/')}
       >
-        Zurück
+        {t('common.back')}
       </Button>
     </div>
   );

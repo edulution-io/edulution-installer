@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner, faCircleCheck, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
 import { Button } from '@edulution-io/ui-kit';
@@ -18,6 +19,7 @@ interface AcmeDnsRegistration {
 }
 
 const CertificateForm = () => {
+  const { t } = useTranslation();
   const { edulutionExternalDomain, setCertificateConfigured } = useInstallerStore();
 
   const [certType, setCertType] = useState<CertType>('upload');
@@ -150,8 +152,7 @@ const CertificateForm = () => {
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-lg bg-green-50 p-3 text-sm text-green-800">
-        Du verwendest keinen Reverse-Proxy. Für edulution benötigst du ein Zertifikat, welches du hier generieren,
-        erstellen oder hochladen kannst.
+        {t('certificateForm.noProxyInfo')}
       </div>
 
       {/* Self-Signed */}
@@ -167,46 +168,46 @@ const CertificateForm = () => {
           onChange={() => handleCertTypeChange('self-signed')}
           className="accent-primary"
         />
-        Selbst-Signiertes-Zertifikat generieren
+        {t('certificateForm.selfSigned')}
       </label>
       {certType === 'self-signed' && (
         <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
           <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
-            <span className="text-sm text-gray-600">Domain:</span>
+            <span className="text-sm text-gray-600">{t('common.domain')}</span>
             <Input
               variant="login"
               value={edulutionExternalDomain}
               readOnly
             />
-            <span className="text-sm text-gray-600">Ländercode (DE):</span>
+            <span className="text-sm text-gray-600">{t('certificateForm.countryCode')}</span>
             <Input
               variant="login"
               value={countryCode}
               onChange={(e) => setCountryCode(e.target.value)}
               className={countryCode.trim() ? 'valid-input' : ''}
             />
-            <span className="text-sm text-gray-600">Bundesland:</span>
+            <span className="text-sm text-gray-600">{t('common.state')}</span>
             <Input
               variant="login"
               value={state}
               onChange={(e) => setState(e.target.value)}
               className={state.trim() ? 'valid-input' : ''}
             />
-            <span className="text-sm text-gray-600">Stadt:</span>
+            <span className="text-sm text-gray-600">{t('certificateForm.city')}</span>
             <Input
               variant="login"
               value={city}
               onChange={(e) => setCity(e.target.value)}
               className={city.trim() ? 'valid-input' : ''}
             />
-            <span className="text-sm text-gray-600">Organisation:</span>
+            <span className="text-sm text-gray-600">{t('certificateForm.organisation')}</span>
             <Input
               variant="login"
               value={organisation}
               onChange={(e) => setOrganisation(e.target.value)}
               className={organisation.trim() ? 'valid-input' : ''}
             />
-            <span className="text-sm text-gray-600">Gültigkeit (Tage):</span>
+            <span className="text-sm text-gray-600">{t('certificateForm.validDays')}</span>
             <Input
               variant="login"
               type="number"
@@ -225,7 +226,7 @@ const CertificateForm = () => {
               }}
               disabled={!isSsValid || status === 'loading'}
             >
-              Zertifikat generieren
+              {t('certificateForm.generateCertificate')}
             </Button>
             {statusIcon}
           </div>
@@ -245,12 +246,12 @@ const CertificateForm = () => {
           onChange={() => handleCertTypeChange('letsencrypt')}
           className="accent-primary"
         />
-        Zertifikat mit Let&apos;s Encrypt erstellen
+        {t('certificateForm.letsEncrypt')}
       </label>
       {certType === 'letsencrypt' && (
         <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
           <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
-            <span className="text-sm text-gray-600">DNS-Provider:</span>
+            <span className="text-sm text-gray-600">{t('certificateForm.dnsProvider')}</span>
             <select
               value={dnsProvider}
               onChange={(e) => {
@@ -261,13 +262,13 @@ const CertificateForm = () => {
             >
               <option value="netzint-dns">Netzint DNS</option>
             </select>
-            <span className="text-sm text-gray-600">Domain:</span>
+            <span className="text-sm text-gray-600">{t('common.domain')}</span>
             <Input
               variant="login"
               value={edulutionExternalDomain}
               readOnly
             />
-            <span className="text-sm text-gray-600">E-Mail-Adresse:</span>
+            <span className="text-sm text-gray-600">{t('certificateForm.email')}</span>
             <Input
               variant="login"
               type="email"
@@ -286,45 +287,44 @@ const CertificateForm = () => {
               }}
               disabled={!isLeValid || status === 'loading'}
             >
-              Zertifikat erstellen
+              {t('certificateForm.createCertificate')}
             </Button>
             {statusIcon}
           </div>
 
           {acmeDnsRegistration && (
             <div className="flex flex-col gap-2 rounded-lg border border-blue-200 bg-blue-50 p-4">
-              <p className="text-sm font-bold text-blue-800">ACME-DNS Registrierung erfolgreich</p>
-              <p className="text-sm text-blue-800">Bitte erstelle folgenden CNAME-Eintrag bei deinem DNS-Provider:</p>
+              <p className="text-sm font-bold text-blue-800">{t('certificateForm.acmeSuccess')}</p>
+              <p className="text-sm text-blue-800">{t('certificateForm.acmeCnameInstruction')}</p>
               <div className="rounded bg-white p-3 font-mono text-xs text-gray-800">
                 <span className="font-bold">_acme-challenge.{edulutionExternalDomain}</span> &rarr;{' '}
                 <span className="font-bold">{acmeDnsRegistration.fulldomain}</span>
               </div>
-              <p className="mt-2 text-sm font-bold text-blue-800">Registrierungsdaten:</p>
+              <p className="mt-2 text-sm font-bold text-blue-800">{t('certificateForm.registrationData')}</p>
               <div className="overflow-x-auto rounded bg-white p-3 font-mono text-xs text-gray-800">
                 <table className="w-full">
                   <tbody>
                     <tr>
-                      <td className="pr-3 font-bold">Username:</td>
+                      <td className="pr-3 font-bold">{t('certificateForm.username')}</td>
                       <td className="select-all">{acmeDnsRegistration.username}</td>
                     </tr>
                     <tr>
-                      <td className="pr-3 font-bold">Password:</td>
+                      <td className="pr-3 font-bold">{t('common.password')}</td>
                       <td className="select-all">{acmeDnsRegistration.password}</td>
                     </tr>
                     <tr>
-                      <td className="pr-3 font-bold">Fulldomain:</td>
+                      <td className="pr-3 font-bold">{t('certificateForm.fulldomain')}</td>
                       <td className="select-all">{acmeDnsRegistration.fulldomain}</td>
                     </tr>
                     <tr>
-                      <td className="pr-3 font-bold">Subdomain:</td>
+                      <td className="pr-3 font-bold">{t('certificateForm.subdomain')}</td>
                       <td className="select-all">{acmeDnsRegistration.subdomain}</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
               <p className="mt-1 text-xs text-blue-600">
-                Diese Daten werden automatisch in die Traefik-Konfiguration übernommen. Der CNAME-Eintrag muss manuell
-                beim DNS-Provider hinterlegt werden.
+                {t('certificateForm.acmeTraefikNote')}
               </p>
             </div>
           )}
@@ -344,19 +344,19 @@ const CertificateForm = () => {
           onChange={() => handleCertTypeChange('upload')}
           className="accent-primary"
         />
-        Zertifikat hochladen
+        {t('certificateForm.uploadCertificate')}
       </label>
       {certType === 'upload' && (
         <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
           <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
-            <span className="text-sm text-gray-600">Zertifikats-Datei:</span>
+            <span className="text-sm text-gray-600">{t('certificateForm.certFile')}</span>
             <input
               type="file"
               accept=".crt,.pem,.cer,.cert"
               onChange={(e) => setCertFile(e.target.files?.[0] ?? null)}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800"
             />
-            <span className="text-sm text-gray-600">Zertifikats-Key:</span>
+            <span className="text-sm text-gray-600">{t('certificateForm.certKey')}</span>
             <input
               type="file"
               accept=".key,.pem"
@@ -374,7 +374,7 @@ const CertificateForm = () => {
               }}
               disabled={!isUploadValid || status === 'loading'}
             >
-              Dateien hochladen
+              {t('certificateForm.uploadFiles')}
             </Button>
             {statusIcon}
           </div>

@@ -1,0 +1,152 @@
+{
+  "common": {
+    "next": "Next",
+    "back": "Back",
+    "cancel": "Cancel",
+    "verify": "Verify",
+    "startInstallation": "Start installation",
+    "skip": "Skip",
+    "retry": "Retry",
+    "domain": "Domain:",
+    "password": "Password:",
+    "state": "State:"
+  },
+  "footer": {
+    "infoText": "All information at",
+    "orInThe": "or in the",
+    "documentation": "Documentation"
+  },
+  "start": {
+    "welcome": "Welcome!",
+    "description": "This wizard will guide you through the installation and configuration of the edulution UI.",
+    "startButton": "Start installation"
+  },
+  "organization": {
+    "label": "Who is this installation for?",
+    "school": "School / School authority",
+    "business": "Business",
+    "publicAdmin": "Public administration"
+  },
+  "token": {
+    "bindDirectory": "Connect directory service",
+    "pleaseChoose": "Please choose…",
+    "bindExisting": "Connect existing directory service",
+    "setupLinuxmuster": "Set up linuxmuster.net",
+    "whichDirectory": "Which directory service is being used?",
+    "generic": "Generic",
+    "descriptionLinuxmuster": "In the next step you can either enter an edulution setup token or configure manually.",
+    "descriptionGeneric": "Here you can connect a directory service with Active Directory.",
+    "enterToken": "Enter your edulution setup token here:",
+    "manualEntryLabel": "Go to manual configuration:",
+    "manualEntry": "Enter manually"
+  },
+  "configure": {
+    "externalDomainLmn": "External domain of the linuxmuster.net server:",
+    "externalDomainGeneric": "External domain of the directory server:",
+    "ldapUser": "LDAP User:",
+    "ldapPassword": "LDAP Password:",
+    "ldapSchema": "LDAP Schema:",
+    "ldapPort": "LDAP Port:",
+    "externalDomainEdulution": "External domain of edulution UI:",
+    "verifying": "Verifying..."
+  },
+  "check": {
+    "title": "Dependency check",
+    "checkApi": "Checking Linuxmuster API",
+    "checkWebDav": "Checking WebDAV server",
+    "checkLdap": "Checking LDAP(s) server",
+    "checkLdapAccess": "Checking LDAP(s) credentials",
+    "connectionError": "Connection error!"
+  },
+  "adminGroup": {
+    "label": "Optional: Define an initial admin group for edulution here.",
+    "placeholder": "e.g. Administration, role-admins, etc.",
+    "hint": "For linuxmuster.net installations, \"role-globaladministrator\" is enabled by default. The group defined here only has extended permissions within edulution.",
+    "requiredError": "For business installations, an admin group must be specified!"
+  },
+  "certificate": {
+    "title": "Certificate",
+    "checkingNetwork": "Checking network configuration...",
+    "proxyWarning": "You are using a reverse proxy. Therefore, no valid certificate can be configured / issued for edulution."
+  },
+  "certificateForm": {
+    "noProxyInfo": "You are not using a reverse proxy. edulution requires a certificate, which you can generate, create, or upload here.",
+    "selfSigned": "Generate self-signed certificate",
+    "countryCode": "Country code (DE):",
+    "city": "City:",
+    "organisation": "Organisation:",
+    "validDays": "Validity (days):",
+    "generateCertificate": "Generate certificate",
+    "letsEncrypt": "Create certificate with Let's Encrypt",
+    "dnsProvider": "DNS Provider:",
+    "email": "Email address:",
+    "createCertificate": "Create certificate",
+    "acmeSuccess": "ACME-DNS registration successful",
+    "acmeCnameInstruction": "Please create the following CNAME record with your DNS provider:",
+    "registrationData": "Registration data:",
+    "username": "Username:",
+    "fulldomain": "Fulldomain:",
+    "subdomain": "Subdomain:",
+    "acmeTraefikNote": "This data will be automatically applied to the Traefik configuration. The CNAME record must be created manually at your DNS provider.",
+    "uploadCertificate": "Upload certificate",
+    "certFile": "Certificate file:",
+    "certKey": "Certificate key:",
+    "uploadFiles": "Upload files"
+  },
+  "lmnSetup": {
+    "title": "Set up linuxmuster.net server",
+    "sshHost": "SSH Host:",
+    "sshPort": "SSH Port:",
+    "sshUser": "SSH User:",
+    "sshPassword": "SSH Password:",
+    "bootstrapRunning": "Bootstrap is running...",
+    "bootstrapRetry": "Restart bootstrap",
+    "bootstrapStart": "Start bootstrap",
+    "bootstrapSuccess": "Bootstrap completed successfully",
+    "bootstrapFailed": "Bootstrap failed",
+    "checkingRequirements": "Checking requirements...",
+    "checkRequirements": "Check requirements",
+    "systemRequirements": "System requirements",
+    "requirementsNotMet": "Not all requirements met. Please fix the issues and check again."
+  },
+  "lmnConfig": {
+    "title": "linuxmuster.net Configuration (Step {{step}}/2)",
+    "network": "Network",
+    "serverIp": "Server IP:",
+    "subnetMask": "Subnet mask:",
+    "gateway": "Gateway:",
+    "server": "Server",
+    "hostname": "Hostname:",
+    "dhcp": "DHCP",
+    "dhcpRange": "DHCP range:",
+    "dhcpFormat": "Format: START-IP END-IP",
+    "system": "System",
+    "timezone": "Timezone:",
+    "locale": "Locale:",
+    "school": "School",
+    "schoolName": "School name:",
+    "location": "City:",
+    "country": "Country:",
+    "adminPassword": "Administrator password",
+    "confirmPassword": "Confirm password:",
+    "passwordMismatch": "Passwords do not match",
+    "pwMinLength": "At least 7 characters",
+    "pwLowercase": "Lowercase letters required",
+    "pwUppercase": "Uppercase letters required",
+    "pwDigit": "At least one digit",
+    "pwSpecialChar": "At least one special character (?!§+-@#%&*()[]{})"
+  },
+  "lmnInstall": {
+    "title": "linuxmuster.net Installation",
+    "running": "Installation running...",
+    "success": "Installation completed successfully",
+    "failed": "Installation failed",
+    "playbookError": "[ERROR] Playbook could not be started",
+    "backToSetup": "Back to setup"
+  },
+  "finish": {
+    "title": "Configuration complete",
+    "installing": "The edulution UI is now being installed...",
+    "redirect": "You will be redirected automatically once the installation is complete."
+  }
+}

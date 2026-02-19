@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@edulution-io/ui-kit';
 import { Input } from '@shared-ui';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -11,6 +12,7 @@ import StatusCard from '../components/StatusCard';
 
 const LmnSetupPage = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const store = useInstallerStore();
 
   const [host, setHost] = useState(store.lmnSshHost);
@@ -67,14 +69,14 @@ const LmnSetupPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-lg font-bold text-gray-800">linuxmuster.net-Server einrichten</h3>
+      <h3 className="text-lg font-bold text-gray-800">{t('lmnSetup.title')}</h3>
 
       <div>
         <label
           htmlFor="ssh_host"
           className="mb-1 block text-sm font-bold text-gray-800"
         >
-          SSH Host:
+          {t('lmnSetup.sshHost')}
         </label>
         <Input
           id="ssh_host"
@@ -92,7 +94,7 @@ const LmnSetupPage = () => {
             htmlFor="ssh_port"
             className="mb-1 block text-sm font-bold text-gray-800"
           >
-            SSH Port:
+            {t('lmnSetup.sshPort')}
           </label>
           <Input
             id="ssh_port"
@@ -111,7 +113,7 @@ const LmnSetupPage = () => {
             htmlFor="ssh_user"
             className="mb-1 block text-sm font-bold text-gray-800"
           >
-            SSH Benutzer:
+            {t('lmnSetup.sshUser')}
           </label>
           <Input
             id="ssh_user"
@@ -128,7 +130,7 @@ const LmnSetupPage = () => {
           htmlFor="ssh_password"
           className="mb-1 block text-sm font-bold text-gray-800"
         >
-          SSH Passwort:
+          {t('lmnSetup.sshPassword')}
         </label>
         <Input
           id="ssh_password"
@@ -158,11 +160,11 @@ const LmnSetupPage = () => {
                 spin
                 className="mr-2"
               />
-              Bootstrap wird ausgefuehrt...
+              {t('lmnSetup.bootstrapRunning')}
             </>
           )}
-          {!bootstrapRunning && bootstrapFailed && 'Bootstrap erneut starten'}
-          {!bootstrapRunning && !bootstrapFailed && 'Bootstrap starten'}
+          {!bootstrapRunning && bootstrapFailed && t('lmnSetup.bootstrapRetry')}
+          {!bootstrapRunning && !bootstrapFailed && t('lmnSetup.bootstrapStart')}
         </Button>
       )}
 
@@ -188,7 +190,7 @@ const LmnSetupPage = () => {
             icon={faCircleCheck}
             className="text-green-500"
           />
-          Bootstrap erfolgreich abgeschlossen
+          {t('lmnSetup.bootstrapSuccess')}
         </div>
       )}
 
@@ -198,7 +200,7 @@ const LmnSetupPage = () => {
             icon={faCircleXmark}
             className="text-red-500"
           />
-          Bootstrap fehlgeschlagen
+          {t('lmnSetup.bootstrapFailed')}
         </div>
       )}
 
@@ -219,17 +221,17 @@ const LmnSetupPage = () => {
                 spin
                 className="mr-2"
               />
-              Requirements werden geprueft...
+              {t('lmnSetup.checkingRequirements')}
             </>
           ) : (
-            'Requirements pruefen'
+            t('lmnSetup.checkRequirements')
           )}
         </Button>
       )}
 
       {requirements && (
         <div className="flex flex-col gap-2">
-          <h4 className="text-sm font-bold text-gray-800">System-Anforderungen</h4>
+          <h4 className="text-sm font-bold text-gray-800">{t('lmnSetup.systemRequirements')}</h4>
           {requirements.checks.map((check) => (
             <StatusCard
               key={check.name}
@@ -251,13 +253,13 @@ const LmnSetupPage = () => {
           className="mt-2 w-full justify-center text-white"
           onClick={() => navigate('/lmn-config')}
         >
-          Installation starten
+          {t('common.startInstallation')}
         </Button>
       )}
 
       {requirements && !store.lmnRequirementsPassed && (
         <div className="rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800">
-          Nicht alle Anforderungen erfuellt. Bitte behebe die Probleme und pruefe erneut.
+          {t('lmnSetup.requirementsNotMet')}
         </div>
       )}
 
@@ -268,7 +270,7 @@ const LmnSetupPage = () => {
         onClick={() => navigate('/token')}
         disabled={bootstrapRunning}
       >
-        Zurück
+        {t('common.back')}
       </Button>
     </div>
   );

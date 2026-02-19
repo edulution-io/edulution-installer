@@ -1,0 +1,152 @@
+{
+  "common": {
+    "next": "Weiter",
+    "back": "Zurück",
+    "cancel": "Abbrechen",
+    "verify": "Überprüfen",
+    "startInstallation": "Installation starten",
+    "skip": "Überspringen",
+    "retry": "Erneut prüfen",
+    "domain": "Domain:",
+    "password": "Passwort:",
+    "state": "Bundesland:"
+  },
+  "footer": {
+    "infoText": "Alle Informationen auf",
+    "orInThe": "oder in der",
+    "documentation": "Dokumentation"
+  },
+  "start": {
+    "welcome": "Herzlich Willkommen!",
+    "description": "Dieser Assistent führt Sie durch die Installation und Konfiguration der edulution UI.",
+    "startButton": "Installation starten"
+  },
+  "organization": {
+    "label": "Für wen ist die Installation?",
+    "school": "Schule/Schulträger",
+    "business": "Unternehmen",
+    "publicAdmin": "Verwaltung"
+  },
+  "token": {
+    "bindDirectory": "Verzeichnisdienst anbinden",
+    "pleaseChoose": "Bitte wählen…",
+    "bindExisting": "Bestehenden Verzeichnisdienst anbinden",
+    "setupLinuxmuster": "linuxmuster.net aufsetzen",
+    "whichDirectory": "Welcher Verzeichnisdienst wird verwendet?",
+    "generic": "Generisch",
+    "descriptionLinuxmuster": "Hier kann im nächsten Schritt entweder ein edulution Setup-Token eingegeben oder die Konfiguration manuell durchgeführt werden.",
+    "descriptionGeneric": "Hier kann ein Verzeichnisdienst mit Active Directory angebunden werden.",
+    "enterToken": "Füge hier deinen edulution Setup-Token ein:",
+    "manualEntryLabel": "Hier gehts zur manuellen Eingabe:",
+    "manualEntry": "Manuell eingeben"
+  },
+  "configure": {
+    "externalDomainLmn": "Externe Domain des linuxmuster.net-Servers:",
+    "externalDomainGeneric": "Externe Domain des Verzeichnis-Servers:",
+    "ldapUser": "LDAP Benutzer:",
+    "ldapPassword": "LDAP Passwort:",
+    "ldapSchema": "LDAP-Schema:",
+    "ldapPort": "LDAP-Port:",
+    "externalDomainEdulution": "Externe Domain der edulutionUI:",
+    "verifying": "Wird überprüft..."
+  },
+  "check": {
+    "title": "Überprüfung der Abhängigkeiten",
+    "checkApi": "Überprüfung der Linuxmuster-API",
+    "checkWebDav": "Überprüfung des WebDAV-Servers",
+    "checkLdap": "Überprüfung des LDAP(s)-Servers",
+    "checkLdapAccess": "Überprüfung der LDAP(s) Zugangsdaten",
+    "connectionError": "Verbindungsfehler!"
+  },
+  "adminGroup": {
+    "label": "Optional: Hier kann eine initiale Admin-Gruppe für edulution definiert werden.",
+    "placeholder": "z.B. Verwaltung, role-admins, etc.",
+    "hint": "Bei linuxmuster.net-Installationen ist \"role-globaladministrator\" standardmäßig aktiviert. Die hier definierte Gruppe hat nur erweiterte Rechte innerhalb von edulution.",
+    "requiredError": "Bei Unternehmens-Installationen muss eine Admin-Gruppe angegeben werden!"
+  },
+  "certificate": {
+    "title": "Zertifikat",
+    "checkingNetwork": "Prüfe Netzwerk-Konfiguration...",
+    "proxyWarning": "Du verwendest einen Reverse-Proxy. Daher kann für edulution kein gültiges Zertifikat hinterlegt / ausgestellt werden."
+  },
+  "certificateForm": {
+    "noProxyInfo": "Du verwendest keinen Reverse-Proxy. Für edulution benötigst du ein Zertifikat, welches du hier generieren, erstellen oder hochladen kannst.",
+    "selfSigned": "Selbst-Signiertes-Zertifikat generieren",
+    "countryCode": "Ländercode (DE):",
+    "city": "Stadt:",
+    "organisation": "Organisation:",
+    "validDays": "Gültigkeit (Tage):",
+    "generateCertificate": "Zertifikat generieren",
+    "letsEncrypt": "Zertifikat mit Let's Encrypt erstellen",
+    "dnsProvider": "DNS-Provider:",
+    "email": "E-Mail-Adresse:",
+    "createCertificate": "Zertifikat erstellen",
+    "acmeSuccess": "ACME-DNS Registrierung erfolgreich",
+    "acmeCnameInstruction": "Bitte erstelle folgenden CNAME-Eintrag bei deinem DNS-Provider:",
+    "registrationData": "Registrierungsdaten:",
+    "username": "Username:",
+    "fulldomain": "Fulldomain:",
+    "subdomain": "Subdomain:",
+    "acmeTraefikNote": "Diese Daten werden automatisch in die Traefik-Konfiguration übernommen. Der CNAME-Eintrag muss manuell beim DNS-Provider hinterlegt werden.",
+    "uploadCertificate": "Zertifikat hochladen",
+    "certFile": "Zertifikats-Datei:",
+    "certKey": "Zertifikats-Key:",
+    "uploadFiles": "Dateien hochladen"
+  },
+  "lmnSetup": {
+    "title": "linuxmuster.net-Server einrichten",
+    "sshHost": "SSH Host:",
+    "sshPort": "SSH Port:",
+    "sshUser": "SSH Benutzer:",
+    "sshPassword": "SSH Passwort:",
+    "bootstrapRunning": "Bootstrap wird ausgeführt...",
+    "bootstrapRetry": "Bootstrap erneut starten",
+    "bootstrapStart": "Bootstrap starten",
+    "bootstrapSuccess": "Bootstrap erfolgreich abgeschlossen",
+    "bootstrapFailed": "Bootstrap fehlgeschlagen",
+    "checkingRequirements": "Requirements werden geprüft...",
+    "checkRequirements": "Requirements prüfen",
+    "systemRequirements": "System-Anforderungen",
+    "requirementsNotMet": "Nicht alle Anforderungen erfüllt. Bitte behebe die Probleme und prüfe erneut."
+  },
+  "lmnConfig": {
+    "title": "linuxmuster.net Konfiguration (Schritt {{step}}/2)",
+    "network": "Netzwerk",
+    "serverIp": "Server-IP:",
+    "subnetMask": "Subnetzmaske:",
+    "gateway": "Gateway:",
+    "server": "Server",
+    "hostname": "Hostname:",
+    "dhcp": "DHCP",
+    "dhcpRange": "DHCP-Bereich:",
+    "dhcpFormat": "Format: START-IP END-IP",
+    "system": "System",
+    "timezone": "Zeitzone:",
+    "locale": "Locale:",
+    "school": "Schule",
+    "schoolName": "Schulname:",
+    "location": "Ort:",
+    "country": "Land:",
+    "adminPassword": "Administrator-Passwort",
+    "confirmPassword": "Passwort bestätigen:",
+    "passwordMismatch": "Passwörter stimmen nicht überein",
+    "pwMinLength": "Mindestens 7 Zeichen",
+    "pwLowercase": "Kleinbuchstaben erforderlich",
+    "pwUppercase": "Großbuchstaben erforderlich",
+    "pwDigit": "Mindestens eine Ziffer",
+    "pwSpecialChar": "Mindestens ein Sonderzeichen (?!§+-@#%&*()[]{})"
+  },
+  "lmnInstall": {
+    "title": "linuxmuster.net Installation",
+    "running": "Installation läuft...",
+    "success": "Installation erfolgreich abgeschlossen",
+    "failed": "Installation fehlgeschlagen",
+    "playbookError": "[ERROR] Playbook konnte nicht gestartet werden",
+    "backToSetup": "Zurück zur Einrichtung"
+  },
+  "finish": {
+    "title": "Konfiguration abgeschlossen",
+    "installing": "Die edulution UI wird nun installiert...",
+    "redirect": "Sie werden automatisch weitergeleitet, wenn die Installation abgeschlossen ist."
+  }
+}
