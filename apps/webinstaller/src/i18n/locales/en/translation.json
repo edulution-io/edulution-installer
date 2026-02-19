@@ -74,7 +74,7 @@
     "selfSigned": "Generate self-signed certificate",
     "countryCode": "Country code (DE):",
     "city": "City:",
-    "organisation": "Organisation:",
+    "organization": "Organization:",
     "validDays": "Validity (days):",
     "generateCertificate": "Generate certificate",
     "letsEncrypt": "Create certificate with Let's Encrypt",

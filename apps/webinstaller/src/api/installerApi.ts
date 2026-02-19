@@ -20,7 +20,7 @@ interface SsCertificateRequest {
   countrycode: string;
   state: string;
   city: string;
-  organisation: string;
+  organization: string;
   valid_days: number;
 }
 
@@ -187,9 +187,7 @@ export const bootstrapLmnServer = async (
 
     const isDone = lines.some((line) => line.startsWith('event: done'));
 
-    lines
-      .filter((line) => line.startsWith('data: '))
-      .forEach((line) => onMessage(line.slice(6)));
+    lines.filter((line) => line.startsWith('data: ')).forEach((line) => onMessage(line.slice(6)));
 
     if (isDone) {
       onDone();
@@ -202,8 +200,7 @@ export const bootstrapLmnServer = async (
   await processChunk();
 };
 
-export const getLmnHealth = (): Promise<StatusResponse> =>
-  apiFetch<StatusResponse>('/api/lmn/health');
+export const getLmnHealth = (): Promise<StatusResponse> => apiFetch<StatusResponse>('/api/lmn/health');
 
 export const checkLmnRequirements = (playbook: string): Promise<RequirementsResponse> =>
   apiFetch<RequirementsResponse>(`/api/lmn/playbook/${playbook}/requirements`);

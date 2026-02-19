@@ -74,7 +74,7 @@
     "selfSigned": "Selbst-Signiertes-Zertifikat generieren",
     "countryCode": "Ländercode (DE):",
     "city": "Stadt:",
-    "organisation": "Organisation:",
+    "organization": "Organisation:",
     "validDays": "Gültigkeit (Tage):",
     "generateCertificate": "Zertifikat generieren",
     "letsEncrypt": "Zertifikat mit Let's Encrypt erstellen",

@@ -30,7 +30,7 @@ const CertificateForm = () => {
   const [countryCode, setCountryCode] = useState('');
   const [state, setState] = useState('');
   const [city, setCity] = useState('');
-  const [organisation, setOrganisation] = useState('');
+  const [organization, setOrganization] = useState('');
   const [validDays, setValidDays] = useState('');
 
   // Let's Encrypt fields
@@ -61,7 +61,7 @@ const CertificateForm = () => {
     countryCode.trim() !== '' &&
     state.trim() !== '' &&
     city.trim() !== '' &&
-    organisation.trim() !== '' &&
+    organization.trim() !== '' &&
     validDays.trim() !== '' &&
     Number(validDays) > 0;
 
@@ -75,7 +75,7 @@ const CertificateForm = () => {
       countrycode: countryCode,
       state,
       city,
-      organisation,
+      organization,
       valid_days: Number(validDays),
     });
     if (result.status) {
@@ -85,7 +85,7 @@ const CertificateForm = () => {
       setStatus('error');
       setErrorMessage(result.message);
     }
-  }, [countryCode, state, city, organisation, validDays, setCertificateConfigured]);
+  }, [countryCode, state, city, organization, validDays, setCertificateConfigured]);
 
   const handleCreateLe = useCallback(async () => {
     setStatus('loading');
@@ -151,9 +151,7 @@ const CertificateForm = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-lg bg-green-50 p-3 text-sm text-green-800">
-        {t('certificateForm.noProxyInfo')}
-      </div>
+      <div className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{t('certificateForm.noProxyInfo')}</div>
 
       {/* Self-Signed */}
       <label
@@ -200,12 +198,12 @@ const CertificateForm = () => {
               onChange={(e) => setCity(e.target.value)}
               className={city.trim() ? 'valid-input' : ''}
             />
-            <span className="text-sm text-gray-600">{t('certificateForm.organisation')}</span>
+            <span className="text-sm text-gray-600">{t('certificateForm.organization')}</span>
             <Input
               variant="login"
-              value={organisation}
-              onChange={(e) => setOrganisation(e.target.value)}
-              className={organisation.trim() ? 'valid-input' : ''}
+              value={organization}
+              onChange={(e) => setOrganization(e.target.value)}
+              className={organization.trim() ? 'valid-input' : ''}
             />
             <span className="text-sm text-gray-600">{t('certificateForm.validDays')}</span>
             <Input
@@ -323,9 +321,7 @@ const CertificateForm = () => {
                   </tbody>
                 </table>
               </div>
-              <p className="mt-1 text-xs text-blue-600">
-                {t('certificateForm.acmeTraefikNote')}
-              </p>
+              <p className="mt-1 text-xs text-blue-600">{t('certificateForm.acmeTraefikNote')}</p>
             </div>
           )}
         </div>
