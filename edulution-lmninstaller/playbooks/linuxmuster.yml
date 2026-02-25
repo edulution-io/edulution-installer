@@ -241,9 +241,18 @@
         dest: /root/lmn-appliance
         mode: '0755'
 
+    - name: Netzmaske in CIDR-Notation umrechnen
+      ansible.builtin.set_fact:
+        lmn_cidr: "{{ (lmn_server_ip + '/' + lmn_netmask) | ansible.utils.ipaddr('prefix') }}"
+
     - name: lmn-appliance ausführen (Server-Profil, ohne LVM)
       ansible.builtin.shell: |
-        /root/lmn-appliance -p server -u 2>&1 | while IFS= read -r line; do
+        /root/lmn-appliance -p server -u \
+          -n {{ lmn_server_ip }}/{{ lmn_cidr }} \
+          -f {{ lmn_gateway }} \
+          -d {{ lmn_domainname }} \
+          -t {{ lmn_servername }} \
+          2>&1 | while IFS= read -r line; do
           echo "$line"
         done
       args:
