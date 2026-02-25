@@ -101,6 +101,23 @@
         fail_msg: 'linuxmuster.net 7.3 benötigt Ubuntu 24.04 LTS oder neuer'
         success_msg: 'Ubuntu {{ ansible_distribution_version }} erkannt'
 
+    - name: Warten bis apt-Lock frei ist
+      ansible.builtin.shell: |
+        while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+          sleep 5
+        done
+      changed_when: false
+
+    - name: Unattended-upgrades stoppen und deaktivieren
+      ansible.builtin.shell: |
+        systemctl stop unattended-upgrades 2>/dev/null || true
+        systemctl disable unattended-upgrades 2>/dev/null || true
+        killall -9 unattended-upgr 2>/dev/null || true
+        while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+          sleep 3
+        done
+      changed_when: false
+
     - name: Zeitzone konfigurieren
       community.general.timezone:
         name: '{{ lmn_timezone }}'
@@ -225,12 +242,16 @@
         mode: '0755'
 
     - name: lmn-appliance ausführen (Server-Profil, ohne LVM)
-      ansible.builtin.command:
-        cmd: /root/lmn-appliance -p server -u
+      ansible.builtin.shell: |
+        /root/lmn-appliance -p server -u 2>&1 | while IFS= read -r line; do
+          echo "$line"
+        done
       args:
         creates: /etc/linuxmuster/.appliance_configured
       register: lmn_appliance_result
       changed_when: lmn_appliance_result.rc == 0
+      async: 1800
+      poll: 30
 
     # =========================================================================
     # LINUXMUSTER-SETUP KONFIGURATIONSDATEI
@@ -262,17 +283,21 @@
     # =========================================================================
 
     - name: linuxmuster-setup ausführen
-      ansible.builtin.command:
-        cmd: >
-          linuxmuster-setup
-          --config=/root/.linuxmuster/setup.ini
-          --adminpw='{{ lmn_adminpw }}'
-          {% if lmn_unattended %}--unattended{% endif %}
-          {% if lmn_skip_firewall %}--skip-fw{% endif %}
+      ansible.builtin.shell: |
+        linuxmuster-setup \
+          --config=/root/.linuxmuster/setup.ini \
+          --adminpw='{{ lmn_adminpw }}' \
+          {% if lmn_unattended %}--unattended{% endif %} \
+          {% if lmn_skip_firewall %}--skip-fw{% endif %} \
+          2>&1 | while IFS= read -r line; do
+          echo "$line"
+        done
       args:
         creates: /var/lib/linuxmuster/.setup.done
       register: lmn_setup_result
       changed_when: lmn_setup_result.rc == 0
+      async: 3600
+      poll: 30
 
     # =========================================================================
     # POST-SETUP AUFGABEN
