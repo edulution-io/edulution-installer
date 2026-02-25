@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@edulution-io/ui-kit';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner, faCircleCheck, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
@@ -8,6 +9,7 @@ import { startLmnPlaybook, createLmnWebSocket } from '../api/installerApi';
 
 const LmnInstallPage = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const store = useInstallerStore();
   const logRef = useRef<HTMLDivElement>(null);
   const [started, setStarted] = useState(false);
@@ -79,7 +81,7 @@ const LmnInstallPage = () => {
         lmn_locale: currentStore.lmnLocale,
       });
     } catch {
-      store.appendLmnOutput('[ERROR] Playbook konnte nicht gestartet werden');
+      store.appendLmnOutput(t('lmnInstall.playbookError'));
       store.setLmnPlaybookStatus('failed');
     }
   }, [started, store]);
@@ -99,7 +101,7 @@ const LmnInstallPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-lg font-bold text-gray-800">linuxmuster.net Installation</h3>
+      <h3 className="text-lg font-bold text-gray-800">{t('lmnInstall.title')}</h3>
 
       <div className="flex items-center gap-2 text-sm text-gray-600">
         {isRunning && (
@@ -109,7 +111,7 @@ const LmnInstallPage = () => {
               spin
               className="text-gray-500"
             />
-            Installation laeuft...
+            {t('lmnInstall.running')}
           </>
         )}
         {isCompleted && (
@@ -118,7 +120,7 @@ const LmnInstallPage = () => {
               icon={faCircleCheck}
               className="text-green-500"
             />
-            <span className="text-green-700">Installation erfolgreich abgeschlossen</span>
+            <span className="text-green-700">{t('lmnInstall.success')}</span>
           </>
         )}
         {isFailed && (
@@ -127,7 +129,7 @@ const LmnInstallPage = () => {
               icon={faCircleXmark}
               className="text-red-500"
             />
-            <span className="text-red-700">Installation fehlgeschlagen</span>
+            <span className="text-red-700">{t('lmnInstall.failed')}</span>
           </>
         )}
       </div>
@@ -154,7 +156,7 @@ const LmnInstallPage = () => {
           className="w-full justify-center text-white"
           onClick={() => navigate('/certificate')}
         >
-          Weiter
+          {t('common.next')}
         </Button>
       )}
 
@@ -165,7 +167,7 @@ const LmnInstallPage = () => {
           className="w-full justify-center"
           onClick={() => navigate('/lmn-setup')}
         >
-          Zurück zur Einrichtung
+          {t('lmnInstall.backToSetup')}
         </Button>
       )}
     </div>

@@ -54,7 +54,7 @@ class SSCertificate(BaseModel):
     countrycode: str
     state: str
     city: str
-    organisation: str
+    organization: str
     valid_days: int
 
 
@@ -182,7 +182,7 @@ class Data:
         self.DATA_LE_DNS_PROVIDER = None
         self.DATA_LE_ACME_DNS_REGISTRATION = None
         self.DATA_PROXY_USED = False
-        self.DATA_ORGANISATION_TYPE = None
+        self.DATA_ORGANIZATION_TYPE = None
         self.DATA_DEPLOYMENT_TARGET = None
         self.DATA_INITIAL_ADMIN_GROUP = None
         self.DATA_LMN_TARGET_HOST = None
@@ -229,7 +229,7 @@ def checkToken(token: Token):
 
 @api.post("/configure")
 def configure(config: ConfigurationRequest, data: Data = Depends(getData)):
-    data.DATA_ORGANISATION_TYPE = config.organizationType
+    data.DATA_ORGANIZATION_TYPE = config.organizationType
     data.DATA_DEPLOYMENT_TARGET = config.deploymentTarget
     data.DATA_LMN_EXTERNAL_DOMAIN = config.lmnExternalDomain
     data.DATA_LMN_BINDUSER_DN = config.lmnBinduserDn
@@ -376,7 +376,7 @@ def createSSCertificate(ssdata: SSCertificate, data: Data = Depends(getData)):
                 x509.NameAttribute(NameOID.COUNTRY_NAME, ssdata.countrycode),
                 x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, ssdata.state),
                 x509.NameAttribute(NameOID.LOCALITY_NAME, ssdata.city),
-                x509.NameAttribute(NameOID.ORGANIZATION_NAME, ssdata.organisation),
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, ssdata.organization),
             ]
         )
 
@@ -799,7 +799,7 @@ def createEdulutionEnvFile(data: Data):
 
 # edulution-api
 
-EDUI_ORGANISATION_TYPE={data.DATA_ORGANISATION_TYPE}
+EDUI_ORGANIZATION_TYPE={data.DATA_ORGANIZATION_TYPE}
 EDUI_DEPLOYMENT_TARGET={data.DATA_DEPLOYMENT_TARGET}
 
 EDUI_WEBDAV_URL=https://{data.DATA_LMN_EXTERNAL_DOMAIN}/webdav/

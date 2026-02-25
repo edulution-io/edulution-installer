@@ -1,16 +1,18 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Button } from '@edulution-io/ui-kit';
 import { Input } from '@shared-ui';
 import useInstallerStore from '../store/useInstallerStore';
 
-const validatePassword = (pw: string): string[] => {
+const validatePassword = (pw: string, t: TFunction): string[] => {
   const errors: string[] = [];
-  if (pw.length < 7) errors.push('Mindestens 7 Zeichen');
-  if (!/[a-z]/.test(pw)) errors.push('Kleinbuchstaben erforderlich');
-  if (!/[A-Z]/.test(pw)) errors.push('Grossbuchstaben erforderlich');
-  if (!/\d/.test(pw)) errors.push('Mindestens eine Ziffer');
-  if (!/[?!§+\-@#%&*()[\]{}]/.test(pw)) errors.push('Mindestens ein Sonderzeichen (?!§+-@#%&*()[]{})');
+  if (pw.length < 7) errors.push(t('lmnConfig.pwMinLength'));
+  if (!/[a-z]/.test(pw)) errors.push(t('lmnConfig.pwLowercase'));
+  if (!/[A-Z]/.test(pw)) errors.push(t('lmnConfig.pwUppercase'));
+  if (!/\d/.test(pw)) errors.push(t('lmnConfig.pwDigit'));
+  if (!/[?!§+\-@#%&*()[\]{}]/.test(pw)) errors.push(t('lmnConfig.pwSpecialChar'));
   return errors;
 };
 
@@ -28,6 +30,7 @@ const LOCALES = ['de_DE.UTF-8', 'de_AT.UTF-8'];
 
 const LmnConfigPage = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const store = useInstallerStore();
 
   const [step, setStep] = useState(1);
@@ -46,7 +49,7 @@ const LmnConfigPage = () => {
   const [timezone, setTimezone] = useState(store.lmnTimezone);
   const [locale, setLocale] = useState(store.lmnLocale);
 
-  const pwErrors = useMemo(() => validatePassword(adminpw), [adminpw]);
+  const pwErrors = useMemo(() => validatePassword(adminpw, t), [adminpw, t]);
   const pwMatch = adminpw === adminpwConfirm;
 
   const step1Valid =
@@ -82,19 +85,19 @@ const LmnConfigPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-lg font-bold text-gray-800">linuxmuster.net Konfiguration (Schritt {step}/2)</h3>
+      <h3 className="text-lg font-bold text-gray-800">{t('lmnConfig.title', { step })}</h3>
 
       {step === 1 && (
         <>
           {/* Netzwerk */}
-          <h4 className="text-sm font-bold text-gray-600">Netzwerk</h4>
+          <h4 className="text-sm font-bold text-gray-600">{t('lmnConfig.network')}</h4>
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label
                 htmlFor="lmn_server_ip"
                 className="mb-1 block text-sm font-bold text-gray-800"
               >
-                Server-IP:
+                {t('lmnConfig.serverIp')}
               </label>
               <Input
                 id="lmn_server_ip"
@@ -109,7 +112,7 @@ const LmnConfigPage = () => {
                 htmlFor="lmn_netmask"
                 className="mb-1 block text-sm font-bold text-gray-800"
               >
-                Subnetzmaske:
+                {t('lmnConfig.subnetMask')}
               </label>
               <Input
                 id="lmn_netmask"
@@ -124,7 +127,7 @@ const LmnConfigPage = () => {
                 htmlFor="lmn_gateway"
                 className="mb-1 block text-sm font-bold text-gray-800"
               >
-                Gateway:
+                {t('lmnConfig.gateway')}
               </label>
               <Input
                 id="lmn_gateway"
@@ -137,14 +140,14 @@ const LmnConfigPage = () => {
           </div>
 
           {/* Server */}
-          <h4 className="text-sm font-bold text-gray-600">Server</h4>
+          <h4 className="text-sm font-bold text-gray-600">{t('lmnConfig.server')}</h4>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label
                 htmlFor="lmn_servername"
                 className="mb-1 block text-sm font-bold text-gray-800"
               >
-                Hostname:
+                {t('lmnConfig.hostname')}
               </label>
               <Input
                 id="lmn_servername"
@@ -158,7 +161,7 @@ const LmnConfigPage = () => {
                 htmlFor="lmn_domainname"
                 className="mb-1 block text-sm font-bold text-gray-800"
               >
-                Domain:
+                {t('common.domain')}
               </label>
               <Input
                 id="lmn_domainname"
@@ -170,13 +173,13 @@ const LmnConfigPage = () => {
           </div>
 
           {/* DHCP */}
-          <h4 className="text-sm font-bold text-gray-600">DHCP</h4>
+          <h4 className="text-sm font-bold text-gray-600">{t('lmnConfig.dhcp')}</h4>
           <div>
             <label
               htmlFor="lmn_dhcprange"
               className="mb-1 block text-sm font-bold text-gray-800"
             >
-              DHCP-Bereich:
+              {t('lmnConfig.dhcpRange')}
             </label>
             <Input
               id="lmn_dhcprange"
@@ -184,18 +187,18 @@ const LmnConfigPage = () => {
               value={dhcprange}
               onChange={(e) => setDhcprange(e.target.value)}
             />
-            <p className="mt-1 text-xs text-gray-500">Format: START-IP END-IP</p>
+            <p className="mt-1 text-xs text-gray-500">{t('lmnConfig.dhcpFormat')}</p>
           </div>
 
           {/* System */}
-          <h4 className="text-sm font-bold text-gray-600">System</h4>
+          <h4 className="text-sm font-bold text-gray-600">{t('lmnConfig.system')}</h4>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label
                 htmlFor="lmn_timezone"
                 className="mb-1 block text-sm font-bold text-gray-800"
               >
-                Zeitzone:
+                {t('lmnConfig.timezone')}
               </label>
               <select
                 id="lmn_timezone"
@@ -218,7 +221,7 @@ const LmnConfigPage = () => {
                 htmlFor="lmn_locale"
                 className="mb-1 block text-sm font-bold text-gray-800"
               >
-                Locale:
+                {t('lmnConfig.locale')}
               </label>
               <select
                 id="lmn_locale"
@@ -245,7 +248,7 @@ const LmnConfigPage = () => {
             onClick={() => setStep(2)}
             disabled={!step1Valid}
           >
-            Weiter
+            {t('common.next')}
           </Button>
 
           <Button
@@ -254,7 +257,7 @@ const LmnConfigPage = () => {
             className="w-full justify-center"
             onClick={() => navigate('/lmn-setup')}
           >
-            Zurück
+            {t('common.back')}
           </Button>
         </>
       )}
@@ -262,13 +265,13 @@ const LmnConfigPage = () => {
       {step === 2 && (
         <>
           {/* Schule */}
-          <h4 className="text-sm font-bold text-gray-600">Schule</h4>
+          <h4 className="text-sm font-bold text-gray-600">{t('lmnConfig.school')}</h4>
           <div>
             <label
               htmlFor="lmn_schoolname"
               className="mb-1 block text-sm font-bold text-gray-800"
             >
-              Schulname:
+              {t('lmnConfig.schoolName')}
             </label>
             <Input
               id="lmn_schoolname"
@@ -283,7 +286,7 @@ const LmnConfigPage = () => {
                 htmlFor="lmn_location"
                 className="mb-1 block text-sm font-bold text-gray-800"
               >
-                Ort:
+                {t('lmnConfig.location')}
               </label>
               <Input
                 id="lmn_location"
@@ -297,7 +300,7 @@ const LmnConfigPage = () => {
                 htmlFor="lmn_country"
                 className="mb-1 block text-sm font-bold text-gray-800"
               >
-                Land:
+                {t('lmnConfig.country')}
               </label>
               <Input
                 id="lmn_country"
@@ -311,7 +314,7 @@ const LmnConfigPage = () => {
                 htmlFor="lmn_state"
                 className="mb-1 block text-sm font-bold text-gray-800"
               >
-                Bundesland:
+                {t('common.state')}
               </label>
               <Input
                 id="lmn_state"
@@ -323,13 +326,13 @@ const LmnConfigPage = () => {
           </div>
 
           {/* Admin-Passwort */}
-          <h4 className="text-sm font-bold text-gray-600">Administrator-Passwort</h4>
+          <h4 className="text-sm font-bold text-gray-600">{t('lmnConfig.adminPassword')}</h4>
           <div>
             <label
               htmlFor="lmn_adminpw"
               className="mb-1 block text-sm font-bold text-gray-800"
             >
-              Passwort:
+              {t('common.password')}
             </label>
             <Input
               id="lmn_adminpw"
@@ -344,7 +347,7 @@ const LmnConfigPage = () => {
               htmlFor="lmn_adminpw_confirm"
               className="mb-1 block text-sm font-bold text-gray-800"
             >
-              Passwort bestätigen:
+              {t('lmnConfig.confirmPassword')}
             </label>
             <Input
               id="lmn_adminpw_confirm"
@@ -362,7 +365,7 @@ const LmnConfigPage = () => {
               ))}
             </ul>
           )}
-          {adminpwConfirm && !pwMatch && <p className="text-xs text-red-600">Passwoerter stimmen nicht ueberein</p>}
+          {adminpwConfirm && !pwMatch && <p className="text-xs text-red-600">{t('lmnConfig.passwordMismatch')}</p>}
 
           <Button
             variant="btn-security"
@@ -371,7 +374,7 @@ const LmnConfigPage = () => {
             onClick={handleSubmit}
             disabled={!step2Valid}
           >
-            Installation starten
+            {t('common.startInstallation')}
           </Button>
 
           <Button
@@ -380,7 +383,7 @@ const LmnConfigPage = () => {
             className="w-full justify-center"
             onClick={() => setStep(1)}
           >
-            Zurück
+            {t('common.back')}
           </Button>
         </>
       )}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@edulution-io/ui-kit';
 import { Input } from '@shared-ui';
 import useInstallerStore from '../store/useInstallerStore';
@@ -7,6 +8,7 @@ import { submitConfiguration } from '../api/installerApi';
 
 const ConfigurePage = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const store = useInstallerStore();
 
   const [lmnExternalDomain, setLmnExternalDomain] = useState(store.lmnExternalDomain);
@@ -91,8 +93,8 @@ const ConfigurePage = () => {
           className="mb-1 block text-sm font-bold text-gray-800"
         >
           {store.deploymentTarget === 'linuxmuster'
-            ? 'Externe Domain des linuxmuster.net-Servers:'
-            : 'Externe Domain des Verzeichnis-Servers:'}
+            ? t('configure.externalDomainLmn')
+            : t('configure.externalDomainGeneric')}
         </label>
         <Input
           id="lmn_external_domain"
@@ -108,7 +110,7 @@ const ConfigurePage = () => {
           htmlFor="lmn_binduser_dn"
           className="mb-1 block text-sm font-bold text-gray-800"
         >
-          LDAP Benutzer:
+          {t('configure.ldapUser')}
         </label>
         <Input
           id="lmn_binduser_dn"
@@ -124,7 +126,7 @@ const ConfigurePage = () => {
           htmlFor="lmn_binduser_pw"
           className="mb-1 block text-sm font-bold text-gray-800"
         >
-          LDAP Passwort:
+          {t('configure.ldapPassword')}
         </label>
         <Input
           id="lmn_binduser_pw"
@@ -142,7 +144,7 @@ const ConfigurePage = () => {
             htmlFor="lmn_ldap_schema"
             className="mb-1 block text-sm font-bold text-gray-800"
           >
-            LDAP-Schema:
+            {t('configure.ldapSchema')}
           </label>
           <select
             id="lmn_ldap_schema"
@@ -160,7 +162,7 @@ const ConfigurePage = () => {
             htmlFor="lmn_ldap_port"
             className="mb-1 block text-sm font-bold text-gray-800"
           >
-            LDAP-Port:
+            {t('configure.ldapPort')}
           </label>
           <Input
             id="lmn_ldap_port"
@@ -180,7 +182,7 @@ const ConfigurePage = () => {
           htmlFor="edulutionui_external_domain"
           className="mb-1 block text-sm font-bold text-gray-800"
         >
-          Externe Domain der edulutionUI:
+          {t('configure.externalDomainEdulution')}
         </label>
         <Input
           id="edulutionui_external_domain"
@@ -200,7 +202,7 @@ const ConfigurePage = () => {
         }}
         disabled={!isValid || submitting}
       >
-        {submitting ? 'Wird überprüft...' : 'Überprüfen'}
+        {submitting ? t('configure.verifying') : t('common.verify')}
       </Button>
 
       <Button
@@ -209,7 +211,7 @@ const ConfigurePage = () => {
         className="w-full justify-center"
         onClick={() => navigate('/token')}
       >
-        Zurück
+        {t('common.back')}
       </Button>
     </div>
   );
