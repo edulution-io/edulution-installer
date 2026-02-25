@@ -19,12 +19,10 @@ const FinishPage = () => {
         // Errors may occur if backend processes the request asynchronously
       }
 
-      // Give the backend time to write files, then trigger shutdown
-      setTimeout(() => {
-        void shutdownInstaller().catch(() => {
-          // Shutdown may fail if server already terminated
-        });
-      }, 10000);
+      // Files are written synchronously by /api/finish, trigger shutdown immediately
+      void shutdownInstaller().catch(() => {
+        // Shutdown may fail if server already terminated
+      });
     };
     void run();
   }, [started]);
@@ -33,15 +31,15 @@ const FinishPage = () => {
     const timeout = setTimeout(() => {
       const interval = setInterval(async () => {
         try {
-          const response = await fetch(`https://${window.location.hostname}`);
+          const response = await fetch(`https://${window.location.hostname}/edu-api/health/check`);
           if (response.ok) {
             clearInterval(interval);
             window.location.href = `https://${window.location.hostname}`;
           }
         } catch {
-          // UI not ready yet
+          // API not ready yet
         }
-      }, 3000);
+      }, 5000);
 
       return () => clearInterval(interval);
     }, 30000);
