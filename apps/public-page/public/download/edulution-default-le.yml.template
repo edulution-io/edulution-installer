@@ -1,0 +1,48 @@
+http:
+  routers:
+    edulution-api:
+      rule: "PathPrefix(`/edu-api`)"
+      service: edulution-api
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "*.{{DOMAIN}}"
+          - sans: "{{DOMAIN}}"
+
+    edulution-keycloak:
+      rule: "PathPrefix(`/auth`)"
+      service: edulution-keycloak
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "*.{{DOMAIN}}"
+          - sans: "{{DOMAIN}}"
+
+    edulution-ui:
+      rule: "PathPrefix(`/`)"
+      service: edulution-ui
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "*.{{DOMAIN}}"
+          - sans: "{{DOMAIN}}"
+
+  services:
+    edulution-api:
+      loadBalancer:
+        servers:
+          - url: "http://edu-api:3000"
+    edulution-ui:
+      loadBalancer:
+        servers:
+          - url: "http://edu-ui:80"
+    edulution-keycloak:
+      loadBalancer:
+        servers:
+          - url: "http://edu-keycloak:8080"

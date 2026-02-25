@@ -1,21 +1,20 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
 
-RUN apt-get update && apt-get install -y curl openssl certbot
-RUN curl -sSL https://get.docker.com/ | CHANNEL=stable sh
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl openssl && \
+    curl -sSL https://get.docker.com/ | CHANNEL=stable sh && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir --upgrade \
-    fastapi uvicorn[standard] cryptography python-multipart \
-    requests ldap3 pyyaml
+COPY apps/webinstaller-api/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --upgrade -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
-COPY edulution-webinstaller/app /app
-COPY edulution-webinstaller/startup.sh /startup.sh
-
-RUN mkdir -p /app/css
-COPY public/css/style.css /app/css/style.css
-
+COPY apps/webinstaller-api/app /app
+COPY dist/apps/webinstaller /app/static
+COPY apps/webinstaller-api/startup.sh /startup.sh
 RUN chmod +x /startup.sh
 
-EXPOSE 8000 8080
+EXPOSE 8000
 CMD ["/startup.sh"]

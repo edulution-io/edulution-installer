@@ -1,0 +1,357 @@
+---
+# =============================================================================
+# LINUXMUSTER.NET 7.3 INSTALLATION PLAYBOOK
+# =============================================================================
+#
+# Verwendung:
+#   1. Variablen in vars/linuxmuster.yml anpassen
+#   2. ansible-playbook main.yml -e @vars/linuxmuster.yml
+#
+#   Oder via API mit extra_vars:
+#   POST /api/playbook/start
+#   {
+#     "variables": {
+#       "extra_vars": {
+#         "lmn_schoolname": "Meine Schule",
+#         "lmn_adminpw": "MeinPasswort1!"
+#       }
+#     }
+#   }
+#
+# =============================================================================
+
+- name: linuxmuster.net 7.3 Installation
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+
+  # Variablen können überschrieben werden durch:
+  # 1. vars/linuxmuster.yml Datei
+  # 2. -e / --extra-vars auf der Kommandozeile
+  # 3. API extra_vars
+
+  vars:
+    # -------------------------------------------------------------------------
+    # STANDARD-WERTE (werden durch extra_vars überschrieben)
+    # -------------------------------------------------------------------------
+    # Extra-vars via -e oder API überschreiben diese Werte automatisch
+
+    # Netzwerk
+    lmn_server_ip: '10.0.0.1'
+    lmn_netmask: '255.255.0.0'
+    lmn_gateway: '10.0.0.254'
+
+    # Server
+    lmn_servername: 'server'
+    lmn_domainname: 'linuxmuster.lan'
+
+    # Schule
+    lmn_schoolname: 'Meine Schule'
+    lmn_location: 'Musterstadt'
+    lmn_country: 'de'
+    lmn_state: 'BW'
+
+    # DHCP
+    lmn_dhcprange: '10.0.100.1 10.0.100.254'
+
+    # Admin-Passwort (MUSS überschrieben werden!)
+    lmn_adminpw: 'Muster!'
+
+    # System
+    lmn_timezone: 'Europe/Berlin'
+    lmn_locale: 'de_DE.UTF-8'
+
+    # Erweiterte Optionen
+    lmn_skip_firewall: true
+    lmn_unattended: true
+    lmn_disable_auto_updates: true
+
+    # Firewall wird standardmaessig NICHT installiert (lmn_skip_firewall: true).
+    # Die Firewall muss separat eingerichtet werden.
+
+    # Repository (normalerweise nicht ändern)
+    lmn_repo_url: 'https://deb.linuxmuster.net/'
+    lmn_repo_gpg_url: 'https://deb.linuxmuster.net/pub.gpg'
+    lmn_repo_distribution: 'lmn73'
+    lmn_appliance_url: 'https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/master/lmn-appliance'
+
+    # Pakete
+    lmn_additional_packages:
+      - net-tools
+      - iputils-ping
+      - dnsutils
+      - qemu-guest-agent
+      - apt-utils
+      - locales
+      - wget
+      - curl
+      - gnupg
+
+  tasks:
+    # =========================================================================
+    # GRUNDLEGENDE SYSTEMKONFIGURATION
+    # =========================================================================
+
+    - name: Betriebssystem prüfen
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Ubuntu"
+          - ansible_distribution_version is version('24.04', '>=')
+        fail_msg: 'linuxmuster.net 7.3 benötigt Ubuntu 24.04 LTS oder neuer'
+        success_msg: 'Ubuntu {{ ansible_distribution_version }} erkannt'
+
+    - name: Warten bis apt-Lock frei ist
+      ansible.builtin.shell: |
+        while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+          sleep 5
+        done
+      changed_when: false
+
+    - name: Unattended-upgrades stoppen und deaktivieren
+      ansible.builtin.shell: |
+        systemctl stop unattended-upgrades 2>/dev/null || true
+        systemctl disable unattended-upgrades 2>/dev/null || true
+        killall -9 unattended-upgr 2>/dev/null || true
+        while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+          sleep 3
+        done
+      changed_when: false
+
+    - name: Zeitzone konfigurieren
+      community.general.timezone:
+        name: '{{ lmn_timezone }}'
+
+    - name: Cloud-init deaktivieren
+      ansible.builtin.file:
+        path: /etc/cloud/cloud-init.disabled
+        state: touch
+        mode: '0644'
+      ignore_errors: true
+
+    - name: Cloud-init Paket entfernen
+      ansible.builtin.apt:
+        name: cloud-init
+        state: absent
+        purge: true
+      ignore_errors: true
+
+    - name: Cloud-init Verzeichnisse entfernen
+      ansible.builtin.file:
+        path: '{{ item }}'
+        state: absent
+      loop:
+        - /etc/cloud
+        - /var/lib/cloud
+      ignore_errors: true
+
+    - name: Erforderliche Pakete installieren
+      ansible.builtin.apt:
+        name: '{{ lmn_additional_packages }}'
+        state: present
+        update_cache: true
+
+    - name: Locale generieren
+      community.general.locale_gen:
+        name: '{{ lmn_locale }}'
+        state: present
+
+    - name: Locale als Standard setzen
+      ansible.builtin.command:
+        cmd: localectl set-locale LANG={{ lmn_locale }}
+      changed_when: true
+
+    # =========================================================================
+    # AUTOMATISCHE UPDATES DEAKTIVIEREN
+    # =========================================================================
+
+    - name: Automatische Updates deaktivieren
+      ansible.builtin.lineinfile:
+        path: /etc/apt/apt.conf.d/20auto-upgrades
+        regexp: '^APT::Periodic::Unattended-Upgrade'
+        line: 'APT::Periodic::Unattended-Upgrade "0";'
+        create: true
+        mode: '0644'
+      when: lmn_disable_auto_updates
+
+    # =========================================================================
+    # QEMU GUEST AGENT (für Virtualisierung)
+    # =========================================================================
+
+    - name: QEMU Guest Agent aktivieren
+      ansible.builtin.systemd:
+        name: qemu-guest-agent
+        enabled: true
+        state: started
+      ignore_errors: true
+
+    # =========================================================================
+    # SERIAL CONSOLE (für Proxmox)
+    # =========================================================================
+
+    - name: Serial Console Service aktivieren
+      ansible.builtin.systemd:
+        name: serial-getty@ttyS0.service
+        enabled: true
+        state: started
+      ignore_errors: true
+
+    # =========================================================================
+    # SYSTEM-UPDATE
+    # =========================================================================
+
+    - name: System aktualisieren
+      ansible.builtin.apt:
+        upgrade: dist
+        update_cache: true
+
+    # =========================================================================
+    # LINUXMUSTER.NET REPOSITORY
+    # =========================================================================
+
+    - name: GPG-Schlüssel herunterladen
+      ansible.builtin.get_url:
+        url: '{{ lmn_repo_gpg_url }}'
+        dest: /tmp/linuxmuster.gpg
+        mode: '0644'
+
+    - name: GPG-Schlüssel konvertieren und installieren
+      ansible.builtin.shell: |
+        cat /tmp/linuxmuster.gpg | gpg --dearmor -o /usr/share/keyrings/linuxmuster.net.gpg
+      args:
+        creates: /usr/share/keyrings/linuxmuster.net.gpg
+
+    - name: linuxmuster Repository hinzufügen
+      ansible.builtin.apt_repository:
+        repo: 'deb [arch=amd64 signed-by=/usr/share/keyrings/linuxmuster.net.gpg] {{ lmn_repo_url }} {{ lmn_repo_distribution }} main'
+        filename: lmn
+        state: present
+
+    - name: Paketlisten aktualisieren
+      ansible.builtin.apt:
+        update_cache: true
+
+    # =========================================================================
+    # LMN-APPLIANCE SCRIPT
+    # =========================================================================
+
+    - name: lmn-appliance Script herunterladen
+      ansible.builtin.get_url:
+        url: '{{ lmn_appliance_url }}'
+        dest: /root/lmn-appliance
+        mode: '0755'
+
+    - name: Netzmaske in CIDR-Notation umrechnen
+      ansible.builtin.set_fact:
+        lmn_cidr: "{{ (lmn_server_ip + '/' + lmn_netmask) | ansible.utils.ipaddr('prefix') }}"
+
+    - name: lmn-appliance ausführen (Server-Profil, ohne LVM)
+      ansible.builtin.shell: |
+        /root/lmn-appliance -p server -u \
+          -n {{ lmn_server_ip }}/{{ lmn_cidr }} \
+          -f {{ lmn_gateway }} \
+          -d {{ lmn_domainname }} \
+          -t {{ lmn_servername }} \
+          2>&1 | while IFS= read -r line; do
+          echo "$line"
+        done
+      args:
+        creates: /etc/linuxmuster/.appliance_configured
+      register: lmn_appliance_result
+      changed_when: lmn_appliance_result.rc == 0
+      async: 1800
+      poll: 30
+
+    # =========================================================================
+    # LINUXMUSTER-SETUP KONFIGURATIONSDATEI
+    # =========================================================================
+
+    - name: Setup-Konfigurationsverzeichnis erstellen
+      ansible.builtin.file:
+        path: /root/.linuxmuster
+        state: directory
+        mode: '0700'
+
+    - name: Setup-Konfigurationsdatei erstellen
+      ansible.builtin.copy:
+        content: |
+          [setup]
+          serverip = {{ lmn_server_ip }}
+          netmask = {{ lmn_netmask }}
+          gatewayip = {{ lmn_gateway }}
+          firewallip = {{ lmn_gateway }}
+          servername = {{ lmn_servername }}
+          domainname = {{ lmn_domainname }}
+          dhcprange = {{ lmn_dhcprange }}
+          schoolname = {{ lmn_schoolname }}
+          location = {{ lmn_location }}
+          country = {{ lmn_country }}
+          state = {{ lmn_state }}
+          skipfw = {{ lmn_skip_firewall | ternary('True', 'False') }}
+        dest: /root/.linuxmuster/setup.ini
+        mode: '0600'
+
+    # =========================================================================
+    # LINUXMUSTER-SETUP AUSFÜHREN
+    # =========================================================================
+
+    - name: linuxmuster-setup ausführen
+      ansible.builtin.shell: |
+        linuxmuster-setup \
+          --config=/root/.linuxmuster/setup.ini \
+          --adminpw='{{ lmn_adminpw }}' \
+          {% if lmn_unattended %}--unattended{% endif %} \
+          {% if lmn_skip_firewall %}--skip-fw{% endif %} \
+          2>&1 | while IFS= read -r line; do
+          echo "$line"
+        done
+      args:
+        creates: /var/lib/linuxmuster/.setup.done
+      register: lmn_setup_result
+      changed_when: lmn_setup_result.rc == 0
+      async: 3600
+      poll: 30
+
+    # =========================================================================
+    # POST-SETUP AUFGABEN
+    # =========================================================================
+
+    - name: Setup-Logdateien sichern
+      ansible.builtin.file:
+        path: '{{ item }}'
+        mode: '0600'
+      loop:
+        - /var/log/linuxmuster/setup.log
+      ignore_errors: true
+
+    - name: Marker-Datei für erfolgreiche Installation erstellen
+      ansible.builtin.file:
+        path: /var/lib/linuxmuster/.setup.done
+        state: touch
+        mode: '0644'
+      when: lmn_setup_result is defined and lmn_setup_result.rc == 0
+
+    # =========================================================================
+    # ABSCHLUSSMELDUNG
+    # =========================================================================
+
+    - name: Installation abgeschlossen
+      ansible.builtin.debug:
+        msg: |
+          ====================================================================
+          LINUXMUSTER.NET 7.3 INSTALLATION ABGESCHLOSSEN
+          ====================================================================
+
+          Server: {{ lmn_servername }}.{{ lmn_domainname }}
+          IP:     {{ lmn_server_ip }}
+
+          Web-UI: https://{{ lmn_server_ip }}
+          Login:  global-admin / {{ lmn_adminpw }}
+
+          WICHTIG: System neustarten mit 'sudo reboot'
+
+          Nach dem Neustart:
+          1. SSL-Zertifikat im Browser akzeptieren
+          2. Firewall separat konfigurieren (falls noch nicht geschehen)
+
+          ====================================================================

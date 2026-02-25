@@ -1,0 +1,16 @@
+{
+  "name": "webinstaller-api",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/webinstaller-api/app",
+  "projectType": "application",
+  "tags": [],
+  "targets": {
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uvicorn main:app --host 0.0.0.0 --port 8000 --reload",
+        "cwd": "apps/webinstaller-api/app"
+      }
+    }
+  }
+}

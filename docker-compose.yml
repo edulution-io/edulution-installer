@@ -1,14 +1,14 @@
 services:
   edulution-installer-dev:
+    container_name: edulution-installer-dev
     build:
       context: .
     volumes:
       - ./data:/edulution-ui
-      - ./edulution-webinstaller/app:/app
-      - ./public/css/style.css:/app/css/style.css
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - 443:8000
     entrypoint: /startup.sh
     environment:
       - EDULUTION_DIRECTORY=/srv/docker/edulution-installer/data
+      - BOOTSTRAP_BRANCH=${BOOTSTRAP_BRANCH:-main}
