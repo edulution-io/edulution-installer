@@ -140,6 +140,7 @@
     "title": "linuxmuster.net Installation",
     "running": "Installation running...",
     "success": "Installation completed successfully",
+    "restartHint": "The linuxmuster.net server must be restarted for all changes to take effect.",
     "failed": "Installation failed",
     "playbookError": "[ERROR] Playbook could not be started",
     "backToSetup": "Back to setup"

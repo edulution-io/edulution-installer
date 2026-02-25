@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@edulution-io/ui-kit';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSpinner, faCircleCheck, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
+import { faSpinner, faCircleCheck, faCircleXmark, faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
 import useInstallerStore from '../store/useInstallerStore';
 import { startLmnPlaybook, createLmnWebSocket } from '../api/installerApi';
 
@@ -150,14 +150,23 @@ const LmnInstallPage = () => {
       </div>
 
       {isCompleted && (
-        <Button
-          variant="btn-security"
-          size="lg"
-          className="w-full justify-center text-white"
-          onClick={() => navigate('/certificate')}
-        >
-          {t('common.next')}
-        </Button>
+        <>
+          <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+            <FontAwesomeIcon
+              icon={faTriangleExclamation}
+              className="mt-0.5 text-amber-500"
+            />
+            {t('lmnInstall.restartHint')}
+          </div>
+          <Button
+            variant="btn-security"
+            size="lg"
+            className="w-full justify-center text-white"
+            onClick={() => navigate('/certificate')}
+          >
+            {t('common.next')}
+          </Button>
+        </>
       )}
 
       {isFailed && (

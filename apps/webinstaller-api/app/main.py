@@ -16,7 +16,7 @@ import urllib3
 # Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-from fastapi import FastAPI, BackgroundTasks, Depends, Request, File, UploadFile, APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, Request, File, UploadFile, APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -387,7 +387,7 @@ def uploadCertificate(cert: UploadFile = File(...), key: UploadFile = File(...))
 
 
 @api.post("/finish")
-def finish(background_tasks: BackgroundTasks, data: Data = Depends(getData)):
+def finish(data: Data = Depends(getData)):
     if (
         data.DATA_LMN_EXTERNAL_DOMAIN is None
         or data.DATA_LMN_BINDUSER_DN is None
@@ -398,7 +398,7 @@ def finish(background_tasks: BackgroundTasks, data: Data = Depends(getData)):
     ):
         return {"status": False, "message": "Konfiguration unvollständig"}
 
-    background_tasks.add_task(createEdulutionEnvFile, data)
+    createEdulutionEnvFile(data)
     return {"status": True, "message": "Installation gestartet"}
 
 
