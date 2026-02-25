@@ -148,6 +148,7 @@
   "finish": {
     "title": "Konfiguration abgeschlossen",
     "installing": "Die edulution UI wird nun installiert...",
-    "redirect": "Sie werden automatisch weitergeleitet, wenn die Installation abgeschlossen ist."
+    "redirect": "Sie werden automatisch weitergeleitet, wenn die Installation abgeschlossen ist.",
+    "openEdulution": "edulution öffnen"
   }
 }

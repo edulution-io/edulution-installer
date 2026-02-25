@@ -1,12 +1,29 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner } from '@fortawesome/free-solid-svg-icons';
+import { Button } from '@edulution-io/ui-kit';
 import { startInstallation, shutdownInstaller } from '../api/installerApi';
+import useInstallerStore from '../store/useInstallerStore';
+
+const POLL_START_DELAY_MS = 30000;
+const POLL_INTERVAL_MS = 5000;
+const REDIRECT_FALLBACK_MS = 120000;
 
 const FinishPage = () => {
   const [started, setStarted] = useState(false);
+  const [showManualLink, setShowManualLink] = useState(false);
   const { t } = useTranslation();
+  const redirectedRef = useRef(false);
+
+  const edulutionDomain = useInstallerStore((s) => s.edulutionExternalDomain);
+  const edulutionUrl = `https://${edulutionDomain || window.location.hostname}`;
+
+  const redirect = () => {
+    if (redirectedRef.current) return;
+    redirectedRef.current = true;
+    window.location.href = edulutionUrl;
+  };
 
   useEffect(() => {
     if (started) return;
@@ -28,23 +45,38 @@ const FinishPage = () => {
   }, [started]);
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
+    // Poll the edulution health endpoint until it responds
+    const pollTimeout = setTimeout(() => {
       const interval = setInterval(async () => {
         try {
-          const response = await fetch(`https://${window.location.hostname}/edu-api/health/check`);
+          const response = await fetch(edulutionUrl);
           if (response.ok) {
             clearInterval(interval);
-            window.location.href = `https://${window.location.hostname}`;
+            redirect();
           }
         } catch {
-          // API not ready yet
+          // Not ready yet - SSL cert mismatch, network error, or server not up
         }
-      }, 5000);
+      }, POLL_INTERVAL_MS);
 
       return () => clearInterval(interval);
-    }, 30000);
+    }, POLL_START_DELAY_MS);
 
-    return () => clearTimeout(timeout);
+    // Fallback redirect after timeout (handles SSL cert changes where fetch always fails)
+    const fallbackTimeout = setTimeout(() => {
+      redirect();
+    }, REDIRECT_FALLBACK_MS);
+
+    // Show manual button after 30s
+    const linkTimeout = setTimeout(() => {
+      setShowManualLink(true);
+    }, POLL_START_DELAY_MS);
+
+    return () => {
+      clearTimeout(pollTimeout);
+      clearTimeout(fallbackTimeout);
+      clearTimeout(linkTimeout);
+    };
   }, []);
 
   return (
@@ -59,6 +91,16 @@ const FinishPage = () => {
       <p className="text-center text-sm text-gray-500">
         {t('finish.redirect')}
       </p>
+      {showManualLink && (
+        <Button
+          variant="btn-security"
+          size="lg"
+          className="w-full justify-center text-white"
+          onClick={redirect}
+        >
+          {t('finish.openEdulution')}
+        </Button>
+      )}
     </div>
   );
 };
