@@ -332,6 +332,81 @@
       when: lmn_setup_result is defined and lmn_setup_result.rc == 0
 
     # =========================================================================
+    # LINUXMUSTER-API INSTALLIEREN
+    # =========================================================================
+
+    - name: Warten bis apt-Lock frei ist (post-setup)
+      ansible.builtin.shell: |
+        while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+          sleep 5
+        done
+      changed_when: false
+
+    - name: linuxmuster-api7 installieren
+      ansible.builtin.apt:
+        name: linuxmuster-api7
+        state: present
+        update_cache: true
+
+    # =========================================================================
+    # EDULUTION BINDUSER ERSTELLEN
+    # =========================================================================
+
+    - name: Domain-Komponenten berechnen
+      ansible.builtin.set_fact:
+        edulution_dc_parts: "{{ lmn_domainname.split('.') | map('regex_replace', '^(.*)$', 'DC=\\1') | join(',') }}"
+
+    - name: Sicheres Passwort fuer edulutionui-binduser generieren
+      ansible.builtin.command:
+        cmd: >
+          python3 -c "import secrets, string;
+          chars = string.ascii_letters + string.digits + '?!&@#%*()$.';
+          print(''.join(secrets.choice(chars) for _ in range(21)))"
+      register: binduser_pw_result
+      changed_when: false
+
+    - name: Binduser-Passwort als Fakt setzen
+      ansible.builtin.set_fact:
+        edulution_binduser_password: "{{ binduser_pw_result.stdout }}"
+
+    - name: Pruefen ob edulutionui-binduser bereits existiert
+      ansible.builtin.command:
+        cmd: samba-tool user show edulutionui-binduser
+      register: binduser_exists
+      failed_when: false
+      changed_when: false
+
+    - name: edulutionui-binduser in Samba AD erstellen
+      ansible.builtin.command:
+        cmd: >
+          samba-tool user create edulutionui-binduser '{{ edulution_binduser_password }}'
+          --given-name=edulution
+          --surname=Binduser
+          --userou='OU=Management,OU=GLOBAL'
+      when: binduser_exists.rc != 0
+
+    - name: edulutionui-binduser Passwort-Ablauf deaktivieren
+      ansible.builtin.command:
+        cmd: samba-tool user setexpiry edulutionui-binduser --noexpiry
+      changed_when: true
+
+    - name: Edulution-Konfigurationsverzeichnis erstellen
+      ansible.builtin.file:
+        path: /var/lib/edulution
+        state: directory
+        mode: '0700'
+
+    - name: Edulution Binduser-Konfiguration schreiben
+      ansible.builtin.copy:
+        content: |
+          {
+            "binduser_dn": "CN=edulutionui-binduser,OU=Management,OU=GLOBAL,{{ edulution_dc_parts }}",
+            "binduser_password": "{{ edulution_binduser_password }}"
+          }
+        dest: /var/lib/edulution/binduser-config.json
+        mode: '0600'
+
+    # =========================================================================
     # ABSCHLUSSMELDUNG
     # =========================================================================
 
@@ -348,10 +423,8 @@
           Web-UI: https://{{ lmn_server_ip }}
           Login:  global-admin / {{ lmn_adminpw }}
 
-          WICHTIG: System neustarten mit 'sudo reboot'
+          edulution Binduser: CN=edulutionui-binduser,OU=Management,OU=GLOBAL,{{ edulution_dc_parts }}
 
-          Nach dem Neustart:
-          1. SSL-Zertifikat im Browser akzeptieren
-          2. Firewall separat konfigurieren (falls noch nicht geschehen)
+          WICHTIG: System neustarten mit 'sudo reboot'
 
           ====================================================================

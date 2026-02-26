@@ -220,5 +220,16 @@ export const createLmnWebSocket = (): WebSocket => {
   return new WebSocket(`${protocol}//${window.location.host}/ws/lmn/output`);
 };
 
+export interface EdulutionConfig {
+  binduser_dn: string;
+  binduser_password: string;
+}
+
+export const getEdulutionConfig = (): Promise<EdulutionConfig> =>
+  apiFetch<EdulutionConfig>('/api/lmn/edulution-config');
+
+export const shutdownLmnInstaller = (): Promise<StatusResponse> =>
+  apiFetch<StatusResponse>('/api/lmn/shutdown', { method: 'POST' });
+
 export const shutdownInstaller = (): Promise<StatusResponse> =>
   apiFetch<StatusResponse>('/api/shutdown', { method: 'POST' });

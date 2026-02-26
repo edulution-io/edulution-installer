@@ -9,7 +9,7 @@ import { submitAdminGroup } from '../api/installerApi';
 const AdminGroupPage = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { deploymentTarget, initialAdminGroup, setInitialAdminGroup } = useInstallerStore();
+  const { deploymentTarget, initialAdminGroup, setInitialAdminGroup, adType } = useInstallerStore();
 
   const [adminGroup, setAdminGroup] = useState(initialAdminGroup);
   const [submitting, setSubmitting] = useState(false);
@@ -68,7 +68,7 @@ const AdminGroupPage = () => {
         variant="btn-outline"
         size="lg"
         className="w-full justify-center"
-        onClick={() => navigate('/token')}
+        onClick={() => navigate(adType === 'new' ? '/check' : '/token')}
       >
         {t('common.cancel')}
       </Button>

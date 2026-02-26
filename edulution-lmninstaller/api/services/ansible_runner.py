@@ -79,8 +79,6 @@ class AnsibleRunnerService:
             self._finished_at = datetime.utcnow()
             self._return_code = 0
             streamer.queue_message(MessageType.STATUS, "completed")
-            if self._shutdown_callback:
-                self._shutdown_callback()
         elif status_value == "failed":
             self._status = JobStatus.FAILED
             self._finished_at = datetime.utcnow()

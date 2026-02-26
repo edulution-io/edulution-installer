@@ -143,7 +143,9 @@
     "restartHint": "Der linuxmuster.net-Server muss neu gestartet werden, damit alle Änderungen wirksam werden.",
     "failed": "Installation fehlgeschlagen",
     "playbookError": "[ERROR] Playbook konnte nicht gestartet werden",
-    "backToSetup": "Zurück zur Einrichtung"
+    "backToSetup": "Zurück zur Einrichtung",
+    "configuringEdulution": "Edulution-Verbindung wird konfiguriert...",
+    "configError": "Edulution-Konfiguration konnte nicht abgerufen werden. Bitte prüfen Sie, ob der linuxmuster.net-Server erreichbar ist."
   },
   "finish": {
     "title": "Konfiguration abgeschlossen",

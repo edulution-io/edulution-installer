@@ -143,7 +143,9 @@
     "restartHint": "The linuxmuster.net server must be restarted for all changes to take effect.",
     "failed": "Installation failed",
     "playbookError": "[ERROR] Playbook could not be started",
-    "backToSetup": "Back to setup"
+    "backToSetup": "Back to setup",
+    "configuringEdulution": "Configuring edulution connection...",
+    "configError": "Failed to fetch edulution configuration. Please check if the linuxmuster.net server is accessible."
   },
   "finish": {
     "title": "Configuration complete",

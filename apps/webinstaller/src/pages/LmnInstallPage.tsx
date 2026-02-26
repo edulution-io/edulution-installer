@@ -5,7 +5,13 @@ import { Button } from '@edulution-io/ui-kit';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner, faCircleCheck, faCircleXmark, faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
 import useInstallerStore from '../store/useInstallerStore';
-import { startLmnPlaybook, createLmnWebSocket } from '../api/installerApi';
+import {
+  startLmnPlaybook,
+  createLmnWebSocket,
+  getEdulutionConfig,
+  submitConfiguration,
+  shutdownLmnInstaller,
+} from '../api/installerApi';
 
 const LmnInstallPage = () => {
   const navigate = useNavigate();
@@ -13,6 +19,8 @@ const LmnInstallPage = () => {
   const store = useInstallerStore();
   const logRef = useRef<HTMLDivElement>(null);
   const [started, setStarted] = useState(false);
+  const [configuring, setConfiguring] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -50,16 +58,8 @@ const LmnInstallPage = () => {
       }
     };
 
-    ws.onclose = () => {
-      const currentStatus = useInstallerStore.getState().lmnPlaybookStatus;
-      if (currentStatus === 'running') {
-        // WS closed while still running - the LMN API shuts itself down after completion
-        useInstallerStore.getState().setLmnPlaybookStatus('completed');
-      }
-    };
-
     ws.onerror = () => {
-      // WebSocket error - might happen if LMN API shuts down after completion
+      // WebSocket error - might happen if LMN API shuts down
     };
 
     // Start the playbook
@@ -85,6 +85,50 @@ const LmnInstallPage = () => {
       store.setLmnPlaybookStatus('failed');
     }
   }, [started, store]);
+
+  const handlePostInstallConfig = useCallback(async () => {
+    setConfiguring(true);
+    setConfigError(null);
+
+    try {
+      const edulutionConfig = await getEdulutionConfig();
+
+      const currentStore = useInstallerStore.getState();
+      const lmnExternalDomain = currentStore.lmnSshHost;
+      const edulutionExternalDomain = window.location.hostname;
+
+      store.setConfiguration({
+        lmnExternalDomain,
+        lmnBinduserDn: edulutionConfig.binduser_dn,
+        lmnBinduserPw: edulutionConfig.binduser_password,
+        lmnLdapSchema: 'ldaps',
+        lmnLdapPort: 636,
+        edulutionExternalDomain,
+      });
+
+      await submitConfiguration({
+        organizationType: currentStore.organizationType!,
+        deploymentTarget: currentStore.deploymentTarget!,
+        lmnExternalDomain,
+        lmnBinduserDn: edulutionConfig.binduser_dn,
+        lmnBinduserPw: edulutionConfig.binduser_password,
+        lmnLdapSchema: 'ldaps',
+        lmnLdapPort: 636,
+        edulutionExternalDomain,
+      });
+
+      // Shut down the LMN installer API to free port 8000
+      void shutdownLmnInstaller().catch(() => {
+        // May fail if API already terminated
+      });
+
+      void navigate('/check');
+    } catch {
+      setConfigError(t('lmnInstall.configError'));
+    } finally {
+      setConfiguring(false);
+    }
+  }, [store, navigate, t]);
 
   useEffect(() => {
     void startInstallation();
@@ -158,13 +202,19 @@ const LmnInstallPage = () => {
             />
             {t('lmnInstall.restartHint')}
           </div>
+          {configError && (
+            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{configError}</div>
+          )}
           <Button
             variant="btn-security"
             size="lg"
             className="w-full justify-center text-white"
-            onClick={() => navigate('/certificate')}
+            onClick={() => {
+              void handlePostInstallConfig();
+            }}
+            disabled={configuring}
           >
-            {t('common.next')}
+            {configuring ? t('lmnInstall.configuringEdulution') : t('common.next')}
           </Button>
         </>
       )}

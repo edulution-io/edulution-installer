@@ -9,9 +9,9 @@ import CertificateForm from '../components/CertificateForm';
 const CertificatePage = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { certificateConfigured, proxyDetected, setProxyDetected, adType } = useInstallerStore();
+  const { certificateConfigured, proxyDetected, setProxyDetected } = useInstallerStore();
   const nextPage = '/finish';
-  const backPage = adType === 'new' ? '/lmn-install' : '/admin-group';
+  const backPage = '/admin-group';
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
