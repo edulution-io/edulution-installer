@@ -43,6 +43,9 @@ interface LeCertificateResponse extends StatusResponse {
 
 const apiFetch = async <T>(url: string, options?: RequestInit): Promise<T> => {
   const response = await fetch(url, options);
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status}`);
+  }
   return response.json() as Promise<T>;
 };
 
@@ -153,54 +156,59 @@ export const bootstrapLmnServer = async (
   onMessage: (line: string) => void,
   onDone: () => void,
   onError: (error: string) => void,
-): Promise<void> => {
-  const response = await fetch('/api/lmn/bootstrap', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(ssh),
-  });
-
-  if (!response.ok || !response.body) {
-    onError('Verbindung zum Server fehlgeschlagen');
-    return;
+): Promise<() => void> => {
+  // 1. Start bootstrap via POST
+  try {
+    const response = await fetch('/api/lmn/bootstrap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ssh),
+    });
+    if (!response.ok) {
+      onError('Failed to start bootstrap');
+      return () => {};
+    }
+  } catch {
+    onError('Network error');
+    return () => {};
   }
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
+  // 2. Connect to SSE stream (browser auto-reconnects with Last-Event-ID)
+  const es = new EventSource('/api/lmn/bootstrap/stream');
 
-  const processChunk = async (): Promise<void> => {
-    const { done, value } = await reader.read();
-    if (done) {
-      onError('Verbindung unerwartet beendet');
-      return;
-    }
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-
-    if (lines.some((line) => line.startsWith('event: error'))) {
-      onError('Bootstrap fehlgeschlagen');
-      return;
-    }
-
-    const isDone = lines.some((line) => line.startsWith('event: done'));
-
-    lines.filter((line) => line.startsWith('data: ')).forEach((line) => onMessage(line.slice(6)));
-
-    if (isDone) {
-      onDone();
-      return;
-    }
-
-    await processChunk();
+  es.onmessage = (event: MessageEvent<string>) => {
+    onMessage(event.data);
   };
 
-  await processChunk();
+  es.addEventListener('done', () => {
+    es.close();
+    onDone();
+  });
+
+  es.addEventListener('failed', (event: MessageEvent<string>) => {
+    es.close();
+    onError(event.data || 'Bootstrap failed');
+  });
+
+  es.onerror = () => {
+    // readyState CONNECTING = browser is auto-reconnecting (normal)
+    // readyState CLOSED = server rejected or permanent failure
+    if (es.readyState === EventSource.CLOSED) {
+      onError('Connection lost');
+    }
+  };
+
+  return () => es.close();
 };
 
 export const getLmnHealth = (): Promise<StatusResponse> => apiFetch<StatusResponse>('/api/lmn/health');
+
+export const checkLmnConnection = (host: string): Promise<StatusResponse> =>
+  apiFetch<StatusResponse>('/api/lmn/check-connection', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ host }),
+  });
 
 export const checkLmnRequirements = (playbook: string): Promise<RequirementsResponse> =>
   apiFetch<RequirementsResponse>(`/api/lmn/playbook/${playbook}/requirements`);
