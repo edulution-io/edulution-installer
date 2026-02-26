@@ -60,19 +60,25 @@ const ConfigurePage = () => {
       edulutionExternalDomain,
     });
 
-    await submitConfiguration({
-      organizationType: store.organizationType,
-      deploymentTarget: store.deploymentTarget,
-      lmnExternalDomain,
-      lmnBinduserDn,
-      lmnBinduserPw,
-      lmnLdapSchema,
-      lmnLdapPort,
-      edulutionExternalDomain,
-    });
-
-    setSubmitting(false);
-    void navigate('/check');
+    try {
+      await submitConfiguration({
+        organizationType: store.organizationType,
+        deploymentTarget: store.deploymentTarget,
+        lmnExternalDomain,
+        lmnBinduserDn,
+        lmnBinduserPw,
+        lmnLdapSchema,
+        lmnLdapPort,
+        edulutionExternalDomain,
+      });
+      void navigate('/check');
+    } catch {
+      // Store is already updated, navigate to check anyway
+      // so the user can see which checks fail
+      void navigate('/check');
+    } finally {
+      setSubmitting(false);
+    }
   }, [
     isValid,
     store,

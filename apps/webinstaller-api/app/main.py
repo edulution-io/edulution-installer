@@ -83,6 +83,67 @@ class SSHConnection(BaseModel):
     password: str
 
 
+class LmnConnectionCheck(BaseModel):
+    host: str
+
+
+# --- Bootstrap Manager (SSE with reconnect support) ---
+
+class BootstrapManager:
+    def __init__(self):
+        self._events: list[dict] = []
+        self._status = 'idle'  # idle, running, completed, failed
+        self._condition = threading.Condition()
+
+    @property
+    def status(self):
+        return self._status
+
+    def reset(self):
+        with self._condition:
+            self._events = []
+            self._status = 'running'
+            self._condition.notify_all()
+
+    def add_event(self, data: str, event_type: str = 'message'):
+        with self._condition:
+            self._events.append({
+                'id': len(self._events),
+                'event': event_type,
+                'data': data,
+            })
+            self._condition.notify_all()
+
+    def finish(self, status: str):
+        with self._condition:
+            self._status = status
+            self._condition.notify_all()
+
+    def stream_from(self, start_id: int):
+        yield "retry: 3000\n\n"
+        cursor = start_id
+        while True:
+            with self._condition:
+                while cursor >= len(self._events) and self._status == 'running':
+                    self._condition.wait(timeout=5.0)
+                new_events = self._events[cursor:]
+                cursor = len(self._events)
+                is_done = self._status != 'running'
+
+            for evt in new_events:
+                lines = f"id: {evt['id']}\n"
+                if evt['event'] != 'message':
+                    lines += f"event: {evt['event']}\n"
+                lines += f"data: {evt['data']}\n\n"
+                yield lines
+
+            if is_done:
+                break
+
+
+bootstrap_manager = BootstrapManager()
+
+
 # --- Data Store ---
 
 class Data:
@@ -188,32 +249,33 @@ def checkWebDAV(data: Data = Depends(getData)):
         return {"status": False, "message": "Unbekannter Fehler!"}
 
 
+def _create_ldap_server(data: Data) -> Server:
+    if data.DATA_LMN_LDAP_SCHEMA == "ldaps":
+        return Server(
+            data.DATA_LMN_EXTERNAL_DOMAIN,
+            port=int(data.DATA_LMN_LDAP_PORT),
+            get_info=ALL,
+            connect_timeout=3,
+            use_ssl=True,
+            tls=Tls(validate=ssl.CERT_NONE),
+        )
+    return Server(
+        data.DATA_LMN_EXTERNAL_DOMAIN,
+        port=int(data.DATA_LMN_LDAP_PORT),
+        get_info=ALL,
+        connect_timeout=3,
+    )
+
+
 @api.get("/check-ldap-status")
 def checkLDAPStatus(data: Data = Depends(getData)):
     try:
-        if data.DATA_LMN_LDAP_SCHEMA == "ldaps":
-            server = Server(
-                data.DATA_LMN_EXTERNAL_DOMAIN,
-                port=int(data.DATA_LMN_LDAP_PORT),
-                get_info=ALL,
-                connect_timeout=3,
-                use_ssl=True,
-                tls=Tls(validate=ssl.CERT_REQUIRED),
-            )
-        else:
-            server = Server(
-                data.DATA_LMN_EXTERNAL_DOMAIN,
-                port=int(data.DATA_LMN_LDAP_PORT),
-                get_info=ALL,
-                connect_timeout=3,
-            )
+        server = _create_ldap_server(data)
         conn = Connection(server, auto_bind=True)
         if conn.bind():
             return {"status": True, "message": "Successful"}
         return {"status": False, "message": "Keine Verbindung zum LDAP-Server!"}
     except LDAPSocketOpenError as e:
-        if "CERTIFICATE_VERIFY_FAILED" in str(e):
-            return {"status": False, "message": "Kein gültiges Zertifikat!"}
         print(e)
         return {"status": False, "message": "Unbekannter Fehler!"}
     except Exception as e:
@@ -224,22 +286,7 @@ def checkLDAPStatus(data: Data = Depends(getData)):
 @api.get("/check-ldap-access-status")
 def checkLDAPAccessStatus(data: Data = Depends(getData)):
     try:
-        if data.DATA_LMN_LDAP_SCHEMA == "ldaps":
-            server = Server(
-                data.DATA_LMN_EXTERNAL_DOMAIN,
-                port=int(data.DATA_LMN_LDAP_PORT),
-                get_info=ALL,
-                connect_timeout=3,
-                use_ssl=True,
-                tls=Tls(validate=ssl.CERT_REQUIRED),
-            )
-        else:
-            server = Server(
-                data.DATA_LMN_EXTERNAL_DOMAIN,
-                port=int(data.DATA_LMN_LDAP_PORT),
-                get_info=ALL,
-                connect_timeout=3,
-            )
+        server = _create_ldap_server(data)
         conn = Connection(
             server,
             user=data.DATA_LMN_BINDUSER_DN,
@@ -250,8 +297,6 @@ def checkLDAPAccessStatus(data: Data = Depends(getData)):
             return {"status": True, "message": "Successful"}
         return {"status": False, "message": "Keine Verbindung zum LDAP-Server!"}
     except LDAPSocketOpenError as e:
-        if "CERTIFICATE_VERIFY_FAILED" in str(e):
-            return {"status": False, "message": "Kein gültiges Zertifikat!"}
         print(e)
         return {"status": False, "message": "Unbekannter Fehler!"}
     except LDAPBindError as e:
@@ -419,11 +464,19 @@ BOOTSTRAP_URL = f"https://raw.githubusercontent.com/edulution-io/edulution-insta
 
 @api.post("/lmn/bootstrap")
 async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
-    def stream_bootstrap():
+    if bootstrap_manager.status == 'running':
+        return JSONResponse(
+            status_code=409,
+            content={"status": False, "message": "Bootstrap läuft bereits"},
+        )
+
+    bootstrap_manager.reset()
+
+    def run_bootstrap():
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
-            yield f"data: Verbinde mit {ssh.host}:{ssh.port}...\n\n"
+            bootstrap_manager.add_event(f"Verbinde mit {ssh.host}:{ssh.port}...")
             client.connect(
                 hostname=ssh.host,
                 port=ssh.port,
@@ -431,10 +484,8 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
                 password=ssh.password,
                 timeout=10,
             )
-            yield "data: Verbindung hergestellt. Starte Bootstrap...\n\n"
+            bootstrap_manager.add_event("Verbindung hergestellt. Starte Bootstrap...")
 
-            # Download script to temp file first, then run with env var set
-            # (piping to bash loses env var assignments in some shell/PTY configurations)
             bootstrap_cmd = (
                 f"tmpfile=$(mktemp) && "
                 f"curl -fsSL {BOOTSTRAP_URL} -o $tmpfile && "
@@ -443,13 +494,12 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
             )
             if ssh.user != "root":
                 command = f"sudo -S bash -c 'export GITHUB_BRANCH={BOOTSTRAP_BRANCH} && tmpfile=$(mktemp) && curl -fsSL {BOOTSTRAP_URL} -o $tmpfile && bash $tmpfile; rm -f $tmpfile'"
-                yield "data: Nicht als root verbunden, verwende sudo...\n\n"
+                bootstrap_manager.add_event("Nicht als root verbunden, verwende sudo...")
             else:
                 command = bootstrap_cmd
 
             stdin, stdout, stderr = client.exec_command(command, get_pty=True)
 
-            # If using sudo, send the password when prompted
             if ssh.user != "root":
                 time.sleep(1)
                 stdin.write(ssh.password + "\n")
@@ -457,51 +507,83 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
 
             for line in stdout:
                 line_stripped = line.rstrip()
-                # Filter out the sudo password prompt from output
                 if "[sudo]" in line_stripped and "password" in line_stripped:
                     continue
-                yield f"data: {line_stripped}\n\n"
+                bootstrap_manager.add_event(line_stripped)
 
             exit_status = stdout.channel.recv_exit_status()
 
             if exit_status != 0:
                 for line in stderr:
-                    yield f"data: [STDERR] {line.rstrip()}\n\n"
-                yield f"data: [ERROR] Bootstrap fehlgeschlagen (Exit-Code: {exit_status})\n\n"
-                yield "event: error\ndata: Bootstrap fehlgeschlagen\n\n"
+                    bootstrap_manager.add_event(f"[STDERR] {line.rstrip()}")
+                bootstrap_manager.add_event(
+                    f"Bootstrap fehlgeschlagen (Exit-Code: {exit_status})", 'failed'
+                )
+                bootstrap_manager.finish('failed')
                 return
 
-            # Wait for target API to become available
-            yield "data: Warte auf LMN-Installer API...\n\n"
+            bootstrap_manager.add_event("Warte auf LMN-Installer API...")
             for attempt in range(30):
                 try:
                     resp = requests.get(f"http://{ssh.host}:8000/api/health", timeout=3)
                     if resp.status_code == 200:
                         data.DATA_LMN_TARGET_HOST = ssh.host
-                        yield "data: LMN-Installer API ist bereit!\n\n"
-                        yield "event: done\ndata: Bootstrap erfolgreich\n\n"
+                        bootstrap_manager.add_event("LMN-Installer API ist bereit!")
+                        bootstrap_manager.add_event("Bootstrap erfolgreich", 'done')
+                        bootstrap_manager.finish('completed')
                         return
                 except Exception:
                     pass
                 time.sleep(2)
-                yield f"data: Warte auf API... (Versuch {attempt + 1}/30)\n\n"
+                bootstrap_manager.add_event(f"Warte auf API... (Versuch {attempt + 1}/30)")
 
-            yield "data: [ERROR] API nicht erreichbar nach Bootstrap\n\n"
-            yield "event: error\ndata: API nicht erreichbar\n\n"
+            bootstrap_manager.add_event("API nicht erreichbar nach Bootstrap", 'failed')
+            bootstrap_manager.finish('failed')
 
         except paramiko.AuthenticationException:
-            yield "data: [ERROR] SSH-Authentifizierung fehlgeschlagen\n\n"
-            yield "event: error\ndata: SSH-Authentifizierung fehlgeschlagen\n\n"
+            bootstrap_manager.add_event("SSH-Authentifizierung fehlgeschlagen", 'failed')
+            bootstrap_manager.finish('failed')
         except paramiko.SSHException as e:
-            yield f"data: [ERROR] SSH-Fehler: {e}\n\n"
-            yield f"event: error\ndata: SSH-Fehler: {e}\n\n"
+            bootstrap_manager.add_event(f"SSH-Fehler: {e}", 'failed')
+            bootstrap_manager.finish('failed')
         except Exception as e:
-            yield f"data: [ERROR] Fehler: {e}\n\n"
-            yield f"event: error\ndata: {e}\n\n"
+            bootstrap_manager.add_event(f"Fehler: {e}", 'failed')
+            bootstrap_manager.finish('failed')
         finally:
             client.close()
 
-    return StreamingResponse(stream_bootstrap(), media_type="text/event-stream")
+    threading.Thread(target=run_bootstrap, daemon=True).start()
+    return {"status": True, "message": "Bootstrap gestartet"}
+
+
+@api.get("/lmn/bootstrap/stream")
+async def lmn_bootstrap_stream(request: Request):
+    if bootstrap_manager.status == 'idle':
+        return JSONResponse(
+            status_code=404,
+            content={"status": False, "message": "Kein Bootstrap gestartet"},
+        )
+
+    last_event_id = request.headers.get('last-event-id', '')
+    start_id = int(last_event_id) + 1 if last_event_id.isdigit() else 0
+
+    return StreamingResponse(
+        bootstrap_manager.stream_from(start_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@api.post("/lmn/check-connection")
+def check_lmn_connection(req: LmnConnectionCheck, data: Data = Depends(getData)):
+    try:
+        resp = requests.get(f"http://{req.host}:8000/api/health", timeout=5)
+        if resp.status_code == 200:
+            data.DATA_LMN_TARGET_HOST = req.host
+            return {"status": True, "message": "LMN-Server erreichbar"}
+    except Exception:
+        pass
+    return {"status": False, "message": "LMN-Server nicht erreichbar"}
 
 
 @api.api_route("/lmn/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])

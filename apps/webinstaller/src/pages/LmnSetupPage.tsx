@@ -6,7 +6,7 @@ import { Input } from '@shared-ui';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner, faCircleCheck, faCircleXmark, faCircleInfo } from '@fortawesome/free-solid-svg-icons';
 import useInstallerStore from '../store/useInstallerStore';
-import { bootstrapLmnServer, checkLmnRequirements } from '../api/installerApi';
+import { bootstrapLmnServer, checkLmnRequirements, checkLmnConnection } from '../api/installerApi';
 import type { RequirementsResponse } from '../api/installerApi';
 import StatusCard from '../components/StatusCard';
 
@@ -22,14 +22,20 @@ const LmnSetupPage = () => {
 
   const [requirements, setRequirements] = useState<RequirementsResponse | null>(null);
   const [checkingRequirements, setCheckingRequirements] = useState(false);
+  const [checkingConnection, setCheckingConnection] = useState(false);
 
   const logRef = useRef<HTMLDivElement>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (logRef.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
   }, [store.lmnOutputLog]);
+
+  useEffect(() => () => {
+    if (cleanupRef.current) cleanupRef.current();
+  }, []);
 
   const isValidSsh = host.trim() !== '' && port > 0 && port <= 65535 && user.trim() !== '' && password.trim() !== '';
 
@@ -40,7 +46,7 @@ const LmnSetupPage = () => {
     store.setLmnBootstrapStatus('running');
     store.clearLmnOutput();
 
-    await bootstrapLmnServer(
+    const cleanup = await bootstrapLmnServer(
       { host, port, user, password },
       (line) => store.appendLmnOutput(line),
       () => store.setLmnBootstrapStatus('completed'),
@@ -49,7 +55,26 @@ const LmnSetupPage = () => {
         store.setLmnBootstrapStatus('failed');
       },
     );
+    cleanupRef.current = cleanup;
   }, [isValidSsh, host, port, user, password, store]);
+
+  const handleCheckConnection = useCallback(async () => {
+    if (!host.trim()) return;
+    setCheckingConnection(true);
+    try {
+      const result = await checkLmnConnection(host);
+      if (result.status) {
+        store.setLmnSsh({ host, port, user, password });
+        store.setLmnBootstrapStatus('completed');
+        store.appendLmnOutput(t('lmnSetup.connectionRestored'));
+      } else {
+        store.appendLmnOutput(`[ERROR] ${result.message}`);
+      }
+    } catch {
+      store.appendLmnOutput(`[ERROR] ${t('lmnSetup.connectionCheckFailed')}`);
+    }
+    setCheckingConnection(false);
+  }, [host, port, user, password, store, t]);
 
   const handleCheckRequirements = useCallback(async () => {
     setCheckingRequirements(true);
@@ -210,13 +235,37 @@ const LmnSetupPage = () => {
       )}
 
       {bootstrapFailed && (
-        <div className="flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-800">
-          <FontAwesomeIcon
-            icon={faCircleXmark}
-            className="text-red-500"
-          />
-          {t('lmnSetup.bootstrapFailed')}
-        </div>
+        <>
+          <div className="flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-800">
+            <FontAwesomeIcon
+              icon={faCircleXmark}
+              className="text-red-500"
+            />
+            {t('lmnSetup.bootstrapFailed')}
+          </div>
+          <Button
+            variant="btn-outline"
+            size="lg"
+            className="w-full justify-center"
+            onClick={() => {
+              void handleCheckConnection();
+            }}
+            disabled={!host.trim() || checkingConnection}
+          >
+            {checkingConnection ? (
+              <>
+                <FontAwesomeIcon
+                  icon={faSpinner}
+                  spin
+                  className="mr-2"
+                />
+                {t('lmnSetup.checkingConnection')}
+              </>
+            ) : (
+              t('lmnSetup.checkConnection')
+            )}
+          </Button>
+        </>
       )}
 
       {bootstrapDone && !requirements && (

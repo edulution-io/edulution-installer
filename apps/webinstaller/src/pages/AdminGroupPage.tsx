@@ -21,8 +21,13 @@ const AdminGroupPage = () => {
     if (!isValid) return;
     setSubmitting(true);
     setInitialAdminGroup(adminGroup);
-    await submitAdminGroup(adminGroup);
-    setSubmitting(false);
+    try {
+      await submitAdminGroup(adminGroup);
+    } catch {
+      // Continue even if API call fails - admin group is optional
+    } finally {
+      setSubmitting(false);
+    }
     void navigate('/certificate');
   }, [isValid, adminGroup, setInitialAdminGroup, navigate]);
 
