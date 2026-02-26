@@ -95,6 +95,10 @@
   },
   "lmnSetup": {
     "title": "Set up linuxmuster.net server",
+    "requirementsTitle": "Requirements for the linuxmuster.net server",
+    "reqOs": "Ubuntu 24.04 LTS or newer",
+    "reqRam": "At least 4 GB RAM",
+    "reqDisks": "At least 2 disks with 25 GB each",
     "sshHost": "SSH Host:",
     "sshPort": "SSH Port:",
     "sshUser": "SSH User:",

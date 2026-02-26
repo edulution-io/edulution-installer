@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@edulution-io/ui-kit';
 import { Input } from '@shared-ui';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSpinner, faCircleCheck, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
+import { faSpinner, faCircleCheck, faCircleXmark, faCircleInfo } from '@fortawesome/free-solid-svg-icons';
 import useInstallerStore from '../store/useInstallerStore';
 import { bootstrapLmnServer, checkLmnRequirements } from '../api/installerApi';
 import type { RequirementsResponse } from '../api/installerApi';
@@ -70,6 +70,21 @@ const LmnSetupPage = () => {
   return (
     <div className="flex flex-col gap-4">
       <h3 className="text-lg font-bold text-gray-800">{t('lmnSetup.title')}</h3>
+
+      <div className="flex gap-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-800">
+        <FontAwesomeIcon
+          icon={faCircleInfo}
+          className="mt-0.5 shrink-0 text-blue-500"
+        />
+        <div>
+          <p className="font-bold">{t('lmnSetup.requirementsTitle')}</p>
+          <ul className="mt-1 list-inside list-disc space-y-0.5">
+            <li>{t('lmnSetup.reqOs')}</li>
+            <li>{t('lmnSetup.reqRam')}</li>
+            <li>{t('lmnSetup.reqDisks')}</li>
+          </ul>
+        </div>
+      </div>
 
       <div>
         <label
