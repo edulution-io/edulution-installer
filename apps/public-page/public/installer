@@ -238,8 +238,8 @@ while [ ! -f "${DIRECTORY}edulution.env" ]; do
         exit 1
     fi
 
-    if [ $attempt -ge 600 ]; then
-        echo "[!] Timeout: Die Installation wurde nicht innerhalb von 30 Minuten abgeschlossen!"
+    if [ $attempt -ge 1200 ]; then
+        echo "[!] Timeout: Die Installation wurde nicht innerhalb von 60 Minuten abgeschlossen!"
         exit 1
     fi
 
