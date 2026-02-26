@@ -152,7 +152,8 @@
     "failed": "Installation fehlgeschlagen",
     "playbookError": "[ERROR] Playbook konnte nicht gestartet werden",
     "backToSetup": "Zurück zur Einrichtung",
-    "configuringEdulution": "Edulution-Verbindung wird konfiguriert...",
+    "configuringEdulution": "Edulution-Konfiguration wird abgerufen...",
+    "configFetched": "Konfiguration erfolgreich abgerufen. Sie können den linuxmuster.net-Server jetzt neu starten und anschließend auf 'Weiter' klicken.",
     "configError": "Edulution-Konfiguration konnte nicht abgerufen werden. Bitte prüfen Sie, ob der linuxmuster.net-Server erreichbar ist."
   },
   "finish": {

@@ -152,7 +152,8 @@
     "failed": "Installation failed",
     "playbookError": "[ERROR] Playbook could not be started",
     "backToSetup": "Back to setup",
-    "configuringEdulution": "Configuring edulution connection...",
+    "configuringEdulution": "Fetching edulution configuration...",
+    "configFetched": "Configuration fetched successfully. You can now restart the linuxmuster.net server and then click 'Next'.",
     "configError": "Failed to fetch edulution configuration. Please check if the linuxmuster.net server is accessible."
   },
   "finish": {

@@ -19,8 +19,10 @@ const LmnInstallPage = () => {
   const store = useInstallerStore();
   const logRef = useRef<HTMLDivElement>(null);
   const [started, setStarted] = useState(false);
+  const [configFetched, setConfigFetched] = useState(false);
   const [configuring, setConfiguring] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -86,49 +88,68 @@ const LmnInstallPage = () => {
     }
   }, [started, store]);
 
-  const handlePostInstallConfig = useCallback(async () => {
-    setConfiguring(true);
-    setConfigError(null);
+  // Auto-fetch config from LMN API as soon as playbook completes
+  useEffect(() => {
+    if (store.lmnPlaybookStatus !== 'completed' || configFetched || configuring) return;
 
+    const fetchConfig = async () => {
+      setConfiguring(true);
+      setConfigError(null);
+
+      try {
+        const edulutionConfig = await getEdulutionConfig();
+
+        const currentStore = useInstallerStore.getState();
+        const lmnExternalDomain = currentStore.lmnSshHost;
+        const edulutionExternalDomain = window.location.hostname;
+
+        store.setConfiguration({
+          lmnExternalDomain,
+          lmnBinduserDn: edulutionConfig.binduser_dn,
+          lmnBinduserPw: edulutionConfig.binduser_password,
+          lmnLdapSchema: 'ldaps',
+          lmnLdapPort: 636,
+          edulutionExternalDomain,
+        });
+
+        // Shut down the LMN installer API to free port 8000
+        void shutdownLmnInstaller().catch(() => {
+          // May fail if API already terminated
+        });
+
+        setConfigFetched(true);
+      } catch {
+        setConfigError(t('lmnInstall.configError'));
+      } finally {
+        setConfiguring(false);
+      }
+    };
+
+    void fetchConfig();
+  }, [store.lmnPlaybookStatus, configFetched, configuring, store, t]);
+
+  // "Next" button: submit config to webinstaller API and navigate
+  const handleContinue = useCallback(async () => {
+    setSubmitting(true);
     try {
-      const edulutionConfig = await getEdulutionConfig();
-
       const currentStore = useInstallerStore.getState();
-      const lmnExternalDomain = currentStore.lmnSshHost;
-      const edulutionExternalDomain = window.location.hostname;
-
-      store.setConfiguration({
-        lmnExternalDomain,
-        lmnBinduserDn: edulutionConfig.binduser_dn,
-        lmnBinduserPw: edulutionConfig.binduser_password,
-        lmnLdapSchema: 'ldaps',
-        lmnLdapPort: 636,
-        edulutionExternalDomain,
-      });
-
       await submitConfiguration({
         organizationType: currentStore.organizationType!,
         deploymentTarget: currentStore.deploymentTarget!,
-        lmnExternalDomain,
-        lmnBinduserDn: edulutionConfig.binduser_dn,
-        lmnBinduserPw: edulutionConfig.binduser_password,
-        lmnLdapSchema: 'ldaps',
-        lmnLdapPort: 636,
-        edulutionExternalDomain,
+        lmnExternalDomain: currentStore.lmnExternalDomain,
+        lmnBinduserDn: currentStore.lmnBinduserDn,
+        lmnBinduserPw: currentStore.lmnBinduserPw,
+        lmnLdapSchema: currentStore.lmnLdapSchema,
+        lmnLdapPort: currentStore.lmnLdapPort,
+        edulutionExternalDomain: currentStore.edulutionExternalDomain,
       });
-
-      // Shut down the LMN installer API to free port 8000
-      void shutdownLmnInstaller().catch(() => {
-        // May fail if API already terminated
-      });
-
-      void navigate('/check');
     } catch {
-      setConfigError(t('lmnInstall.configError'));
+      // Store already has values, continue anyway
     } finally {
-      setConfiguring(false);
+      setSubmitting(false);
     }
-  }, [store, navigate, t]);
+    void navigate('/check');
+  }, [navigate]);
 
   useEffect(() => {
     void startInstallation();
@@ -195,27 +216,48 @@ const LmnInstallPage = () => {
 
       {isCompleted && (
         <>
-          <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-            <FontAwesomeIcon
-              icon={faTriangleExclamation}
-              className="mt-0.5 text-amber-500"
-            />
-            {t('lmnInstall.restartHint')}
-          </div>
+          {configuring && (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <FontAwesomeIcon
+                icon={faSpinner}
+                spin
+                className="text-gray-500"
+              />
+              {t('lmnInstall.configuringEdulution')}
+            </div>
+          )}
           {configError && (
             <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{configError}</div>
           )}
-          <Button
-            variant="btn-security"
-            size="lg"
-            className="w-full justify-center text-white"
-            onClick={() => {
-              void handlePostInstallConfig();
-            }}
-            disabled={configuring}
-          >
-            {configuring ? t('lmnInstall.configuringEdulution') : t('common.next')}
-          </Button>
+          {configFetched && (
+            <>
+              <div className="flex items-center gap-2 rounded-lg bg-green-50 p-3 text-sm text-green-800">
+                <FontAwesomeIcon
+                  icon={faCircleCheck}
+                  className="text-green-500"
+                />
+                {t('lmnInstall.configFetched')}
+              </div>
+              <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                <FontAwesomeIcon
+                  icon={faTriangleExclamation}
+                  className="mt-0.5 text-amber-500"
+                />
+                {t('lmnInstall.restartHint')}
+              </div>
+              <Button
+                variant="btn-security"
+                size="lg"
+                className="w-full justify-center text-white"
+                onClick={() => {
+                  void handleContinue();
+                }}
+                disabled={submitting}
+              >
+                {submitting ? t('lmnInstall.configuringEdulution') : t('common.next')}
+              </Button>
+            </>
+          )}
         </>
       )}
 
