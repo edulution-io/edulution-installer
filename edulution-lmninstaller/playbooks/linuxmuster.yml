@@ -264,6 +264,7 @@
           echo "$line"
         done
       args:
+        executable: /bin/bash
         creates: /etc/linuxmuster/.appliance_configured
       register: lmn_appliance_result
       changed_when: lmn_appliance_result.rc == 0
@@ -315,6 +316,7 @@
           echo "$line"
         done
       args:
+        executable: /bin/bash
         creates: /var/lib/linuxmuster/.setup.done
       register: lmn_setup_result
       changed_when: lmn_setup_result.rc == 0

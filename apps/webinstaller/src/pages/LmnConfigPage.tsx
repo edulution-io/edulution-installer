@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { Button } from '@edulution-io/ui-kit';
 import { Input } from '@shared-ui';
 import useInstallerStore from '../store/useInstallerStore';
+import { getLmnNetworkInfo } from '../api/installerApi';
 
 const validatePassword = (pw: string, t: TFunction): string[] => {
   const errors: string[] = [];
@@ -48,6 +49,19 @@ const LmnConfigPage = () => {
   const [adminpwConfirm, setAdminpwConfirm] = useState(store.lmnAdminpw);
   const [timezone, setTimezone] = useState(store.lmnTimezone);
   const [locale, setLocale] = useState(store.lmnLocale);
+
+  useEffect(() => {
+    if (serverIp && netmask && gateway) return;
+    void getLmnNetworkInfo()
+      .then((info) => {
+        if (info.ip && !serverIp) setServerIp(info.ip);
+        if (info.netmask && !netmask) setNetmask(info.netmask);
+        if (info.gateway && !gateway) setGateway(info.gateway);
+      })
+      .catch(() => {
+        // LMN API might not be reachable
+      });
+  }, []);
 
   const pwErrors = useMemo(() => validatePassword(adminpw, t), [adminpw, t]);
   const pwMatch = adminpw === adminpwConfirm;

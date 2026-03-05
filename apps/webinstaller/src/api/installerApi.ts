@@ -236,6 +236,15 @@ export interface EdulutionConfig {
 export const getEdulutionConfig = (): Promise<EdulutionConfig> =>
   apiFetch<EdulutionConfig>('/api/lmn/edulution-config');
 
+export interface LmnNetworkInfo {
+  ip?: string;
+  netmask?: string;
+  gateway?: string;
+}
+
+export const getLmnNetworkInfo = (): Promise<LmnNetworkInfo> =>
+  apiFetch<LmnNetworkInfo>('/api/lmn/network-info');
+
 export const shutdownLmnInstaller = (): Promise<StatusResponse> =>
   apiFetch<StatusResponse>('/api/lmn/shutdown', { method: 'POST' });
 

@@ -71,6 +71,44 @@ async def check_requirements(playbook: str) -> RequirementsResponse:
     return system_checker.check_requirements(playbook)
 
 
+@router.get("/network-info")
+async def get_network_info() -> dict:
+    import subprocess
+
+    result: dict = {}
+    try:
+        out = subprocess.run(
+            ["ip", "-j", "route", "show", "default"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if out.returncode == 0:
+            import json as _json
+            routes = _json.loads(out.stdout)
+            if routes:
+                result["gateway"] = routes[0].get("gateway", "")
+                iface = routes[0].get("dev", "")
+                result["interface"] = iface
+
+                addr_out = subprocess.run(
+                    ["ip", "-j", "-4", "addr", "show", iface],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if addr_out.returncode == 0:
+                    addrs = _json.loads(addr_out.stdout)
+                    if addrs and addrs[0].get("addr_info"):
+                        info = addrs[0]["addr_info"][0]
+                        result["ip"] = info.get("local", "")
+                        prefix = info.get("prefixlen", 24)
+                        # CIDR prefix to subnet mask
+                        mask_int = (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF
+                        result["netmask"] = ".".join(
+                            str((mask_int >> (8 * i)) & 0xFF) for i in range(3, -1, -1)
+                        )
+    except Exception:
+        pass
+    return result
+
+
 @router.get("/edulution-config")
 async def get_edulution_config() -> dict:
     if not EDULUTION_CONFIG_PATH.exists():
