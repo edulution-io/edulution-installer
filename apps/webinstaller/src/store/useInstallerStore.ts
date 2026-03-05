@@ -125,7 +125,7 @@ const initialState = {
   lmnServerIp: '',
   lmnNetmask: '',
   lmnGateway: '',
-  lmnServername: 'server',
+  lmnServername: '',
   lmnDomainname: 'linuxmuster.lan',
   lmnSchoolname: 'Meine Schule',
   lmnLocation: 'Musterstadt',

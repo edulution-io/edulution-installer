@@ -296,6 +296,7 @@
           location = {{ lmn_location }}
           country = {{ lmn_country }}
           state = {{ lmn_state }}
+          adminpw = {{ lmn_adminpw }}
           skipfw = {{ lmn_skip_firewall | ternary('True', 'False') }}
         dest: /root/.linuxmuster/setup.ini
         mode: '0600'
@@ -420,7 +421,7 @@
 
     - name: Binduser-Passwort als Fakt setzen
       ansible.builtin.set_fact:
-        edulution_binduser_password: "{{ binduser_pw_result.stdout }}"
+        edulution_binduser_password: '{{ binduser_pw_result.stdout }}'
 
     - name: Pruefen ob edulutionui-binduser bereits existiert
       ansible.builtin.command:
