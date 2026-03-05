@@ -387,8 +387,8 @@
       ansible.builtin.command:
         cmd: >
           python3 -c "import secrets, string;
-          chars = string.ascii_letters + string.digits + '?!&@#%*()$.';
-          print(''.join(secrets.choice(chars) for _ in range(21)))"
+          chars = string.ascii_letters + string.digits;
+          print(''.join(secrets.choice(chars) for _ in range(24)))"
       register: binduser_pw_result
       changed_when: false
 
@@ -403,14 +403,53 @@
       failed_when: false
       changed_when: false
 
+    - name: Debug - Binduser-Check Ergebnis
+      ansible.builtin.debug:
+        msg: |
+          binduser_exists.rc: {{ binduser_exists.rc }}
+          binduser_exists.stdout: {{ binduser_exists.stdout | default('(leer)') }}
+          binduser_exists.stderr: {{ binduser_exists.stderr | default('(leer)') }}
+          Generiertes Passwort Laenge: {{ edulution_binduser_password | length }}
+          DC Parts: {{ edulution_dc_parts }}
+
     - name: edulutionui-binduser in Samba AD erstellen
-      ansible.builtin.command:
-        cmd: >
-          samba-tool user create edulutionui-binduser '{{ edulution_binduser_password }}'
-          --given-name=edulution
-          --surname=Binduser
+      ansible.builtin.shell: |
+        samba-tool user create edulutionui-binduser '{{ edulution_binduser_password }}' \
+          --given-name=edulution \
+          --surname=Binduser \
           --userou='OU=Management,OU=GLOBAL'
+      register: binduser_create_result
       when: binduser_exists.rc != 0
+
+    - name: Debug - Binduser-Erstellung Ergebnis
+      ansible.builtin.debug:
+        msg: |
+          rc: {{ binduser_create_result.rc | default('skipped') }}
+          stdout: {{ binduser_create_result.stdout | default('skipped') }}
+          stderr: {{ binduser_create_result.stderr | default('skipped') }}
+      when: binduser_create_result is not skipped
+
+    - name: edulutionui-binduser Passwort setzen (falls User bereits existiert)
+      ansible.builtin.shell: |
+        samba-tool user setpassword edulutionui-binduser --newpassword='{{ edulution_binduser_password }}'
+      when: binduser_exists.rc == 0
+
+    - name: Verifizieren dass edulutionui-binduser existiert
+      ansible.builtin.shell: |
+        echo "=== samba-tool user show ==="
+        samba-tool user show edulutionui-binduser 2>&1
+        echo ""
+        echo "=== samba-tool user list (grep) ==="
+        samba-tool user list 2>&1 | grep -i edulution || echo "(nicht in user list gefunden)"
+        echo ""
+        echo "=== ldbsearch ==="
+        ldbsearch -H /var/lib/samba/private/sam.ldb "(sAMAccountName=edulutionui-binduser)" dn 2>&1 || echo "(ldbsearch fehlgeschlagen)"
+      register: binduser_verify
+      changed_when: false
+
+    - name: Debug - Binduser-Verifikation
+      ansible.builtin.debug:
+        msg: "{{ binduser_verify.stdout }}"
 
     - name: edulutionui-binduser Passwort-Ablauf deaktivieren
       ansible.builtin.command:
@@ -432,6 +471,16 @@
           }
         dest: /var/lib/edulution/binduser-config.json
         mode: '0600'
+
+    - name: Debug - Geschriebene Binduser-Config
+      ansible.builtin.command:
+        cmd: cat /var/lib/edulution/binduser-config.json
+      register: binduser_config_content
+      changed_when: false
+
+    - name: Debug - Config-Inhalt
+      ansible.builtin.debug:
+        msg: "{{ binduser_config_content.stdout }}"
 
     # =========================================================================
     # LINUXMUSTER-API INSTALLIEREN
