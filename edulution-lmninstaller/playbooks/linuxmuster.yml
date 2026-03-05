@@ -363,52 +363,25 @@
       changed_when: false
 
     # =========================================================================
-    # LINUXMUSTER-API INSTALLIEREN
-    # =========================================================================
-
-    - name: Warten bis apt-Lock frei ist (post-setup)
-      ansible.builtin.shell: |
-        while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
-          sleep 5
-        done
-      changed_when: false
-
-    - name: linuxmuster-api7 installieren
-      ansible.builtin.apt:
-        name: linuxmuster-api7
-        state: present
-        update_cache: true
-
-    - name: systemd-Override-Verzeichnis fuer linuxmuster-api erstellen
-      ansible.builtin.file:
-        path: /etc/systemd/system/linuxmuster-api.service.d
-        state: directory
-        mode: '0755'
-
-    - name: systemd-Override fuer linuxmuster-api erstellen (Samba-Abhaengigkeit)
-      ansible.builtin.copy:
-        content: |
-          [Unit]
-          After=samba-ad-dc.service
-          Requires=samba-ad-dc.service
-
-          [Service]
-          Restart=on-failure
-          RestartSec=10
-        dest: /etc/systemd/system/linuxmuster-api.service.d/override.conf
-        mode: '0644'
-
-    - name: systemd-Konfiguration neu laden
-      ansible.builtin.systemd:
-        daemon_reload: true
-
-    # =========================================================================
     # EDULUTION BINDUSER ERSTELLEN
     # =========================================================================
 
     - name: Domain-Komponenten berechnen
       ansible.builtin.set_fact:
         edulution_dc_parts: "{{ lmn_domainname.split('.') | map('regex_replace', '^(.*)$', 'DC=\\1') | join(',') }}"
+
+    - name: Warten bis OU Management in Samba verfuegbar ist
+      ansible.builtin.shell: |
+        for i in $(seq 1 30); do
+          if samba-tool ou list | grep -q 'OU=Management,OU=GLOBAL'; then
+            echo "OU Management verfuegbar nach $i Versuchen"
+            exit 0
+          fi
+          sleep 5
+        done
+        echo "OU Management nicht verfuegbar nach 150 Sekunden"
+        exit 1
+      changed_when: false
 
     - name: Sicheres Passwort fuer edulutionui-binduser generieren
       ansible.builtin.command:
@@ -459,6 +432,46 @@
           }
         dest: /var/lib/edulution/binduser-config.json
         mode: '0600'
+
+    # =========================================================================
+    # LINUXMUSTER-API INSTALLIEREN
+    # =========================================================================
+
+    - name: Warten bis apt-Lock frei ist (post-setup)
+      ansible.builtin.shell: |
+        while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+          sleep 5
+        done
+      changed_when: false
+
+    - name: linuxmuster-api7 installieren
+      ansible.builtin.apt:
+        name: linuxmuster-api7
+        state: present
+        update_cache: true
+
+    - name: systemd-Override-Verzeichnis fuer linuxmuster-api erstellen
+      ansible.builtin.file:
+        path: /etc/systemd/system/linuxmuster-api.service.d
+        state: directory
+        mode: '0755'
+
+    - name: systemd-Override fuer linuxmuster-api erstellen (Samba-Abhaengigkeit)
+      ansible.builtin.copy:
+        content: |
+          [Unit]
+          After=samba-ad-dc.service
+          Requires=samba-ad-dc.service
+
+          [Service]
+          Restart=on-failure
+          RestartSec=10
+        dest: /etc/systemd/system/linuxmuster-api.service.d/override.conf
+        mode: '0644'
+
+    - name: systemd-Konfiguration neu laden
+      ansible.builtin.systemd:
+        daemon_reload: true
 
     # =========================================================================
     # ABSCHLUSSMELDUNG
