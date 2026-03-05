@@ -378,6 +378,23 @@
         state: present
         update_cache: true
 
+    - name: systemd-Override fuer linuxmuster-api erstellen (Samba-Abhaengigkeit)
+      ansible.builtin.copy:
+        content: |
+          [Unit]
+          After=samba-ad-dc.service
+          Requires=samba-ad-dc.service
+
+          [Service]
+          Restart=on-failure
+          RestartSec=10
+        dest: /etc/systemd/system/linuxmuster-api.service.d/override.conf
+        mode: '0644'
+
+    - name: systemd-Konfiguration neu laden
+      ansible.builtin.systemd:
+        daemon_reload: true
+
     # =========================================================================
     # EDULUTION BINDUSER ERSTELLEN
     # =========================================================================
