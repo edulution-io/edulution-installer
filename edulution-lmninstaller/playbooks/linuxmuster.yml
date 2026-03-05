@@ -254,6 +254,7 @@
 
     - name: lmn-appliance ausführen (Server-Profil, ohne LVM)
       ansible.builtin.shell: |
+        set -o pipefail
         /root/lmn-appliance -p server -u \
           -n {{ lmn_server_ip }}/{{ lmn_cidr }} \
           -f {{ lmn_gateway }} \
@@ -304,6 +305,7 @@
 
     - name: linuxmuster-setup ausführen
       ansible.builtin.shell: |
+        set -o pipefail
         linuxmuster-setup \
           --config=/root/.linuxmuster/setup.ini \
           --adminpw='{{ lmn_adminpw }}' \
@@ -337,6 +339,25 @@
         state: touch
         mode: '0644'
       when: lmn_setup_result is defined and lmn_setup_result.rc == 0
+
+    - name: Samba AD DC neu starten
+      ansible.builtin.systemd:
+        name: samba-ad-dc
+        state: restarted
+        enabled: true
+
+    - name: Warten bis Samba LDAP bereit ist
+      ansible.builtin.shell: |
+        for i in $(seq 1 30); do
+          if samba-tool user show Administrator >/dev/null 2>&1; then
+            echo "Samba LDAP bereit nach $i Versuchen"
+            exit 0
+          fi
+          sleep 5
+        done
+        echo "Samba LDAP nicht erreichbar nach 150 Sekunden"
+        exit 1
+      changed_when: false
 
     # =========================================================================
     # LINUXMUSTER-API INSTALLIEREN
