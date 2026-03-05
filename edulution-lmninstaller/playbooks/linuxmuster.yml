@@ -307,7 +307,7 @@
     - name: linuxmuster-setup ausführen
       ansible.builtin.shell: |
         set -o pipefail
-        linuxmuster-setup \
+        /usr/sbin/linuxmuster-setup \
           --config=/root/.linuxmuster/setup.ini \
           --adminpw='{{ lmn_adminpw }}' \
           {% if lmn_unattended %}--unattended{% endif %} \
