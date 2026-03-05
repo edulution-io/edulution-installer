@@ -106,6 +106,13 @@ async def get_network_info() -> dict:
                         )
     except Exception:
         pass
+
+    try:
+        import socket
+        result["hostname"] = socket.gethostname()
+    except Exception:
+        pass
+
     return result
 
 

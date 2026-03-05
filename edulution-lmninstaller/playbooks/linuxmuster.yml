@@ -378,6 +378,12 @@
         state: present
         update_cache: true
 
+    - name: systemd-Override-Verzeichnis fuer linuxmuster-api erstellen
+      ansible.builtin.file:
+        path: /etc/systemd/system/linuxmuster-api.service.d
+        state: directory
+        mode: '0755'
+
     - name: systemd-Override fuer linuxmuster-api erstellen (Samba-Abhaengigkeit)
       ansible.builtin.copy:
         content: |

@@ -51,12 +51,12 @@ const LmnConfigPage = () => {
   const [locale, setLocale] = useState(store.lmnLocale);
 
   useEffect(() => {
-    if (serverIp && netmask && gateway) return;
     void getLmnNetworkInfo()
       .then((info) => {
         if (info.ip && !serverIp) setServerIp(info.ip);
         if (info.netmask && !netmask) setNetmask(info.netmask);
         if (info.gateway && !gateway) setGateway(info.gateway);
+        if (info.hostname && !servername) setServername(info.hostname);
       })
       .catch(() => {
         // LMN API might not be reachable

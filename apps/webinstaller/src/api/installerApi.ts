@@ -240,6 +240,7 @@ export interface LmnNetworkInfo {
   ip?: string;
   netmask?: string;
   gateway?: string;
+  hostname?: string;
 }
 
 export const getLmnNetworkInfo = (): Promise<LmnNetworkInfo> =>
