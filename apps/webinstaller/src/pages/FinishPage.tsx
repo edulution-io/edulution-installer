@@ -7,8 +7,8 @@ import { startInstallation, shutdownInstaller } from '../api/installerApi';
 import useInstallerStore from '../store/useInstallerStore';
 
 const POLL_START_DELAY_MS = 30000;
-const POLL_INTERVAL_MS = 5000;
-const REDIRECT_FALLBACK_MS = 120000;
+const POLL_INTERVAL_MS = 10000;
+const REDIRECT_FALLBACK_MS = 600000;
 
 const FinishPage = () => {
   const [started, setStarted] = useState(false);
@@ -45,11 +45,12 @@ const FinishPage = () => {
   }, [started]);
 
   useEffect(() => {
-    // Poll the edulution health endpoint until it responds
+    // Poll the edu-api health endpoint until it responds
+    const healthUrl = `${edulutionUrl}/edu-api/health/check`;
     const pollTimeout = setTimeout(() => {
       const interval = setInterval(async () => {
         try {
-          const response = await fetch(edulutionUrl);
+          const response = await fetch(healthUrl);
           if (response.ok) {
             clearInterval(interval);
             redirect();

@@ -107,8 +107,8 @@ const LmnInstallPage = () => {
           lmnExternalDomain,
           lmnBinduserDn: edulutionConfig.binduser_dn,
           lmnBinduserPw: edulutionConfig.binduser_password,
-          lmnLdapSchema: 'ldaps',
-          lmnLdapPort: 636,
+          lmnLdapSchema: 'ldap',
+          lmnLdapPort: 389,
           edulutionExternalDomain,
         });
 

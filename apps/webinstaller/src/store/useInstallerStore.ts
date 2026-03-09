@@ -102,8 +102,8 @@ const initialState = {
   lmnExternalDomain: '',
   lmnBinduserDn: '',
   lmnBinduserPw: '',
-  lmnLdapSchema: 'ldaps' as const,
-  lmnLdapPort: 636,
+  lmnLdapSchema: 'ldap' as const,
+  lmnLdapPort: 389,
   edulutionExternalDomain: '',
   checks: {
     api: null,
