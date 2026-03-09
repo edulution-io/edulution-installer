@@ -381,8 +381,7 @@
       ansible.builtin.command:
         cmd: >
           sophomorix-admin
-          --create-school-binduser edulutionui-binduser
-          --school default-school
+          --create-global-binduser edulutionui-binduser
           --random-passwd-save
       register: binduser_create_result
       when: binduser_exists.rc != 0
