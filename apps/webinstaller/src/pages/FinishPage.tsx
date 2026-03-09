@@ -51,7 +51,8 @@ const FinishPage = () => {
       const interval = setInterval(async () => {
         try {
           const response = await fetch(healthUrl);
-          if (response.ok) {
+          // 503 = traefik not ready, 502 = api not ready, 401 = api running (auth required)
+          if (response.status === 401 || response.ok) {
             clearInterval(interval);
             redirect();
           }
