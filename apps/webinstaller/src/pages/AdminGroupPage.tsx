@@ -1,8 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Button } from '@edulution-io/ui-kit';
-import { Input } from '@shared-ui';
+import { Button, Input } from '@edulution-io/ui-kit';
 import useInstallerStore from '../store/useInstallerStore';
 import { submitAdminGroup } from '../api/installerApi';
 
@@ -47,13 +46,9 @@ const AdminGroupPage = () => {
           value={adminGroup}
           onChange={(e) => setAdminGroup(e.target.value)}
         />
-        <p className="mt-2 text-sm text-gray-600">
-          {t('adminGroup.hint')}
-        </p>
+        <p className="mt-2 text-sm text-gray-600">{t('adminGroup.hint')}</p>
         {isGeneric && !adminGroup.trim() && (
-          <p className="mt-1 text-sm font-bold text-red-600">
-            {t('adminGroup.requiredError')}
-          </p>
+          <p className="mt-1 text-sm font-bold text-red-600">{t('adminGroup.requiredError')}</p>
         )}
       </div>
 

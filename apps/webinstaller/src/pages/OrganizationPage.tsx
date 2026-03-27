@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSchool, faBuilding, faLandmarkDome } from '@fortawesome/free-solid-svg-icons';
-import { Button } from '@edulution-io/ui-kit';
-import { Card, CardContent } from '@shared-ui';
+import { Button, Card, CardContent } from '@edulution-io/ui-kit';
 import type { OrganizationType } from '@shared-types';
 import useInstallerStore from '../store/useInstallerStore';
 

@@ -13,7 +13,6 @@ This is an Nx monorepo containing:
 - **apps/public-page/** — React (Vite) download page deployed to GitHub Pages (`get.edulution.io`)
 - **apps/webinstaller/** — React (Vite) installer UI
 - **apps/webinstaller-api/** — Python (FastAPI) backend for the installer
-- **libs/shared-ui/** — Shared UI component library
 
 ## Development
 

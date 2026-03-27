@@ -36,7 +36,6 @@
         "project": [
           "apps/public-page/tsconfig.json",
           "apps/webinstaller/tsconfig.json",
-          "libs/shared-ui/tsconfig.json",
           "libs/shared-types/tsconfig.json"
         ]
       }
@@ -73,15 +72,12 @@
         "project": ["apps/webinstaller/tsconfig.app.json"]
       },
       "rules": {
-        "jsx-a11y/label-has-associated-control": ["error", {
-          "controlComponents": ["Input", "InputSH"]
-        }]
-      }
-    },
-    {
-      "files": ["libs/shared-ui/**/*.ts", "libs/shared-ui/**/*.tsx"],
-      "parserOptions": {
-        "project": ["libs/shared-ui/tsconfig.json"]
+        "jsx-a11y/label-has-associated-control": [
+          "error",
+          {
+            "controlComponents": ["Input", "InputSH"]
+          }
+        ]
       }
     },
     {

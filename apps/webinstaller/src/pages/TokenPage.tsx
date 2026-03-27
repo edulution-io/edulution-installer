@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faServer } from '@fortawesome/free-solid-svg-icons';
-import { Button } from '@edulution-io/ui-kit';
-import { Card, CardContent } from '@shared-ui';
+import { Button, Card, CardContent } from '@edulution-io/ui-kit';
 import type { DeploymentTarget } from '@shared-types';
 import useInstallerStore from '../store/useInstallerStore';
 import { checkToken } from '../api/installerApi';
@@ -118,9 +117,7 @@ const TokenPage = () => {
 
         {adType === 'existing' && (
           <div>
-            <span className="mb-2 block text-sm font-bold text-gray-800">
-              {t('token.whichDirectory')}
-            </span>
+            <span className="mb-2 block text-sm font-bold text-gray-800">{t('token.whichDirectory')}</span>
             <div className="grid grid-cols-2 gap-3">
               <Card
                 variant={target === 'linuxmuster' ? 'gridSelected' : 'text'}
@@ -157,13 +154,9 @@ const TokenPage = () => {
         )}
 
         {target === 'linuxmuster' ? (
-          <p className="mt-2 text-sm text-gray-600">
-            {t('token.descriptionLinuxmuster')}
-          </p>
+          <p className="mt-2 text-sm text-gray-600">{t('token.descriptionLinuxmuster')}</p>
         ) : (
-          <p className="mt-2 text-sm text-gray-600">
-            {t('token.descriptionGeneric')}
-          </p>
+          <p className="mt-2 text-sm text-gray-600">{t('token.descriptionGeneric')}</p>
         )}
 
         <Button

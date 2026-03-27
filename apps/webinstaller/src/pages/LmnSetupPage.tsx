@@ -1,8 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Button } from '@edulution-io/ui-kit';
-import { Input } from '@shared-ui';
+import { Button, Input } from '@edulution-io/ui-kit';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner, faCircleCheck, faCircleXmark, faCircleInfo } from '@fortawesome/free-solid-svg-icons';
 import useInstallerStore from '../store/useInstallerStore';
@@ -33,9 +32,12 @@ const LmnSetupPage = () => {
     }
   }, [store.lmnOutputLog]);
 
-  useEffect(() => () => {
-    if (cleanupRef.current) cleanupRef.current();
-  }, []);
+  useEffect(
+    () => () => {
+      if (cleanupRef.current) cleanupRef.current();
+    },
+    [],
+  );
 
   const isValidSsh = host.trim() !== '' && port > 0 && port <= 65535 && user.trim() !== '' && password.trim() !== '';
 
@@ -322,9 +324,7 @@ const LmnSetupPage = () => {
       )}
 
       {requirements && !store.lmnRequirementsPassed && (
-        <div className="rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800">
-          {t('lmnSetup.requirementsNotMet')}
-        </div>
+        <div className="rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800">{t('lmnSetup.requirementsNotMet')}</div>
       )}
 
       <Button

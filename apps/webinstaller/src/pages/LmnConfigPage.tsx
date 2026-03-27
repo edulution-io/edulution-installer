@@ -2,8 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { Button } from '@edulution-io/ui-kit';
-import { Input } from '@shared-ui';
+import { Button, Input } from '@edulution-io/ui-kit';
 import useInstallerStore from '../store/useInstallerStore';
 import { getLmnNetworkInfo } from '../api/installerApi';
 

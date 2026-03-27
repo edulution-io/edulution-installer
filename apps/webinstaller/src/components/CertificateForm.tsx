@@ -2,8 +2,7 @@ import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner, faCircleCheck, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
-import { Button } from '@edulution-io/ui-kit';
-import { Input } from '@shared-ui';
+import { Button, Input } from '@edulution-io/ui-kit';
 import useInstallerStore from '../store/useInstallerStore';
 import { createSsCertificate, createLeCertificate, uploadCertificate } from '../api/installerApi';
 

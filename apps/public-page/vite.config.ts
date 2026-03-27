@@ -21,12 +21,6 @@ export default defineConfig({
     }),
   ],
 
-  resolve: {
-    alias: {
-      '@shared-ui': resolve(__dirname, '../../libs/shared-ui/src'),
-    },
-  },
-
   server: {
     port: 4200,
     host: 'localhost',

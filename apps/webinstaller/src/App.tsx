@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Card, CardContent } from '@shared-ui';
+import { Card, CardContent } from '@edulution-io/ui-kit';
 import StartPage from './pages/StartPage';
 import OrganizationPage from './pages/OrganizationPage';
 import TokenPage from './pages/TokenPage';
