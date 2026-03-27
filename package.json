@@ -12,7 +12,7 @@
     "lint": "nx run-many --target=lint"
   },
   "dependencies": {
-    "@edulution-io/ui-kit": "^0.0.1",
+    "@edulution-io/ui-kit": "^2.0.61",
     "@fortawesome/fontawesome-svg-core": "^7.1.0",
     "@fortawesome/free-solid-svg-icons": "^7.1.0",
     "@fortawesome/react-fontawesome": "^3.2.0",

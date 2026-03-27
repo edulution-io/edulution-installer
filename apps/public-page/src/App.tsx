@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { Button } from '@edulution-io/ui-kit';
-import { Card, CardContent, Input } from '@shared-ui';
+import { Button, Card, CardContent, Input } from '@edulution-io/ui-kit';
 
 const INSTALL_COMMAND = 'bash <(curl -s https://get.edulution.io/installer)';
 
@@ -29,7 +28,10 @@ const App = () => {
 
   return (
     <div className="page-wrapper">
-      <Card variant="modal">
+      <Card
+        variant="modal"
+        className="max-w-[510px]"
+      >
         <CardContent className="flex flex-col items-center gap-6 p-0">
           <a
             href="https://edulution.io"
@@ -55,14 +57,14 @@ const App = () => {
                 readOnly
                 onClick={handleInputClick}
                 aria-label="Installation command"
-                className="font-mono text-sm shadow-md"
+                className="font-mono text-sm"
               />
             </div>
 
             <Button
               variant="btn-security"
               size="lg"
-              className="mx-auto w-full justify-center text-white shadow-xl"
+              className="mx-auto w-full shadow-xl"
               onClick={handleCopy}
             >
               {copied ? '\u2713 Kopiert!' : 'In Zwischenablage kopieren'}

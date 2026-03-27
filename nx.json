@@ -19,5 +19,6 @@
       }
     }
   ],
-  "neverConnectToCloud": true
+  "neverConnectToCloud": true,
+  "analytics": false
 }
