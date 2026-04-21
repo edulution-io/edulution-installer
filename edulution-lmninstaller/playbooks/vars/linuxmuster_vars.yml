@@ -76,7 +76,11 @@ lmn_dhcprange: '10.0.100.1 10.0.100.254'
 #   - Mindestens eine Ziffer
 #   - Mindestens ein Sonderzeichen
 #
-# Erlaubte Sonderzeichen: ?!§+-@#%&*()[]{}
+# Erlaubte Sonderzeichen: ! # @ & * ( ) [ ] { } + - = _ . , ? §
+#
+# NICHT erlaubt: $ und % (kollidieren mit der ConfigParser-Interpolation
+# in linuxmuster-setup und wuerden das Passwort verfaelschen).
+# Quotes (' " `) und Shell-Metazeichen (< > | ; : / ~ \) ebenfalls meiden.
 #
 # WICHTIG: Dieses Passwort wird für folgende Konten verwendet:
 #   - root (Server)

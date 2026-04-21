@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type { DeploymentTarget, OrganizationType } from '@shared-types';
 
 interface CheckResult {
@@ -139,69 +140,85 @@ const initialState = {
 
 let logIdCounter = 0;
 
-const useInstallerStore = create<InstallerState>((set) => ({
-  ...initialState,
+const useInstallerStore = create<InstallerState>()(
+  persist(
+    (set) => ({
+      ...initialState,
 
-  setOrganizationType: (type) => set({ organizationType: type }),
+      setOrganizationType: (type) => set({ organizationType: type }),
 
-  setAdType: (type) => set({ adType: type }),
+      setAdType: (type) => set({ adType: type }),
 
-  setDeploymentTarget: (target) => set({ deploymentTarget: target }),
+      setDeploymentTarget: (target) => set({ deploymentTarget: target }),
 
-  setTokenData: (data) =>
-    set({
-      lmnExternalDomain: data.lmnExternalDomain,
-      lmnBinduserDn: data.lmnBinduserDn,
-      lmnBinduserPw: data.lmnBinduserPw,
+      setTokenData: (data) =>
+        set({
+          lmnExternalDomain: data.lmnExternalDomain,
+          lmnBinduserDn: data.lmnBinduserDn,
+          lmnBinduserPw: data.lmnBinduserPw,
+        }),
+
+      setConfiguration: (config) => set(config),
+
+      setCheckResult: (check, result) =>
+        set((state) => ({
+          checks: { ...state.checks, [check]: result },
+        })),
+
+      resetChecks: () =>
+        set({
+          checks: { api: null, webdav: null, ldap: null, ldapAccess: null },
+        }),
+
+      setInitialAdminGroup: (group) => set({ initialAdminGroup: group }),
+
+      setCertificateConfigured: (value) => set({ certificateConfigured: value }),
+
+      setProxyDetected: (value) => set({ proxyDetected: value }),
+
+      setLmnSsh: (ssh) =>
+        set({
+          lmnSshHost: ssh.host,
+          lmnSshPort: ssh.port,
+          lmnSshUser: ssh.user,
+          lmnSshPassword: ssh.password,
+        }),
+
+      setLmnBootstrapStatus: (status) => set({ lmnBootstrapStatus: status }),
+
+      setLmnPlaybookStatus: (status) => set({ lmnPlaybookStatus: status }),
+
+      appendLmnOutput: (line) =>
+        set((state) => {
+          const id = logIdCounter;
+          logIdCounter += 1;
+          return { lmnOutputLog: [...state.lmnOutputLog, { id, text: line }] };
+        }),
+
+      clearLmnOutput: () => {
+        logIdCounter = 0;
+        set({ lmnOutputLog: [] });
+      },
+
+      setLmnRequirementsPassed: (value) => set({ lmnRequirementsPassed: value }),
+
+      setLmnConfig: (config) => set(config),
+
+      reset: () => {
+        set(initialState);
+        sessionStorage.removeItem('edulution-installer');
+      },
     }),
-
-  setConfiguration: (config) => set(config),
-
-  setCheckResult: (check, result) =>
-    set((state) => ({
-      checks: { ...state.checks, [check]: result },
-    })),
-
-  resetChecks: () =>
-    set({
-      checks: { api: null, webdav: null, ldap: null, ldapAccess: null },
-    }),
-
-  setInitialAdminGroup: (group) => set({ initialAdminGroup: group }),
-
-  setCertificateConfigured: (value) => set({ certificateConfigured: value }),
-
-  setProxyDetected: (value) => set({ proxyDetected: value }),
-
-  setLmnSsh: (ssh) =>
-    set({
-      lmnSshHost: ssh.host,
-      lmnSshPort: ssh.port,
-      lmnSshUser: ssh.user,
-      lmnSshPassword: ssh.password,
-    }),
-
-  setLmnBootstrapStatus: (status) => set({ lmnBootstrapStatus: status }),
-
-  setLmnPlaybookStatus: (status) => set({ lmnPlaybookStatus: status }),
-
-  appendLmnOutput: (line) =>
-    set((state) => {
-      const id = logIdCounter;
-      logIdCounter += 1;
-      return { lmnOutputLog: [...state.lmnOutputLog, { id, text: line }] };
-    }),
-
-  clearLmnOutput: () => {
-    logIdCounter = 0;
-    set({ lmnOutputLog: [] });
-  },
-
-  setLmnRequirementsPassed: (value) => set({ lmnRequirementsPassed: value }),
-
-  setLmnConfig: (config) => set(config),
-
-  reset: () => set(initialState),
-}));
+    {
+      name: 'edulution-installer',
+      storage: createJSONStorage(() => sessionStorage),
+      partialize: (state) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { lmnAdminpw, lmnBinduserPw, lmnSshPassword, lmnBootstrapStatus, lmnPlaybookStatus, lmnOutputLog, checks, ...rest } = state;
+        return rest;
+      },
+    },
+  ),
+);
 
 export default useInstallerStore;

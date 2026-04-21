@@ -142,7 +142,8 @@
     "pwLowercase": "Lowercase letters required",
     "pwUppercase": "Uppercase letters required",
     "pwDigit": "At least one digit",
-    "pwSpecialChar": "At least one special character (?!§+-@#%&*()[]{})"
+    "pwSpecialChar": "At least one special character (! # @ & * ( ) [ ] { } + - = _ . , ? §)",
+    "pwInvalidChar": "Invalid character. Allowed: letters, digits and ! # @ & * ( ) [ ] { } + - = _ . , ? §"
   },
   "lmnInstall": {
     "title": "linuxmuster.net Installation",

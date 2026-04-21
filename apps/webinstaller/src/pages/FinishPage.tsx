@@ -17,11 +17,13 @@ const FinishPage = () => {
   const redirectedRef = useRef(false);
 
   const edulutionDomain = useInstallerStore((s) => s.edulutionExternalDomain);
+  const resetStore = useInstallerStore((s) => s.reset);
   const edulutionUrl = `https://${edulutionDomain || window.location.hostname}`;
 
   const redirect = () => {
     if (redirectedRef.current) return;
     redirectedRef.current = true;
+    resetStore();
     window.location.href = edulutionUrl;
   };
 

@@ -281,6 +281,11 @@
         state: directory
         mode: '0700'
 
+    # HINWEIS: lmn_adminpw darf die Zeichen $ und % nicht enthalten.
+    # linuxmuster-setup liest die ini mit Pythons ConfigParser ein, dessen
+    # Interpolation $...-/%(...) s-Sequenzen auswertet und das Passwort
+    # sonst beschädigt. Die Web-UI validiert das bereits; bei direktem
+    # Aufruf via ansible-playbook muss der Aufrufer das selbst sicherstellen.
     - name: Setup-Konfigurationsdatei erstellen
       ansible.builtin.copy:
         content: |

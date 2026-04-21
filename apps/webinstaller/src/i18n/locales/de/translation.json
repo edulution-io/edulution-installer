@@ -142,7 +142,8 @@
     "pwLowercase": "Kleinbuchstaben erforderlich",
     "pwUppercase": "Großbuchstaben erforderlich",
     "pwDigit": "Mindestens eine Ziffer",
-    "pwSpecialChar": "Mindestens ein Sonderzeichen (?!§+-@#%&*()[]{})"
+    "pwSpecialChar": "Mindestens ein Sonderzeichen (! # @ & * ( ) [ ] { } + - = _ . , ? §)",
+    "pwInvalidChar": "Unerlaubtes Zeichen. Erlaubt: Buchstaben, Ziffern und ! # @ & * ( ) [ ] { } + - = _ . , ? §"
   },
   "lmnInstall": {
     "title": "linuxmuster.net Installation",

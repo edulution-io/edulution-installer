@@ -7,13 +7,17 @@ import { Input } from '@shared-ui';
 import useInstallerStore from '../store/useInstallerStore';
 import { getLmnNetworkInfo } from '../api/installerApi';
 
+const ALLOWED_PW_CHARS = /^[A-Za-z0-9!#@&*()[\]{}+\-=_.,?§]+$/;
+const ALLOWED_PW_SPECIAL = /[!#@&*()[\]{}+\-=_.,?§]/;
+
 const validatePassword = (pw: string, t: TFunction): string[] => {
   const errors: string[] = [];
   if (pw.length < 7) errors.push(t('lmnConfig.pwMinLength'));
   if (!/[a-z]/.test(pw)) errors.push(t('lmnConfig.pwLowercase'));
   if (!/[A-Z]/.test(pw)) errors.push(t('lmnConfig.pwUppercase'));
   if (!/\d/.test(pw)) errors.push(t('lmnConfig.pwDigit'));
-  if (!/[?!§+\-@#%&*()[\]{}]/.test(pw)) errors.push(t('lmnConfig.pwSpecialChar'));
+  if (!ALLOWED_PW_SPECIAL.test(pw)) errors.push(t('lmnConfig.pwSpecialChar'));
+  if (pw.length > 0 && !ALLOWED_PW_CHARS.test(pw)) errors.push(t('lmnConfig.pwInvalidChar'));
   return errors;
 };
 
