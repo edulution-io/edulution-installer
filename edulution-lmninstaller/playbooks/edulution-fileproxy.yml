@@ -230,12 +230,20 @@
           # Matches the behaviour of the file01 docker sidecar: bind loopback,
           # disable xpack security (no TLS / no auth) — fileproxy is the
           # only client and runs on the same host.
+          #
+          # path.data / path.logs MUST be explicit. The apt package ships an
+          # elasticsearch.yml that already has them, but this module replaces
+          # the file wholesale — omitting them makes ES fall back to compiled
+          # defaults (/usr/share/elasticsearch/{data,logs}) which don't exist
+          # and crash with "Unable to create logs dir" at startup.
           ansible.builtin.copy:
             dest: /etc/elasticsearch/elasticsearch.yml
             mode: '0660'
             owner: root
             group: elasticsearch
             content: |
+              path.data: /var/lib/elasticsearch
+              path.logs: /var/log/elasticsearch
               cluster.name: edulution-fp
               node.name: edulution-fp-es
               network.host: 127.0.0.1
