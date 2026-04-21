@@ -32,6 +32,36 @@
 #       }
 #     }
 #   }
+#
+# Multi-Fileserver-Deployment:
+#   Ein Fileproxy-Host, mehrere SMB-Backends. Das Playbook wird dann
+#   MEHRFACH gelauft — einmal pro Rolle:
+#
+#     1. Auf dem Samba-DC:
+#          fp_configure_ad=true, fp_install_fileproxy=false
+#          → Legt AD-User/Gruppe an + setzt valid users für DC-local
+#            Shares (default-school, linuxmuster-global, ...).
+#
+#     2. Auf jedem weiteren Fileserver (file01, file02, file03):
+#          fp_configure_ad=true, fp_install_fileproxy=false
+#          → Idempotency-Check überspringt existierende User/Gruppe.
+#            Der share-grant-Loop setzt valid users nur für Shares
+#            die physisch HIER liegen (net conf getparm path != empty).
+#            Dieselbe `fp_shares`-Liste kann überall durchgereicht
+#            werden; jeder Host grantet nur, was er selbst beherbergt.
+#
+#     3. Auf dem Fileproxy-Host (z.B. 10.0.0.29):
+#          fp_install_fileproxy=true, fp_configure_ad=false
+#          → ES + deb + Config + Systemd. Die shares-Liste enthält
+#            alle Shares mit per-share `server:`-Overrides (s. Beispiel
+#            in vars/edulution-fileproxy_vars.yml).
+#
+#     4. Auf dem Traefik-Host (typisch 10.0.0.4 im edulution-ui-Setup):
+#          fp_install_traefik_route=true, andere Flags false
+#          → Schreibt wiki.yml in die traefik dynamic-config.
+#
+#   Single-Host-Deployment (alle 4 Rollen auf einem Rechner): alle 4
+#   Flags true setzen, einmal laufen lassen.
 # =============================================================================
 
 - name: edulution-fileproxy Installation
@@ -156,15 +186,22 @@
           register: fp_share_valid_users
           changed_when: false
           # A share not in the local registry (DFS proxy on a different
-          # fileserver) silently returns empty; the next step then skips it.
+          # fileserver) silently returns empty; the inner shell below then
+          # skips it via the `net conf getparm path` existence check.
 
         - name: Extend valid users with indexer-readers group
+          # The inner `net conf getparm path` probe is the authoritative
+          # "is this share local to this host" check — shares physically
+          # hosted elsewhere have only msdfs_proxy metadata and no path,
+          # so getparm returns non-zero and the task exits 0 without
+          # touching them. This makes the task safe to run on every
+          # backend host with the full fp_shares list passed; each host
+          # grants only the shares it physically owns.
           ansible.builtin.shell: |
             set -e
             current='{{ item.stdout | trim }}'
-            # Skip shares that aren't local to this DC (DFS proxies register
-            # with different net conf metadata; getparm returns empty for
-            # them).
+            # Skip shares not hosted on this host — DFS-only proxies have
+            # no `path` parameter in the local net conf registry.
             net conf getparm "{{ item.item.name }}" "path" >/dev/null 2>&1 || exit 0
             if echo "$current" | grep -q '{{ fp_indexer_readers_group }}'; then
               echo "already granted"
@@ -178,7 +215,6 @@
           loop: '{{ fp_share_valid_users.results }}'
           loop_control:
             label: '{{ item.item.name }}'
-          when: item.item.server is not defined or item.item.server == fp_smb_default_server
           changed_when: true
 
     # =========================================================================
