@@ -23,7 +23,10 @@ const LmnInstallPage = () => {
   const [configuring, setConfiguring] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [wsError, setWsError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const wsOpenedRef = useRef(false);
+  const finalStatusRef = useRef(false);
 
   useEffect(() => {
     if (logRef.current) {
@@ -40,6 +43,13 @@ const LmnInstallPage = () => {
     // Connect WebSocket first
     const ws = createLmnWebSocket();
     wsRef.current = ws;
+    wsOpenedRef.current = false;
+    finalStatusRef.current = false;
+    setWsError(null);
+
+    ws.onopen = () => {
+      wsOpenedRef.current = true;
+    };
 
     ws.onmessage = (event) => {
       try {
@@ -48,8 +58,10 @@ const LmnInstallPage = () => {
           store.appendLmnOutput(msg.data);
         } else if (msg.type === 'status') {
           if (msg.data === 'successful' || msg.data === 'completed') {
+            finalStatusRef.current = true;
             store.setLmnPlaybookStatus('completed');
           } else if (msg.data === 'failed') {
+            finalStatusRef.current = true;
             store.setLmnPlaybookStatus('failed');
           }
         } else if (msg.type === 'event') {
@@ -61,7 +73,23 @@ const LmnInstallPage = () => {
     };
 
     ws.onerror = () => {
-      // WebSocket error - might happen if LMN API shuts down
+      if (finalStatusRef.current) return;
+      const message = wsOpenedRef.current
+        ? t('lmnInstall.wsConnectionLost')
+        : t('lmnInstall.wsConnectionFailed');
+      setWsError(message);
+      store.appendLmnOutput(`[ERROR] ${message}`);
+      store.setLmnPlaybookStatus('failed');
+    };
+
+    ws.onclose = () => {
+      if (finalStatusRef.current) return;
+      const message = wsOpenedRef.current
+        ? t('lmnInstall.wsConnectionLost')
+        : t('lmnInstall.wsConnectionFailed');
+      setWsError(message);
+      store.appendLmnOutput(`[ERROR] ${message}`);
+      store.setLmnPlaybookStatus('failed');
     };
 
     // Start the playbook
@@ -198,6 +226,16 @@ const LmnInstallPage = () => {
           </>
         )}
       </div>
+
+      {wsError && (
+        <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          <FontAwesomeIcon
+            icon={faTriangleExclamation}
+            className="mt-0.5 text-red-500"
+          />
+          {wsError}
+        </div>
+      )}
 
       <div
         ref={logRef}

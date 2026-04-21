@@ -155,7 +155,9 @@
     "backToSetup": "Zurück zur Einrichtung",
     "configuringEdulution": "Edulution-Konfiguration wird abgerufen...",
     "configFetched": "Konfiguration erfolgreich abgerufen. Sie können den linuxmuster.net-Server jetzt neu starten und anschließend auf 'Weiter' klicken.",
-    "configError": "Edulution-Konfiguration konnte nicht abgerufen werden. Bitte prüfen Sie, ob der linuxmuster.net-Server erreichbar ist."
+    "configError": "Edulution-Konfiguration konnte nicht abgerufen werden. Bitte prüfen Sie, ob der linuxmuster.net-Server erreichbar ist.",
+    "wsConnectionFailed": "Verbindung zum linuxmuster.net-Installer konnte nicht aufgebaut werden. Bitte prüfen Sie, ob der Server erreichbar ist und die Installer-API läuft.",
+    "wsConnectionLost": "Verbindung zum linuxmuster.net-Installer wurde unterbrochen. Die Installation konnte nicht vollständig überwacht werden."
   },
   "finish": {
     "title": "Konfiguration abgeschlossen",
