@@ -1,0 +1,126 @@
+# =============================================================================
+# EDULUTION-FILEPROXY - KONFIGURATIONSVARIABLEN
+# =============================================================================
+#
+# Verwendung:
+#   ansible-playbook edulution-fileproxy.yml -e @vars/edulution-fileproxy_vars.yml
+#
+# Oder via API mit extra_vars.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# ROLE-GATING
+# -----------------------------------------------------------------------------
+# Aktiviere die Aufgaben-Blöcke, die auf dem aktuellen Host laufen sollen.
+# Bei Single-Host-Deployment (DC + fileproxy auf einem Rechner) beide true.
+
+# Installiert Elasticsearch + edulution-fileproxy + schreibt Config + Secret.
+fp_install_fileproxy: true
+
+# Legt den AD-Service-Account an, die Gruppe, die Rechte + die share-level
+# `valid users`-Grants. NUR auf dem Samba-DC true setzen.
+fp_configure_ad: false
+
+# Schreibt die Traefik `/wiki`-Route in die dynamic-config. Aktiviere auf dem
+# Host, der Traefik für die edulution-Front betreibt (meist 10.0.0.x wo
+# edulution-ui + edulution-api Container laufen).
+fp_install_traefik_route: false
+
+# -----------------------------------------------------------------------------
+# ELASTICSEARCH
+# -----------------------------------------------------------------------------
+
+# Major-Version (matcht das docker-sidecar-image auf bestehenden Sites).
+fp_elasticsearch_major: '8'
+fp_elasticsearch_version: '8.19.3'
+
+# Wiki endpoints im Fileproxy (/wiki/roots, /wiki/search, ...) benötigen ES.
+# Auf false nur wenn du WebDAV ohne Wiki deployst.
+fp_elasticsearch_enabled: true
+fp_elasticsearch_url: 'http://127.0.0.1:9200'
+
+# -----------------------------------------------------------------------------
+# FILEPROXY BINARY
+# -----------------------------------------------------------------------------
+
+# Pfad zu einem .deb-File wenn du lokal bootstrappen willst (bypasses apt repo).
+# Leer lassen um aus dem konfigurierten apt-repo zu ziehen.
+fp_deb_path: ''
+
+# Name des Pakets im apt-repo.
+fp_deb_package: 'edulution-fileproxy'
+
+# -----------------------------------------------------------------------------
+# LDAP (für ACL-Evaluation im Fileproxy)
+# -----------------------------------------------------------------------------
+
+fp_ldap_server: '10.0.0.1'
+fp_ldap_base_dn: 'DC=linuxmuster,DC=lan'
+
+# -----------------------------------------------------------------------------
+# SMB BACKEND-KONFIGURATION
+# -----------------------------------------------------------------------------
+
+# Default-SMB-Server wenn eine Share keine eigene `server`-Einstellung hat.
+fp_smb_default_server: '10.0.0.1'
+fp_smb_domain: 'LINUXMUSTER'
+
+# Shares die der Fileproxy exposed. Jeder Share kann einen `server`-Override
+# haben (per-share fileserver in multi-fileserver-Deployments) — siehe
+# docs/OPERATOR_RUNBOOK.md § Multi-fileserver deployments im fileproxy-repo.
+#
+# Beispiel:
+# fp_shares:
+#   - { name: 'default-school' }
+#   - { name: 'linuxmuster-global' }
+#   - { name: 'agy', server: '10.1.0.2' }
+#   - { name: 'brs', server: '10.2.0.2' }
+#   - { name: 'cgs', server: '10.3.0.2' }
+fp_shares: []
+
+# -----------------------------------------------------------------------------
+# INDEXER SERVICE ACCOUNT (AD)
+# -----------------------------------------------------------------------------
+
+fp_indexer_user: 'edulution-indexer-svc'
+fp_indexer_readers_group: 'edulution-indexer-readers'
+
+# Passwort für den Service-Account. MUSS per extra_vars gesetzt werden, kein
+# Default — das Passwort wird sowohl im AD als auch in /etc/edulution-fileproxy/indexer.secret
+# abgelegt, beide müssen übereinstimmen.
+# Beim fp_configure_ad-Block wird dieses Passwort in samba-tool user create/setpassword
+# genutzt; beim fp_install_fileproxy-Block landet es im 0600-secret-File.
+fp_indexer_password: ''
+
+# Wohin die Secret-Datei geschrieben wird.
+fp_indexer_secret_path: '/etc/edulution-fileproxy/indexer.secret'
+
+# -----------------------------------------------------------------------------
+# HTTP LISTENER
+# -----------------------------------------------------------------------------
+
+fp_listen_address: ':443'
+fp_webdav_prefix: '/webdav/'
+fp_cert_file: '/etc/edulution-fileproxy/webdav.pem'
+fp_key_file: '/etc/edulution-fileproxy/webdav.key'
+
+# -----------------------------------------------------------------------------
+# LOGGING
+# -----------------------------------------------------------------------------
+
+fp_log_level: 'info'
+fp_log_file: '/var/log/edulution-fileproxy/server.log'
+
+# -----------------------------------------------------------------------------
+# TRAEFIK INTEGRATION
+# -----------------------------------------------------------------------------
+
+# Pfad zur Traefik dynamic-config (file-provider). Default passt zum
+# edulution-ui-docker-compose-Setup.
+fp_traefik_config_dir: '/srv/docker/edulution-ui/data/traefik/config'
+
+# URL die Traefik als Backend für die /wiki-Route verwendet. Das ist die
+# externe Adresse des Fileproxy-Hosts, NICHT localhost — Traefik läuft in
+# einem eigenen Container.
+# Beispiel: 'https://10.0.0.29:443'
+fp_traefik_wiki_backend: ''

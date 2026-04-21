@@ -1,0 +1,346 @@
+---
+# =============================================================================
+# EDULUTION-FILEPROXY INSTALLATION PLAYBOOK
+# =============================================================================
+#
+# Installiert edulution-fileproxy (SMB-proxy + Wiki-HTTP-API) + Elasticsearch
+# + legt den AD-Service-Account an + integriert die Traefik-Route für /wiki.
+#
+# Das Playbook ist in drei unabhängige Abschnitte aufgeteilt, die jeweils
+# per Variable aktiviert werden. Single-Host-Deployment = alle drei true;
+# verteilte Deployment = je Host das passende Flag.
+#
+#   fp_install_fileproxy        → ES + Paket + Config + Secret + Systemd
+#   fp_configure_ad             → samba-tool user/group/grants (nur auf dem DC)
+#   fp_install_traefik_route    → dynamic-config-File für Traefik
+#
+# Verwendung:
+#   ansible-playbook edulution-fileproxy.yml -e @vars/edulution-fileproxy_vars.yml
+#
+# Oder via API mit extra_vars:
+#   POST /api/playbook/edulution-fileproxy/start
+#   {
+#     "variables": {
+#       "extra_vars": {
+#         "fp_install_fileproxy": true,
+#         "fp_configure_ad": false,
+#         "fp_indexer_password": "...32-char random...",
+#         "fp_shares": [
+#           {"name": "default-school"},
+#           {"name": "agy", "server": "10.1.0.2"}
+#         ]
+#       }
+#     }
+#   }
+# =============================================================================
+
+- name: edulution-fileproxy Installation
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+
+  vars_files:
+    - vars/edulution-fileproxy_vars.yml
+
+  tasks:
+
+    # =========================================================================
+    # BASELINE SANITY — beide Abschnitte brauchen ein gesetztes Passwort
+    # =========================================================================
+
+    - name: Ensure fp_indexer_password is set
+      ansible.builtin.assert:
+        that:
+          - fp_indexer_password | length >= 12
+        fail_msg: |
+          fp_indexer_password must be provided (min 12 chars) via extra_vars.
+          Generate one with:  tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32
+      when: fp_install_fileproxy or fp_configure_ad
+
+    # =========================================================================
+    # ABSCHNITT 1 — AD SERVICE ACCOUNT (nur auf dem Samba-DC laufen lassen)
+    # =========================================================================
+    # Legt den Service-Account + die Gruppe + die share-`valid users`-Grants
+    # an. Idempotent: vorhandene Objekte werden nicht neu erstellt. Erweitert
+    # bestehende `valid users`-Strings additiv, damit andere Grants
+    # (administrator, @SCHOOLS, ...) erhalten bleiben.
+
+    - name: AD — create indexer service user
+      when: fp_configure_ad
+      block:
+
+        - name: Check if indexer service user exists
+          ansible.builtin.command: samba-tool user show {{ fp_indexer_user }}
+          register: fp_user_check
+          changed_when: false
+          failed_when: false
+
+        - name: Create indexer service user
+          ansible.builtin.command: >
+            samba-tool user create {{ fp_indexer_user }} '{{ fp_indexer_password }}'
+            --description="Fileproxy indexer service account"
+            --given-name="Edulution"
+            --surname="Indexer"
+          when: fp_user_check.rc != 0
+          no_log: true
+
+        - name: Ensure password never expires
+          ansible.builtin.command: samba-tool user setexpiry {{ fp_indexer_user }} --noexpiry
+          when: fp_user_check.rc != 0
+          changed_when: true
+
+        - name: Set NOT_DELEGATED flag (userAccountControl=1114624)
+          # NORMAL_ACCOUNT (512) + DONT_EXPIRE_PASSWORD (65536) + NOT_DELEGATED (1048576)
+          ansible.builtin.command: samba-tool user edit {{ fp_indexer_user }}
+          environment:
+            EDITOR: "sed -i 's/^userAccountControl:.*/userAccountControl: 1114624/'"
+          when: fp_user_check.rc != 0
+          changed_when: true
+
+        - name: Rotate password on existing user (when already present)
+          # Idempotent re-run: ensure the secret file and AD stay in sync.
+          ansible.builtin.command: >
+            samba-tool user setpassword {{ fp_indexer_user }}
+            --newpassword='{{ fp_indexer_password }}'
+          when: fp_user_check.rc == 0
+          no_log: true
+          changed_when: true
+
+    - name: AD — create indexer readers group + memberships
+      when: fp_configure_ad
+      block:
+
+        - name: Check if indexer readers group exists
+          ansible.builtin.command: samba-tool group show {{ fp_indexer_readers_group }}
+          register: fp_group_check
+          changed_when: false
+          failed_when: false
+
+        - name: Create indexer readers group
+          ansible.builtin.command: >
+            samba-tool group add {{ fp_indexer_readers_group }}
+            --description="Read-only scope for the fileproxy indexer"
+          when: fp_group_check.rc != 0
+          changed_when: true
+
+        - name: Add service user to indexer readers group (idempotent)
+          ansible.builtin.shell: |
+            samba-tool group addmembers {{ fp_indexer_readers_group }} {{ fp_indexer_user }} 2>&1 | \
+              grep -v 'already a member' || true
+          changed_when: true
+          # On some samba-tool versions the "already a member" status code
+          # is non-zero; grep -v + || true filters the benign case.
+
+        - name: Add service user to global-admins (filesystem bypass for linuxmuster)
+          # linuxmuster breaks NTFS inheritance at every folder level under
+          # per-user homes, so per-folder ACL grants cannot be practically
+          # recursed. global-admins already has OI|CI/FULL on every folder
+          # the linuxmuster setup scripts create — joining the svc account
+          # to this group bypasses the inheritance problem without leaking
+          # interactive credentials. See docs/OPERATOR_RUNBOOK.md
+          # § Indexer service account Step 3b in the fileproxy repo.
+          ansible.builtin.shell: |
+            samba-tool group addmembers global-admins {{ fp_indexer_user }} 2>&1 | \
+              grep -v 'already a member' || true
+          changed_when: true
+
+    - name: AD — share-level valid users (per share hosted locally)
+      when: fp_configure_ad and fp_shares | length > 0
+      block:
+
+        - name: Check each share's current valid users
+          ansible.builtin.shell: |
+            net conf getparm "{{ item.name }}" "valid users" 2>/dev/null || echo ''
+          loop: '{{ fp_shares }}'
+          register: fp_share_valid_users
+          changed_when: false
+          # A share not in the local registry (DFS proxy on a different
+          # fileserver) silently returns empty; the next step then skips it.
+
+        - name: Extend valid users with indexer-readers group
+          ansible.builtin.shell: |
+            set -e
+            current='{{ item.stdout | trim }}'
+            # Skip shares that aren't local to this DC (DFS proxies register
+            # with different net conf metadata; getparm returns empty for
+            # them).
+            net conf getparm "{{ item.item.name }}" "path" >/dev/null 2>&1 || exit 0
+            if echo "$current" | grep -q '{{ fp_indexer_readers_group }}'; then
+              echo "already granted"
+              exit 0
+            fi
+            if [ -z "$current" ]; then
+              net conf setparm "{{ item.item.name }}" "valid users" "@{{ fp_smb_domain }}\\{{ fp_indexer_readers_group }}"
+            else
+              net conf setparm "{{ item.item.name }}" "valid users" "$current,@{{ fp_smb_domain }}\\{{ fp_indexer_readers_group }}"
+            fi
+          loop: '{{ fp_share_valid_users.results }}'
+          loop_control:
+            label: '{{ item.item.name }}'
+          when: item.item.server is not defined or item.item.server == fp_smb_default_server
+          changed_when: true
+
+    # =========================================================================
+    # ABSCHNITT 2 — ELASTICSEARCH + FILEPROXY auf dem Fileproxy-Host
+    # =========================================================================
+
+    - name: Fileproxy — install elasticsearch apt repo
+      when: fp_install_fileproxy and fp_elasticsearch_enabled
+      block:
+
+        - name: Ensure apt pre-reqs for elasticsearch repo
+          ansible.builtin.apt:
+            name:
+              - apt-transport-https
+              - gpg
+            state: present
+            update_cache: false
+
+        - name: Install elastic GPG key
+          ansible.builtin.shell: |
+            set -e
+            if [ ! -f /usr/share/keyrings/elasticsearch-keyring.gpg ]; then
+              curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch | \
+                gpg --batch --yes --dearmor -o /usr/share/keyrings/elasticsearch-keyring.gpg
+            fi
+          args:
+            creates: /usr/share/keyrings/elasticsearch-keyring.gpg
+
+        - name: Add elastic apt source
+          ansible.builtin.copy:
+            dest: /etc/apt/sources.list.d/elastic-{{ fp_elasticsearch_major }}.x.list
+            content: |
+              deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] https://artifacts.elastic.co/packages/{{ fp_elasticsearch_major }}.x/apt stable main
+            mode: '0644'
+
+        - name: Install elasticsearch {{ fp_elasticsearch_version }}
+          ansible.builtin.apt:
+            name: elasticsearch={{ fp_elasticsearch_version }}
+            state: present
+            update_cache: true
+            allow_change_held_packages: true
+
+        - name: Hold elasticsearch package at pinned version
+          ansible.builtin.dpkg_selections:
+            name: elasticsearch
+            selection: hold
+
+        - name: Configure elasticsearch for local-only single-node
+          # Matches the behaviour of the file01 docker sidecar: bind loopback,
+          # disable xpack security (no TLS / no auth) — fileproxy is the
+          # only client and runs on the same host.
+          ansible.builtin.copy:
+            dest: /etc/elasticsearch/elasticsearch.yml
+            mode: '0660'
+            owner: root
+            group: elasticsearch
+            content: |
+              cluster.name: edulution-fp
+              node.name: edulution-fp-es
+              network.host: 127.0.0.1
+              http.port: 9200
+              discovery.type: single-node
+              xpack.security.enabled: false
+              xpack.security.enrollment.enabled: false
+              xpack.security.http.ssl.enabled: false
+              xpack.security.transport.ssl.enabled: false
+
+        - name: Enable + start elasticsearch
+          ansible.builtin.systemd:
+            name: elasticsearch
+            enabled: true
+            state: restarted
+            daemon_reload: true
+
+        - name: Wait for elasticsearch to respond
+          ansible.builtin.uri:
+            url: http://127.0.0.1:9200/
+            status_code: 200
+          register: fp_es_ready
+          retries: 30
+          delay: 2
+          until: fp_es_ready.status == 200
+
+    - name: Fileproxy — install edulution-fileproxy package
+      when: fp_install_fileproxy
+      block:
+
+        - name: Install edulution-fileproxy from local .deb
+          ansible.builtin.apt:
+            deb: '{{ fp_deb_path }}'
+          when: fp_deb_path | length > 0
+
+        - name: Install edulution-fileproxy from apt repo
+          ansible.builtin.apt:
+            name: '{{ fp_deb_package }}'
+            state: latest
+            update_cache: true
+          when: fp_deb_path | length == 0
+
+    - name: Fileproxy — secret + config + service
+      when: fp_install_fileproxy
+      block:
+
+        - name: Ensure /etc/edulution-fileproxy exists
+          ansible.builtin.file:
+            path: /etc/edulution-fileproxy
+            state: directory
+            owner: edulution-fileproxy
+            group: edulution-fileproxy
+            mode: '0755'
+
+        - name: Write indexer.secret
+          ansible.builtin.copy:
+            dest: '{{ fp_indexer_secret_path }}'
+            content: '{{ fp_indexer_password }}'
+            owner: edulution-fileproxy
+            group: edulution-fileproxy
+            mode: '0600'
+          no_log: true
+          # Reader strips trailing newlines so editor round-trips are safe.
+
+        - name: Render /etc/edulution-fileproxy/config.yml
+          ansible.builtin.template:
+            src: edulution-fileproxy.config.yml.j2
+            dest: /etc/edulution-fileproxy/config.yml
+            owner: edulution-fileproxy
+            group: edulution-fileproxy
+            mode: '0644'
+          notify: restart edulution-fileproxy
+
+        - name: Enable + start edulution-fileproxy
+          ansible.builtin.systemd:
+            name: edulution-fileproxy
+            enabled: true
+            state: started
+            daemon_reload: true
+
+    # =========================================================================
+    # ABSCHNITT 3 — TRAEFIK /wiki-ROUTE (auf dem Host der Traefik betreibt)
+    # =========================================================================
+    # Traefik hot-reloaded den file-provider bei `watch: true` (default im
+    # edulution-ui-preset). Kein Restart nötig.
+
+    - name: Traefik — install /wiki dynamic route
+      when: fp_install_traefik_route
+      block:
+
+        - name: Ensure traefik config dir exists
+          ansible.builtin.file:
+            path: '{{ fp_traefik_config_dir }}'
+            state: directory
+            mode: '0755'
+
+        - name: Render /wiki traefik route
+          ansible.builtin.template:
+            src: traefik-wiki.yml.j2
+            dest: '{{ fp_traefik_config_dir }}/wiki.yml'
+            mode: '0644'
+          when: fp_traefik_wiki_backend | length > 0
+
+  handlers:
+    - name: restart edulution-fileproxy
+      ansible.builtin.systemd:
+        name: edulution-fileproxy
+        state: restarted
