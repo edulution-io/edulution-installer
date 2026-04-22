@@ -1,0 +1,21 @@
+# Rendered by the edulution-installer `edulution-fileproxy.yml` playbook.
+# Routes /wiki/* (the fileproxy's wiki HTTP API — /wiki/roots, /wiki/search,
+# /wiki/tree, /wiki/page) to the production fileproxy backend.
+#
+# Place this file next to the existing webdav.yml + fileproxy.yml in the
+# Traefik file-provider dynamic-config directory. Traefik hot-reloads when
+# watch: true is set in the static config.
+http:
+  routers:
+    wiki:
+      rule: "PathPrefix(`/wiki`)"
+      service: wiki-fileproxy
+      entryPoints:
+        - websecure
+      tls: {}
+
+  services:
+    wiki-fileproxy:
+      loadBalancer:
+        servers:
+          - url: "{{ fp_traefik_wiki_backend }}"

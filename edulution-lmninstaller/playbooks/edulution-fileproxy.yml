@@ -1,0 +1,246 @@
+---
+# =============================================================================
+# EDULUTION-FILEPROXY INSTALLATION PLAYBOOK
+# =============================================================================
+#
+# Installiert edulution-fileproxy (SMB-proxy + Wiki-HTTP-API) + Elasticsearch
+# + integriert die Traefik-Route für /wiki.
+#
+# Der Indexer nutzt den existierenden global-admin Account — es werden
+# keine eigenen AD-Objekte (User, Gruppen, Share-Grants) angelegt.
+#
+# Das Playbook ist in zwei unabhängige Abschnitte aufgeteilt, die jeweils
+# per Variable aktiviert werden:
+#
+#   fp_install_fileproxy        → ES + Paket + Config + Secret + Systemd
+#   fp_install_traefik_route    → dynamic-config-File für Traefik
+#
+# Verwendung:
+#   ansible-playbook edulution-fileproxy.yml -e @vars/edulution-fileproxy_vars.yml
+#
+# Oder via API mit extra_vars:
+#   POST /api/playbook/edulution-fileproxy/start
+#   {
+#     "variables": {
+#       "extra_vars": {
+#         "fp_install_fileproxy": true,
+#         "fp_indexer_password": "...global-admin password...",
+#         "fp_shares": [
+#           {"name": "default-school"},
+#           {"name": "agy", "server": "10.1.0.2"}
+#         ]
+#       }
+#     }
+#   }
+#
+# Multi-Fileserver-Deployment:
+#   Ein Fileproxy-Host, mehrere SMB-Backends:
+#
+#     1. Auf dem Fileproxy-Host (z.B. 10.0.0.29):
+#          fp_install_fileproxy=true
+#          → ES + deb + Config + Systemd. Die shares-Liste enthält
+#            alle Shares mit per-share `server:`-Overrides (s. Beispiel
+#            in vars/edulution-fileproxy_vars.yml).
+#
+#     2. Auf dem Traefik-Host (typisch 10.0.0.4 im edulution-ui-Setup):
+#          fp_install_traefik_route=true, fp_install_fileproxy=false
+#          → Schreibt wiki.yml in die traefik dynamic-config.
+#
+#   Kein DC-Lauf mehr nötig — global-admin existiert bereits.
+# =============================================================================
+
+- name: edulution-fileproxy Installation
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+
+  vars_files:
+    - vars/edulution-fileproxy_vars.yml
+
+  tasks:
+
+    # =========================================================================
+    # BASELINE SANITY — global-admin Passwort muss gesetzt sein
+    # =========================================================================
+
+    - name: Ensure fp_indexer_password is set
+      ansible.builtin.assert:
+        that:
+          - fp_indexer_password | length >= 1
+        fail_msg: |
+          fp_indexer_password must be provided via extra_vars.
+          This should be the global-admin password from your linuxmuster deployment.
+      when: fp_install_fileproxy
+
+    # =========================================================================
+    # ABSCHNITT 1 — ELASTICSEARCH + FILEPROXY auf dem Fileproxy-Host
+    # =========================================================================
+
+    - name: Fileproxy — install elasticsearch apt repo
+      when: fp_install_fileproxy and fp_elasticsearch_enabled
+      block:
+
+        - name: Ensure apt pre-reqs for elasticsearch repo
+          ansible.builtin.apt:
+            name:
+              - apt-transport-https
+              - gpg
+            state: present
+            update_cache: false
+
+        - name: Install elastic GPG key
+          ansible.builtin.shell: |
+            set -e
+            if [ ! -f /usr/share/keyrings/elasticsearch-keyring.gpg ]; then
+              curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch | \
+                gpg --batch --yes --dearmor -o /usr/share/keyrings/elasticsearch-keyring.gpg
+            fi
+          args:
+            creates: /usr/share/keyrings/elasticsearch-keyring.gpg
+
+        - name: Add elastic apt source
+          ansible.builtin.copy:
+            dest: /etc/apt/sources.list.d/elastic-{{ fp_elasticsearch_major }}.x.list
+            content: |
+              deb [signed-by=/usr/share/keyrings/elasticsearch-keyring.gpg] https://artifacts.elastic.co/packages/{{ fp_elasticsearch_major }}.x/apt stable main
+            mode: '0644'
+
+        - name: Install elasticsearch {{ fp_elasticsearch_version }}
+          ansible.builtin.apt:
+            name: elasticsearch={{ fp_elasticsearch_version }}
+            state: present
+            update_cache: true
+            allow_change_held_packages: true
+
+        - name: Hold elasticsearch package at pinned version
+          ansible.builtin.dpkg_selections:
+            name: elasticsearch
+            selection: hold
+
+        - name: Configure elasticsearch for local-only single-node
+          # Matches the behaviour of the file01 docker sidecar: bind loopback,
+          # disable xpack security (no TLS / no auth) — fileproxy is the
+          # only client and runs on the same host.
+          #
+          # path.data / path.logs MUST be explicit. The apt package ships an
+          # elasticsearch.yml that already has them, but this module replaces
+          # the file wholesale — omitting them makes ES fall back to compiled
+          # defaults (/usr/share/elasticsearch/{data,logs}) which don't exist
+          # and crash with "Unable to create logs dir" at startup.
+          ansible.builtin.copy:
+            dest: /etc/elasticsearch/elasticsearch.yml
+            mode: '0660'
+            owner: root
+            group: elasticsearch
+            content: |
+              path.data: /var/lib/elasticsearch
+              path.logs: /var/log/elasticsearch
+              cluster.name: edulution-fp
+              node.name: edulution-fp-es
+              network.host: 127.0.0.1
+              http.port: 9200
+              discovery.type: single-node
+              xpack.security.enabled: false
+              xpack.security.enrollment.enabled: false
+              xpack.security.http.ssl.enabled: false
+              xpack.security.transport.ssl.enabled: false
+
+        - name: Enable + start elasticsearch
+          ansible.builtin.systemd:
+            name: elasticsearch
+            enabled: true
+            state: restarted
+            daemon_reload: true
+
+        - name: Wait for elasticsearch to respond
+          ansible.builtin.uri:
+            url: http://127.0.0.1:9200/
+            status_code: 200
+          register: fp_es_ready
+          retries: 30
+          delay: 2
+          until: fp_es_ready.status == 200
+
+    - name: Fileproxy — install edulution-fileproxy package
+      when: fp_install_fileproxy
+      block:
+
+        - name: Install edulution-fileproxy from local .deb
+          ansible.builtin.apt:
+            deb: '{{ fp_deb_path }}'
+          when: fp_deb_path | length > 0
+
+        - name: Install edulution-fileproxy from apt repo
+          ansible.builtin.apt:
+            name: '{{ fp_deb_package }}'
+            state: latest
+            update_cache: true
+          when: fp_deb_path | length == 0
+
+    - name: Fileproxy — secret + config + service
+      when: fp_install_fileproxy
+      block:
+
+        - name: Ensure /etc/edulution-fileproxy exists
+          ansible.builtin.file:
+            path: /etc/edulution-fileproxy
+            state: directory
+            owner: edulution-fileproxy
+            group: edulution-fileproxy
+            mode: '0755'
+
+        - name: Write indexer.secret
+          ansible.builtin.copy:
+            dest: '{{ fp_indexer_secret_path }}'
+            content: '{{ fp_indexer_password }}'
+            owner: edulution-fileproxy
+            group: edulution-fileproxy
+            mode: '0600'
+          no_log: true
+          # Reader strips trailing newlines so editor round-trips are safe.
+
+        - name: Render /etc/edulution-fileproxy/config.yml
+          ansible.builtin.template:
+            src: edulution-fileproxy.config.yml.j2
+            dest: /etc/edulution-fileproxy/config.yml
+            owner: edulution-fileproxy
+            group: edulution-fileproxy
+            mode: '0644'
+          notify: restart edulution-fileproxy
+
+        - name: Enable + start edulution-fileproxy
+          ansible.builtin.systemd:
+            name: edulution-fileproxy
+            enabled: true
+            state: started
+            daemon_reload: true
+
+    # =========================================================================
+    # ABSCHNITT 2 — TRAEFIK /wiki-ROUTE (auf dem Host der Traefik betreibt)
+    # =========================================================================
+    # Traefik hot-reloaded den file-provider bei `watch: true` (default im
+    # edulution-ui-preset). Kein Restart nötig.
+
+    - name: Traefik — install /wiki dynamic route
+      when: fp_install_traefik_route
+      block:
+
+        - name: Ensure traefik config dir exists
+          ansible.builtin.file:
+            path: '{{ fp_traefik_config_dir }}'
+            state: directory
+            mode: '0755'
+
+        - name: Render /wiki traefik route
+          ansible.builtin.template:
+            src: traefik-wiki.yml.j2
+            dest: '{{ fp_traefik_config_dir }}/wiki.yml'
+            mode: '0644'
+          when: fp_traefik_wiki_backend | length > 0
+
+  handlers:
+    - name: restart edulution-fileproxy
+      ansible.builtin.systemd:
+        name: edulution-fileproxy
+        state: restarted
