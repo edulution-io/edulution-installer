@@ -12,14 +12,9 @@
 # ROLE-GATING
 # -----------------------------------------------------------------------------
 # Aktiviere die Aufgaben-Blöcke, die auf dem aktuellen Host laufen sollen.
-# Bei Single-Host-Deployment (DC + fileproxy auf einem Rechner) beide true.
 
 # Installiert Elasticsearch + edulution-fileproxy + schreibt Config + Secret.
 fp_install_fileproxy: true
-
-# Legt den AD-Service-Account an, die Gruppe, die Rechte + die share-level
-# `valid users`-Grants. NUR auf dem Samba-DC true setzen.
-fp_configure_ad: false
 
 # Schreibt die Traefik `/wiki`-Route in die dynamic-config. Aktiviere auf dem
 # Host, der Traefik für die edulution-Front betreibt (meist 10.0.0.x wo
@@ -79,17 +74,16 @@ fp_smb_domain: 'LINUXMUSTER'
 fp_shares: []
 
 # -----------------------------------------------------------------------------
-# INDEXER SERVICE ACCOUNT (AD)
+# INDEXER ACCOUNT
 # -----------------------------------------------------------------------------
 
-fp_indexer_user: 'edulution-indexer-svc'
-fp_indexer_readers_group: 'edulution-indexer-readers'
+# AD-Benutzer für den Indexer. Default: global-admin (existiert bereits in
+# jeder linuxmuster-Installation, keine zusätzlichen AD-Objekte nötig).
+fp_indexer_user: 'global-admin'
 
-# Passwort für den Service-Account. MUSS per extra_vars gesetzt werden, kein
-# Default — das Passwort wird sowohl im AD als auch in /etc/edulution-fileproxy/indexer.secret
-# abgelegt, beide müssen übereinstimmen.
-# Beim fp_configure_ad-Block wird dieses Passwort in samba-tool user create/setpassword
-# genutzt; beim fp_install_fileproxy-Block landet es im 0600-secret-File.
+# Passwort des Indexer-Accounts (= global-admin Passwort). MUSS per extra_vars
+# gesetzt werden, kein Default. Wird in /etc/edulution-fileproxy/indexer.secret
+# abgelegt (mode 0600).
 fp_indexer_password: ''
 
 # Wohin die Secret-Datei geschrieben wird.

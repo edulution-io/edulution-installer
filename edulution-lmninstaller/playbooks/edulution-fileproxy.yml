@@ -4,14 +4,15 @@
 # =============================================================================
 #
 # Installiert edulution-fileproxy (SMB-proxy + Wiki-HTTP-API) + Elasticsearch
-# + legt den AD-Service-Account an + integriert die Traefik-Route für /wiki.
+# + integriert die Traefik-Route für /wiki.
 #
-# Das Playbook ist in drei unabhängige Abschnitte aufgeteilt, die jeweils
-# per Variable aktiviert werden. Single-Host-Deployment = alle drei true;
-# verteilte Deployment = je Host das passende Flag.
+# Der Indexer nutzt den existierenden global-admin Account — es werden
+# keine eigenen AD-Objekte (User, Gruppen, Share-Grants) angelegt.
+#
+# Das Playbook ist in zwei unabhängige Abschnitte aufgeteilt, die jeweils
+# per Variable aktiviert werden:
 #
 #   fp_install_fileproxy        → ES + Paket + Config + Secret + Systemd
-#   fp_configure_ad             → samba-tool user/group/grants (nur auf dem DC)
 #   fp_install_traefik_route    → dynamic-config-File für Traefik
 #
 # Verwendung:
@@ -23,8 +24,7 @@
 #     "variables": {
 #       "extra_vars": {
 #         "fp_install_fileproxy": true,
-#         "fp_configure_ad": false,
-#         "fp_indexer_password": "...32-char random...",
+#         "fp_indexer_password": "...global-admin password...",
 #         "fp_shares": [
 #           {"name": "default-school"},
 #           {"name": "agy", "server": "10.1.0.2"}
@@ -34,34 +34,19 @@
 #   }
 #
 # Multi-Fileserver-Deployment:
-#   Ein Fileproxy-Host, mehrere SMB-Backends. Das Playbook wird dann
-#   MEHRFACH gelauft — einmal pro Rolle:
+#   Ein Fileproxy-Host, mehrere SMB-Backends:
 #
-#     1. Auf dem Samba-DC:
-#          fp_configure_ad=true, fp_install_fileproxy=false
-#          → Legt AD-User/Gruppe an + setzt valid users für DC-local
-#            Shares (default-school, linuxmuster-global, ...).
-#
-#     2. Auf jedem weiteren Fileserver (file01, file02, file03):
-#          fp_configure_ad=true, fp_install_fileproxy=false
-#          → Idempotency-Check überspringt existierende User/Gruppe.
-#            Der share-grant-Loop setzt valid users nur für Shares
-#            die physisch HIER liegen (net conf getparm path != empty).
-#            Dieselbe `fp_shares`-Liste kann überall durchgereicht
-#            werden; jeder Host grantet nur, was er selbst beherbergt.
-#
-#     3. Auf dem Fileproxy-Host (z.B. 10.0.0.29):
-#          fp_install_fileproxy=true, fp_configure_ad=false
+#     1. Auf dem Fileproxy-Host (z.B. 10.0.0.29):
+#          fp_install_fileproxy=true
 #          → ES + deb + Config + Systemd. Die shares-Liste enthält
 #            alle Shares mit per-share `server:`-Overrides (s. Beispiel
 #            in vars/edulution-fileproxy_vars.yml).
 #
-#     4. Auf dem Traefik-Host (typisch 10.0.0.4 im edulution-ui-Setup):
-#          fp_install_traefik_route=true, andere Flags false
+#     2. Auf dem Traefik-Host (typisch 10.0.0.4 im edulution-ui-Setup):
+#          fp_install_traefik_route=true, fp_install_fileproxy=false
 #          → Schreibt wiki.yml in die traefik dynamic-config.
 #
-#   Single-Host-Deployment (alle 4 Rollen auf einem Rechner): alle 4
-#   Flags true setzen, einmal laufen lassen.
+#   Kein DC-Lauf mehr nötig — global-admin existiert bereits.
 # =============================================================================
 
 - name: edulution-fileproxy Installation
@@ -76,149 +61,20 @@
   tasks:
 
     # =========================================================================
-    # BASELINE SANITY — beide Abschnitte brauchen ein gesetztes Passwort
+    # BASELINE SANITY — global-admin Passwort muss gesetzt sein
     # =========================================================================
 
     - name: Ensure fp_indexer_password is set
       ansible.builtin.assert:
         that:
-          - fp_indexer_password | length >= 12
+          - fp_indexer_password | length >= 1
         fail_msg: |
-          fp_indexer_password must be provided (min 12 chars) via extra_vars.
-          Generate one with:  tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32
-      when: fp_install_fileproxy or fp_configure_ad
+          fp_indexer_password must be provided via extra_vars.
+          This should be the global-admin password from your linuxmuster deployment.
+      when: fp_install_fileproxy
 
     # =========================================================================
-    # ABSCHNITT 1 — AD SERVICE ACCOUNT (nur auf dem Samba-DC laufen lassen)
-    # =========================================================================
-    # Legt den Service-Account + die Gruppe + die share-`valid users`-Grants
-    # an. Idempotent: vorhandene Objekte werden nicht neu erstellt. Erweitert
-    # bestehende `valid users`-Strings additiv, damit andere Grants
-    # (administrator, @SCHOOLS, ...) erhalten bleiben.
-
-    - name: AD — create indexer service user
-      when: fp_configure_ad
-      block:
-
-        - name: Check if indexer service user exists
-          ansible.builtin.command: samba-tool user show {{ fp_indexer_user }}
-          register: fp_user_check
-          changed_when: false
-          failed_when: false
-
-        - name: Create indexer service user
-          ansible.builtin.command: >
-            samba-tool user create {{ fp_indexer_user }} '{{ fp_indexer_password }}'
-            --description="Fileproxy indexer service account"
-            --given-name="Edulution"
-            --surname="Indexer"
-          when: fp_user_check.rc != 0
-          no_log: true
-
-        - name: Ensure password never expires
-          ansible.builtin.command: samba-tool user setexpiry {{ fp_indexer_user }} --noexpiry
-          when: fp_user_check.rc != 0
-          changed_when: true
-
-        - name: Set NOT_DELEGATED flag (userAccountControl=1114624)
-          # NORMAL_ACCOUNT (512) + DONT_EXPIRE_PASSWORD (65536) + NOT_DELEGATED (1048576)
-          ansible.builtin.command: samba-tool user edit {{ fp_indexer_user }}
-          environment:
-            EDITOR: "sed -i 's/^userAccountControl:.*/userAccountControl: 1114624/'"
-          when: fp_user_check.rc != 0
-          changed_when: true
-
-        - name: Rotate password on existing user (when already present)
-          # Idempotent re-run: ensure the secret file and AD stay in sync.
-          ansible.builtin.command: >
-            samba-tool user setpassword {{ fp_indexer_user }}
-            --newpassword='{{ fp_indexer_password }}'
-          when: fp_user_check.rc == 0
-          no_log: true
-          changed_when: true
-
-    - name: AD — create indexer readers group + memberships
-      when: fp_configure_ad
-      block:
-
-        - name: Check if indexer readers group exists
-          ansible.builtin.command: samba-tool group show {{ fp_indexer_readers_group }}
-          register: fp_group_check
-          changed_when: false
-          failed_when: false
-
-        - name: Create indexer readers group
-          ansible.builtin.command: >
-            samba-tool group add {{ fp_indexer_readers_group }}
-            --description="Read-only scope for the fileproxy indexer"
-          when: fp_group_check.rc != 0
-          changed_when: true
-
-        - name: Add service user to indexer readers group (idempotent)
-          ansible.builtin.shell: |
-            samba-tool group addmembers {{ fp_indexer_readers_group }} {{ fp_indexer_user }} 2>&1 | \
-              grep -v 'already a member' || true
-          changed_when: true
-          # On some samba-tool versions the "already a member" status code
-          # is non-zero; grep -v + || true filters the benign case.
-
-        - name: Add service user to global-admins (filesystem bypass for linuxmuster)
-          # linuxmuster breaks NTFS inheritance at every folder level under
-          # per-user homes, so per-folder ACL grants cannot be practically
-          # recursed. global-admins already has OI|CI/FULL on every folder
-          # the linuxmuster setup scripts create — joining the svc account
-          # to this group bypasses the inheritance problem without leaking
-          # interactive credentials. See docs/OPERATOR_RUNBOOK.md
-          # § Indexer service account Step 3b in the fileproxy repo.
-          ansible.builtin.shell: |
-            samba-tool group addmembers global-admins {{ fp_indexer_user }} 2>&1 | \
-              grep -v 'already a member' || true
-          changed_when: true
-
-    - name: AD — share-level valid users (per share hosted locally)
-      when: fp_configure_ad and fp_shares | length > 0
-      block:
-
-        - name: Check each share's current valid users
-          ansible.builtin.shell: |
-            net conf getparm "{{ item.name }}" "valid users" 2>/dev/null || echo ''
-          loop: '{{ fp_shares }}'
-          register: fp_share_valid_users
-          changed_when: false
-          # A share not in the local registry (DFS proxy on a different
-          # fileserver) silently returns empty; the inner shell below then
-          # skips it via the `net conf getparm path` existence check.
-
-        - name: Extend valid users with indexer-readers group
-          # The inner `net conf getparm path` probe is the authoritative
-          # "is this share local to this host" check — shares physically
-          # hosted elsewhere have only msdfs_proxy metadata and no path,
-          # so getparm returns non-zero and the task exits 0 without
-          # touching them. This makes the task safe to run on every
-          # backend host with the full fp_shares list passed; each host
-          # grants only the shares it physically owns.
-          ansible.builtin.shell: |
-            set -e
-            current='{{ item.stdout | trim }}'
-            # Skip shares not hosted on this host — DFS-only proxies have
-            # no `path` parameter in the local net conf registry.
-            net conf getparm "{{ item.item.name }}" "path" >/dev/null 2>&1 || exit 0
-            if echo "$current" | grep -q '{{ fp_indexer_readers_group }}'; then
-              echo "already granted"
-              exit 0
-            fi
-            if [ -z "$current" ]; then
-              net conf setparm "{{ item.item.name }}" "valid users" "@{{ fp_smb_domain }}\\{{ fp_indexer_readers_group }}"
-            else
-              net conf setparm "{{ item.item.name }}" "valid users" "$current,@{{ fp_smb_domain }}\\{{ fp_indexer_readers_group }}"
-            fi
-          loop: '{{ fp_share_valid_users.results }}'
-          loop_control:
-            label: '{{ item.item.name }}'
-          changed_when: true
-
-    # =========================================================================
-    # ABSCHNITT 2 — ELASTICSEARCH + FILEPROXY auf dem Fileproxy-Host
+    # ABSCHNITT 1 — ELASTICSEARCH + FILEPROXY auf dem Fileproxy-Host
     # =========================================================================
 
     - name: Fileproxy — install elasticsearch apt repo
@@ -361,7 +217,7 @@
             daemon_reload: true
 
     # =========================================================================
-    # ABSCHNITT 3 — TRAEFIK /wiki-ROUTE (auf dem Host der Traefik betreibt)
+    # ABSCHNITT 2 — TRAEFIK /wiki-ROUTE (auf dem Host der Traefik betreibt)
     # =========================================================================
     # Traefik hot-reloaded den file-provider bei `watch: true` (default im
     # edulution-ui-preset). Kein Restart nötig.

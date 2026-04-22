@@ -92,7 +92,7 @@ curl http://10.0.0.1:8000/api/status
 | Playbook | Purpose |
 |----------|---------|
 | `linuxmuster.yml` | Initial linuxmuster.net 7.3 install — runs on the DC |
-| `edulution-fileproxy.yml` | Installs edulution-fileproxy + Elasticsearch + AD service account + Traefik `/wiki` route. See the header of the playbook for `fp_*` variables. Typical `extra_vars`: `fp_indexer_password`, `fp_shares` (list of `{name, server?}`), and the three role-gating flags `fp_install_fileproxy` / `fp_configure_ad` / `fp_install_traefik_route`. |
+| `edulution-fileproxy.yml` | Installs edulution-fileproxy + Elasticsearch + Traefik `/wiki` route. Uses the existing global-admin account for indexing (no AD objects created). See the header of the playbook for `fp_*` variables. Typical `extra_vars`: `fp_indexer_password` (global-admin password), `fp_shares` (list of `{name, server?}`), and the role-gating flags `fp_install_fileproxy` / `fp_install_traefik_route`. |
 
 ### GET /api/playbook/{playbook}/requirements
 

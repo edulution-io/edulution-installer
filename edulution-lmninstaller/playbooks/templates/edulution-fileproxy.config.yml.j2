@@ -15,11 +15,10 @@ smb:
   session_max_creation_minutes: 30
   session_cleanup_interval: 1
 
-  # Dedicated AD account that the wiki indexer uses for every filesystem
-  # read (PostWriteHook doc body, reindex walk, reconciler scan, search-time
-  # title extraction). REQUIRED when elasticsearch.enabled: true.
-  # See docs/OPERATOR_RUNBOOK.md § Indexer service account (in edulution-fileproxy repo)
-  # for the AD-side setup that makes this user work.
+  # AD account the indexer uses for every filesystem read (PostWriteHook
+  # doc body, reindex walk, reconciler scan, search-time title extraction).
+  # REQUIRED when elasticsearch.enabled: true. Uses the existing global-admin
+  # account — no dedicated AD user or group creation necessary.
   indexer_service_account:
     user: "{{ fp_indexer_user }}"
     password_file: "{{ fp_indexer_secret_path }}"
