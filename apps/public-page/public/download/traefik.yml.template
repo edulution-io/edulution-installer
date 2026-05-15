@@ -15,10 +15,8 @@ entryPoints:
         readTimeout: 0s
         writeTimeout: 0s
         idleTimeout: 0s
-  imap:
-    address: ":143"
-  imaps:
-    address: ":993"
+  wireguard:
+    address: ":443/udp"
 
 providers:
   file:
