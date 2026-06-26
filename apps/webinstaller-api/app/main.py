@@ -710,7 +710,6 @@ def createEdulutionEnvFile(data: Data):
     guacamole_admin_secret = generateSecret()
     onlyoffice_jwt_secret = generateSecret()
     onlyoffice_postgres_secret = generateSecret()
-    mailcow_sieve_master_secret = generateSecret()
 
     mailcow_api_secret = (
         generateRandom()
@@ -788,9 +787,6 @@ LDAP_EDULUTION_BINDUSER_PASSWORD="{data.DATA_LMN_BINDUSER_PW}"
 
 EDUI_INITIAL_ADMIN_GROUP="{data.DATA_INITIAL_ADMIN_GROUP or ""}"
 
-MAIL_MANAGESIEVE_MASTER_USER=edulution-sieve@mailcow.local
-MAIL_MANAGESIEVE_MASTER_PASS={mailcow_sieve_master_secret}
-
 # edulution-db
 
 MONGO_INITDB_ROOT_USERNAME=root
@@ -814,9 +810,6 @@ POSTGRES_PASSWORD={postgres_secret}
 KEYCLOAK_EDU_MAILCOW_SYNC_SECRET={keycloak_edumailcow_sync_secret}
 MAILCOW_API_TOKEN={mailcow_api_secret}
 MAILCOW_API_URL=https://edu-traefik/sogo-mail
-
-DOVECOT_MASTER_USER=edulution-sieve
-DOVECOT_MASTER_PASS={mailcow_sieve_master_secret}
 
 # edulution-guacamole
 
