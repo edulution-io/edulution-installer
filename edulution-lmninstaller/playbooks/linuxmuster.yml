@@ -533,7 +533,7 @@
         regexp: '(^\s*port:\s*)443\b'
         replace: '\g<1>{{ lmn_webui_port }}'
       when: lmn_local_install | bool
-      notify: Ajenti-Dienst neustarten
+      notify: Linuxmuster-WebUI neustarten
 
     # =========================================================================
     # ABSCHLUSSMELDUNG
@@ -568,7 +568,7 @@
         name: ssh
         state: restarted
 
-    - name: Ajenti-Dienst neustarten
+    - name: Linuxmuster-WebUI neustarten
       ansible.builtin.systemd:
-        name: ajenti
+        name: linuxmuster-webui
         state: restarted
