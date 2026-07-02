@@ -174,6 +174,22 @@ DOCKEREOF
     echo "[*] Docker Daemon konfiguriert."
 fi
 
+# SSH-Freigabe fuer den edulution-Installer (nur localhost + Docker-Bridge-Netz).
+# Muss bereits vor dem Start des Installer-Containers existieren: bei einer
+# "gleiche Maschine"-Installation greift der Container per SSH ueber die
+# docker0-IP auf den Host zu (der linuxmuster-Bootstrap laeuft dann lokal auf
+# diesem Host). Das Playbook legt die Datei spaeter zwar erneut an, das ist fuer
+# den initialen Bootstrap aber zu spaet.
+echo "[*] Konfiguriere SSH-Zugriff fuer den edulution-Installer (localhost + Docker-Netz)..."
+mkdir -p /etc/ssh/sshd_config.d
+cat <<'SSHEOF' > /etc/ssh/sshd_config.d/edulution_installer.conf
+Match Address 127.0.0.1,172.17.0.0/16
+    PermitRootLogin yes
+    PasswordAuthentication yes
+SSHEOF
+chmod 0644 /etc/ssh/sshd_config.d/edulution_installer.conf
+systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null || true
+
 if ! command -v jq &> /dev/null; then
     echo "[*] JQ ist nicht installiert. Installation wird gestartet..."
     apt-get update
