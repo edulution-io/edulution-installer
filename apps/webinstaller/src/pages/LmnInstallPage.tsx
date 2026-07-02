@@ -109,6 +109,8 @@ const LmnInstallPage = () => {
         lmn_adminpw: currentStore.lmnAdminpw,
         lmn_timezone: currentStore.lmnTimezone,
         lmn_locale: currentStore.lmnLocale,
+        lmn_local_install: currentStore.lmnLocalInstall,
+        lmn_webui_port: currentStore.lmnWebuiPort,
       });
     } catch {
       store.appendLmnOutput(t('lmnInstall.playbookError'));
@@ -170,6 +172,8 @@ const LmnInstallPage = () => {
         lmnLdapSchema: currentStore.lmnLdapSchema,
         lmnLdapPort: currentStore.lmnLdapPort,
         edulutionExternalDomain: currentStore.edulutionExternalDomain,
+        lmnLocalInstall: currentStore.lmnLocalInstall,
+        lmnWebuiPort: currentStore.lmnWebuiPort,
       });
     } catch {
       // Store already has values, continue anyway

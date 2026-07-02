@@ -32,6 +32,9 @@ interface InstallerState {
   certificateConfigured: boolean;
   proxyDetected: boolean;
 
+  lmnLocalInstall: boolean;
+  lmnWebuiPort: number;
+
   lmnSshHost: string;
   lmnSshPort: number;
   lmnSshUser: string;
@@ -72,6 +75,7 @@ interface InstallerState {
   setInitialAdminGroup: (group: string) => void;
   setCertificateConfigured: (value: boolean) => void;
   setProxyDetected: (value: boolean) => void;
+  setLmnLocalInstall: (value: boolean) => void;
   setLmnSsh: (ssh: { host: string; port: number; user: string; password: string }) => void;
   setLmnBootstrapStatus: (status: LmnStatus) => void;
   setLmnPlaybookStatus: (status: LmnStatus) => void;
@@ -115,6 +119,8 @@ const initialState = {
   initialAdminGroup: '',
   certificateConfigured: false,
   proxyDetected: false,
+  lmnLocalInstall: false,
+  lmnWebuiPort: 8443,
   lmnSshHost: '',
   lmnSshPort: 22,
   lmnSshUser: 'root',
@@ -175,6 +181,8 @@ const useInstallerStore = create<InstallerState>()(
       setCertificateConfigured: (value) => set({ certificateConfigured: value }),
 
       setProxyDetected: (value) => set({ proxyDetected: value }),
+
+      setLmnLocalInstall: (value) => set({ lmnLocalInstall: value }),
 
       setLmnSsh: (ssh) =>
         set({

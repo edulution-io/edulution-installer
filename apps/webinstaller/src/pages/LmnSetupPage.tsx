@@ -6,7 +6,7 @@ import { Input } from '@shared-ui';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner, faCircleCheck, faCircleXmark, faCircleInfo } from '@fortawesome/free-solid-svg-icons';
 import useInstallerStore from '../store/useInstallerStore';
-import { bootstrapLmnServer, checkLmnRequirements, checkLmnConnection } from '../api/installerApi';
+import { bootstrapLmnServer, checkLmnRequirements, checkLmnConnection, getDockerHostIp } from '../api/installerApi';
 import type { RequirementsResponse } from '../api/installerApi';
 import StatusCard from '../components/StatusCard';
 
@@ -36,6 +36,24 @@ const LmnSetupPage = () => {
   useEffect(() => () => {
     if (cleanupRef.current) cleanupRef.current();
   }, []);
+
+  // In "same machine" mode the LMN server runs on the docker host, reachable
+  // from this container via the docker0 gateway IP. Prefill and lock the host.
+  useEffect(() => {
+    if (!store.lmnLocalInstall) return;
+    void getDockerHostIp()
+      .then((info) => {
+        if (info.ip) {
+          setHost(info.ip);
+          store.setLmnSsh({ host: info.ip, port, user, password });
+        }
+      })
+      .catch(() => {
+        // Fall back to the default docker bridge gateway
+        setHost('172.17.0.1');
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.lmnLocalInstall]);
 
   const isValidSsh = host.trim() !== '' && port > 0 && port <= 65535 && user.trim() !== '' && password.trim() !== '';
 
@@ -124,8 +142,11 @@ const LmnSetupPage = () => {
           value={host}
           onChange={(e) => setHost(e.target.value)}
           className={host.trim() ? 'valid-input' : ''}
-          disabled={bootstrapRunning}
+          disabled={bootstrapRunning || store.lmnLocalInstall}
         />
+        {store.lmnLocalInstall && (
+          <p className="mt-1 text-xs text-gray-500">{t('lmnSetup.localInstallHostHint')}</p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4">

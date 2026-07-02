@@ -38,7 +38,9 @@
     "descriptionGeneric": "Hier kann ein Verzeichnisdienst mit Active Directory angebunden werden.",
     "enterToken": "Füge hier deinen edulution Setup-Token ein:",
     "manualEntryLabel": "Hier gehts zur manuellen Eingabe:",
-    "manualEntry": "Manuell eingeben"
+    "manualEntry": "Manuell eingeben",
+    "localInstall": "Auf dieser Maschine installieren",
+    "localInstallHint": "Der linuxmuster.net-Server wird auf derselben Maschine wie edulution installiert. Als Adresse wird die docker0-IP verwendet und die linuxmuster-Web-UI (Ajenti) auf einen anderen Port verschoben."
   },
   "configure": {
     "externalDomainLmn": "Externe Domain des linuxmuster.net-Servers:",
@@ -100,6 +102,7 @@
     "reqRam": "Mindestens 4 GB RAM",
     "reqDisks": "Mindestens 2 Festplatten mit je 25 GB",
     "sshHost": "SSH Host:",
+    "localInstallHostHint": "Gleiche Maschine: automatisch auf die docker0-IP des Hosts gesetzt.",
     "sshPort": "SSH Port:",
     "sshUser": "SSH Benutzer:",
     "sshPassword": "SSH Passwort:",

@@ -70,6 +70,8 @@ const ConfigurePage = () => {
         lmnLdapSchema,
         lmnLdapPort,
         edulutionExternalDomain,
+        lmnLocalInstall: store.lmnLocalInstall,
+        lmnWebuiPort: store.lmnWebuiPort,
       });
       void navigate('/check');
     } catch {

@@ -19,6 +19,7 @@ const TokenPage = () => {
   const [step, setStep] = useState<Step>('adType');
   const [adType, setAdType] = useState<'existing' | 'new' | ''>(store.adType ?? '');
   const [target, setTarget] = useState<DeploymentTarget>(store.deploymentTarget ?? 'linuxmuster');
+  const [localInstall, setLocalInstall] = useState(store.lmnLocalInstall);
 
   const [token, setToken] = useState('');
   const [tokenValid, setTokenValid] = useState(false);
@@ -70,8 +71,9 @@ const TokenPage = () => {
   const handleNewAd = useCallback(() => {
     store.setAdType('new');
     store.setDeploymentTarget('linuxmuster');
+    store.setLmnLocalInstall(localInstall);
     void navigate('/lmn-setup');
-  }, [store, navigate]);
+  }, [store, navigate, localInstall]);
 
   const handleNext = useCallback(() => {
     if (!adType) return;
@@ -156,15 +158,35 @@ const TokenPage = () => {
           </div>
         )}
 
-        {target === 'linuxmuster' ? (
-          <p className="mt-2 text-sm text-gray-600">
-            {t('token.descriptionLinuxmuster')}
-          </p>
-        ) : (
-          <p className="mt-2 text-sm text-gray-600">
-            {t('token.descriptionGeneric')}
-          </p>
+        {adType === 'new' && (
+          <div className="rounded-lg bg-gray-50 p-3">
+            <label
+              htmlFor="lmnLocalInstall"
+              className="flex cursor-pointer items-start gap-2 text-sm font-bold text-gray-800"
+            >
+              <input
+                id="lmnLocalInstall"
+                type="checkbox"
+                checked={localInstall}
+                onChange={(e) => setLocalInstall(e.target.checked)}
+                className="mt-0.5 cursor-pointer"
+              />
+              {t('token.localInstall')}
+            </label>
+            <p className="mt-1 pl-6 text-xs text-gray-500">{t('token.localInstallHint')}</p>
+          </div>
         )}
+
+        {adType !== 'new' &&
+          (target === 'linuxmuster' ? (
+            <p className="mt-2 text-sm text-gray-600">
+              {t('token.descriptionLinuxmuster')}
+            </p>
+          ) : (
+            <p className="mt-2 text-sm text-gray-600">
+              {t('token.descriptionGeneric')}
+            </p>
+          ))}
 
         <Button
           variant="btn-security"

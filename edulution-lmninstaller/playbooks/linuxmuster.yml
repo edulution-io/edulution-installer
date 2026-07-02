@@ -42,6 +42,13 @@
     lmn_netmask: '255.255.0.0'
     lmn_gateway: '10.0.0.254'
 
+    # DNS-Forwarder fuer die Samba-interne DNS.
+    # linuxmuster-setup schreibt in die smb.conf zwingend
+    # "dns forwarder = <firewallip>". Ohne installierte Firewall zeigt das ins
+    # Leere und die externe Namensaufloesung (und damit apt) schlaegt fehl.
+    # Daher setzen wir nach dem Setup einen funktionierenden Resolver.
+    lmn_dns_forwarder: '9.9.9.9'
+
     # Server
     lmn_servername: 'server'
     lmn_domainname: 'linuxmuster.lan'
@@ -66,6 +73,13 @@
     lmn_skip_firewall: true
     lmn_unattended: true
     lmn_disable_auto_updates: true
+
+    # Lokale Installation (edulution-UI und LMN-Server auf derselben Maschine).
+    # Wird bei "gleiche Maschine" in der Installer-UI auf true gesetzt.
+    # In diesem Fall kollidiert die Ajenti-Web-UI (Port 443) mit dem Traefik
+    # von edulution, daher wird Ajenti auf lmn_webui_port verschoben.
+    lmn_local_install: false
+    lmn_webui_port: 8443
 
     # Firewall wird standardmaessig NICHT installiert (lmn_skip_firewall: true).
     # Die Firewall muss separat eingerichtet werden.
@@ -348,6 +362,17 @@
         mode: '0644'
       when: lmn_setup_result is defined and lmn_setup_result.rc == 0
 
+    # linuxmuster-setup verankert "dns forwarder = <firewallip>" in der
+    # smb.conf. Ohne Firewall ist das ein toter Resolver -> externe DNS-Namen
+    # (deb.linuxmuster.net, archive.ubuntu.com, ...) lassen sich nicht mehr
+    # aufloesen. Vor dem Samba-Neustart auf einen funktionierenden Forwarder
+    # umbiegen, damit die anschliessenden apt-Tasks nicht scheitern.
+    - name: DNS-Forwarder in smb.conf auf funktionierenden Resolver setzen
+      ansible.builtin.replace:
+        path: /etc/samba/smb.conf
+        regexp: '^(\s*dns forwarder\s*=\s*).*$'
+        replace: '\g<1>{{ lmn_dns_forwarder }}'
+
     - name: Samba AD DC neu starten
       ansible.builtin.systemd:
         name: samba-ad-dc
@@ -366,6 +391,16 @@
         echo "Samba LDAP nicht erreichbar nach 150 Sekunden"
         exit 1
       changed_when: false
+
+    - name: Warten bis externe DNS-Aufloesung funktioniert
+      ansible.builtin.command:
+        cmd: getent hosts deb.linuxmuster.net
+      register: lmn_dns_check
+      until: lmn_dns_check.rc == 0
+      retries: 12
+      delay: 5
+      changed_when: false
+      failed_when: lmn_dns_check.rc != 0
 
     # =========================================================================
     # EDULUTION BINDUSER ERSTELLEN (via sophomorix)
@@ -465,6 +500,42 @@
         daemon_reload: true
 
     # =========================================================================
+    # SSH-ZUGRIFF FUER EDULUTION-INSTALLER
+    # =========================================================================
+    # Erlaubt Root-/Passwort-Login ausschliesslich von localhost und aus dem
+    # Docker-Bridge-Netz (docker0, 172.17.0.0/16). Wird immer angelegt, wirkt
+    # sich aber nur auf Verbindungen aus diesen Netzen aus. Bei einer
+    # "gleiche Maschine"-Installation erreicht der edulution-Container den
+    # Host darueber ueber die docker0-IP.
+
+    - name: SSH-Konfiguration fuer edulution-installer erstellen
+      ansible.builtin.copy:
+        content: |
+          Match Address 127.0.0.1,172.17.0.0/16
+              PermitRootLogin yes
+              PasswordAuthentication yes
+        dest: /etc/ssh/sshd_config.d/edulution_installer.conf
+        owner: root
+        group: root
+        mode: '0644'
+      notify: SSH-Dienst neustarten
+
+    # =========================================================================
+    # AJENTI-PORT ANPASSEN (nur bei lokaler Installation)
+    # =========================================================================
+    # Auf derselben Maschine belegt der edulution-Traefik den Host-Port 443.
+    # Damit die Ajenti-Web-UI (linuxmuster.net) nicht kollidiert, wird sie auf
+    # lmn_webui_port verschoben.
+
+    - name: Ajenti-Port anpassen (lokale Installation)
+      ansible.builtin.replace:
+        path: /etc/ajenti/config.yml
+        regexp: '(^\s*port:\s*)443\b'
+        replace: '\g<1>{{ lmn_webui_port }}'
+      when: lmn_local_install | bool
+      notify: Ajenti-Dienst neustarten
+
+    # =========================================================================
     # ABSCHLUSSMELDUNG
     # =========================================================================
 
@@ -478,7 +549,7 @@
           Server: {{ lmn_servername }}.{{ lmn_domainname }}
           IP:     {{ lmn_server_ip }}
 
-          Web-UI: https://{{ lmn_server_ip }}
+          Web-UI: https://{{ lmn_server_ip }}{{ (':' + lmn_webui_port | string) if (lmn_local_install | bool) else '' }}
           Login:  global-admin / {{ lmn_adminpw }}
 
           edulution Binduser: CN=edulutionui-binduser,OU=Management,OU=GLOBAL,{{ edulution_dc_parts }}
@@ -486,3 +557,18 @@
           WICHTIG: System neustarten mit 'sudo reboot'
 
           ====================================================================
+
+  # ===========================================================================
+  # HANDLERS
+  # ===========================================================================
+
+  handlers:
+    - name: SSH-Dienst neustarten
+      ansible.builtin.systemd:
+        name: ssh
+        state: restarted
+
+    - name: Ajenti-Dienst neustarten
+      ansible.builtin.systemd:
+        name: ajenti
+        state: restarted

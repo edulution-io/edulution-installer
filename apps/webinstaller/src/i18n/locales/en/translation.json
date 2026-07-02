@@ -38,7 +38,9 @@
     "descriptionGeneric": "Here you can connect a directory service with Active Directory.",
     "enterToken": "Enter your edulution setup token here:",
     "manualEntryLabel": "Go to manual configuration:",
-    "manualEntry": "Enter manually"
+    "manualEntry": "Enter manually",
+    "localInstall": "Install on this machine",
+    "localInstallHint": "The linuxmuster.net server is installed on the same machine as edulution. The docker0 IP is used as its address and the linuxmuster web UI (Ajenti) is moved to a different port."
   },
   "configure": {
     "externalDomainLmn": "External domain of the linuxmuster.net server:",
@@ -100,6 +102,7 @@
     "reqRam": "At least 4 GB RAM",
     "reqDisks": "At least 2 disks with 25 GB each",
     "sshHost": "SSH Host:",
+    "localInstallHostHint": "Same machine: automatically set to the host's docker0 IP.",
     "sshPort": "SSH Port:",
     "sshUser": "SSH User:",
     "sshPassword": "SSH Password:",
