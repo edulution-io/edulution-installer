@@ -7,7 +7,10 @@
 ###########################################################
 
 DIRECTORY="/srv/docker/edulution-ui/"
+# Tag des zu ladenden Docker-Images (Docker-Tags duerfen kein "/" enthalten).
 EDULUTION_INSTALLER_TAG="main"
+# Git-Branch, aus dem der Installer arbeitet (z.B. LMN-Bootstrap). Darf "/" enthalten.
+EDULUTION_INSTALLER_BRANCH="main"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -20,6 +23,7 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             EDULUTION_INSTALLER_TAG="dev"
+            EDULUTION_INSTALLER_BRANCH="dev"
             shift
             ;;
         --ssl)
@@ -30,11 +34,30 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             EDULUTION_INSTALLER_TAG="ssl"
+            EDULUTION_INSTALLER_BRANCH="ssl"
+            shift
+            ;;
+        --branch)
+            if [[ -z "$2" || "$2" == --* ]]; then
+                echo "[!] --branch benötigt einen Branch-Namen, z.B. --branch feat/lmn-same-machine"
+                exit 1
+            fi
+            EDULUTION_INSTALLER_BRANCH="$2"
+            # Docker-Image-Tag: "/" ist in Tags nicht erlaubt -> durch "-" ersetzen
+            # (entspricht dem Tag, das docker/metadata-action im CI erzeugt).
+            EDULUTION_INSTALLER_TAG="${2//\//-}"
+            echo "Branch-Modus aktiviert! Es wird das Image des Branches '${EDULUTION_INSTALLER_BRANCH}' (Tag '${EDULUTION_INSTALLER_TAG}') verwendet!"
+            shift 2
+            ;;
+        --branch=*)
+            EDULUTION_INSTALLER_BRANCH="${1#*=}"
+            EDULUTION_INSTALLER_TAG="${EDULUTION_INSTALLER_BRANCH//\//-}"
+            echo "Branch-Modus aktiviert! Es wird das Image des Branches '${EDULUTION_INSTALLER_BRANCH}' (Tag '${EDULUTION_INSTALLER_TAG}') verwendet!"
             shift
             ;;
         *)
             echo "Unbekannter Parameter: $1"
-            echo "Verwendung: $0 [--dev] [--ssl]"
+            echo "Verwendung: $0 [--dev] [--ssl] [--branch <name>]"
             exit 1
             ;;
     esac
@@ -190,7 +213,7 @@ echo "[*] Starte den edulution Web-Installer..."
 docker pull ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
 
 docker run -d --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
-    -e EDULUTION_DIRECTORY=${DIRECTORY} -e BOOTSTRAP_BRANCH=${EDULUTION_INSTALLER_TAG} ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
+    -e EDULUTION_DIRECTORY=${DIRECTORY} -e BOOTSTRAP_BRANCH=${EDULUTION_INSTALLER_BRANCH} ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
 
 # Warte bis der Installer bereit ist
 attempt=0

@@ -2,7 +2,9 @@ name: Build docker image
 
 on:
   push:
-    branches: ["main", "dev", "ssl"]
+    # Build an image for every branch so branches can be tested via
+    # `installer --branch <name>` (image tag = branch name, "/" -> "-").
+    branches: ["**"]
 
   workflow_dispatch:
 
