@@ -417,6 +417,10 @@
       failed_when: false
       changed_when: false
 
+    # Nach dem samba-ad-dc-Neustart antwortet samba-tool (lokale DB) bereits,
+    # waehrend das Netzwerk-LDAP, das sophomorix nutzt, noch nicht bereit ist
+    # ("No connection to Samba4 AD!"). Daher den Aufruf mit kurzem Delay
+    # wiederholen, bis die Verbindung steht (nichts wird vorher angelegt).
     - name: edulutionui-binduser mit sophomorix erstellen
       ansible.builtin.command:
         cmd: >
@@ -425,6 +429,9 @@
           --random-passwd-save
       register: binduser_create_result
       when: binduser_exists.rc != 0
+      until: binduser_create_result.rc == 0
+      retries: 12
+      delay: 5
 
     - name: Debug - Binduser-Erstellung Ergebnis
       ansible.builtin.debug:
