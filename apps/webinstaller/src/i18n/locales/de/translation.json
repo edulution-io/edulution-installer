@@ -123,6 +123,7 @@
   "lmnConfig": {
     "title": "linuxmuster.net Konfiguration (Schritt {{step}}/2)",
     "network": "Netzwerk",
+    "networkAutoDetected": "Netzwerk (Server-IP, Netzmaske, Gateway) wird auf dieser Maschine automatisch übernommen.",
     "serverIp": "Server-IP:",
     "subnetMask": "Subnetzmaske:",
     "gateway": "Gateway:",
