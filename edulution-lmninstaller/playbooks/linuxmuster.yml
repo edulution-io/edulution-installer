@@ -543,6 +543,58 @@
       notify: Linuxmuster-WebUI neustarten
 
     # =========================================================================
+    # REBOOT-ERSATZ: gezielte Dienst-Neustarts statt vollem Neustart
+    # =========================================================================
+    # linuxmuster.net empfiehlt nach dem Setup einen Reboot. Wo das nicht moeglich
+    # ist, ersetzen wir ihn so weit wie sinnvoll:
+    #  - needrestart startet Dienste mit veralteten Bibliotheken neu (apt-Upgrade)
+    #  - der LMN-Stack wird gezielt neu gestartet, damit er die neue Konfiguration
+    #    liest -- bewusst OHNE Netzwerk (netplan/IP-Wechsel), um die laufende
+    #    Verbindung nicht zu kappen.
+    #  - Bleibt ein Kernel-Update, ist ein echter Reboot weiterhin noetig; das
+    #    wird am Ende gemeldet.
+
+    - name: needrestart installieren (falls nicht vorhanden)
+      ansible.builtin.apt:
+        name: needrestart
+        state: present
+      failed_when: false
+
+    - name: Dienste mit veralteten Bibliotheken automatisch neu starten
+      ansible.builtin.command:
+        cmd: needrestart -r a -b
+      register: needrestart_auto
+      changed_when: false
+      failed_when: false
+
+    - name: Installierte Dienste ermitteln
+      ansible.builtin.service_facts:
+
+    - name: LMN-Stack neu starten (Reboot-Ersatz, ohne Netzwerk)
+      ansible.builtin.systemd:
+        name: '{{ item }}'
+        state: restarted
+      loop:
+        - isc-dhcp-server
+        - ntpsec
+        - apparmor
+        - linuxmuster-api
+        - linuxmuster-webui
+      when: (item ~ '.service') in ansible_facts.services
+      failed_when: false
+
+    - name: Pruefen ob ein Kernel-Reboot noetig ist
+      ansible.builtin.command:
+        cmd: needrestart -k -b
+      register: needrestart_kernel
+      changed_when: false
+      failed_when: false
+
+    - name: Kernel-Reboot-Status merken
+      ansible.builtin.set_fact:
+        lmn_kernel_reboot_required: "{{ 'NEEDRESTART-KSTA: 3' in (needrestart_kernel.stdout | default('')) }}"
+
+    # =========================================================================
     # ABSCHLUSSMELDUNG
     # =========================================================================
 
@@ -561,7 +613,10 @@
 
           edulution Binduser: CN=edulutionui-binduser,OU=Management,OU=GLOBAL,{{ edulution_dc_parts }}
 
-          WICHTIG: System neustarten mit 'sudo reboot'
+          Dienste wurden gezielt neugestartet (Reboot-Ersatz, ohne Netzwerk).
+          {{ 'ACHTUNG: Der Kernel wurde aktualisiert - ein echter Reboot ist noetig!'
+             if (lmn_kernel_reboot_required | default(false) | bool)
+             else 'Kein Kernel-Reboot noetig - die Dienst-Neustarts genuegen.' }}
 
           ====================================================================
 
