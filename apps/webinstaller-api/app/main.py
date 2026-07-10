@@ -59,6 +59,7 @@ class SSCertificate(BaseModel):
 class LECertificate(BaseModel):
     email: str
     dns_provider: str
+    wildcard: bool = False
 
 
 class ConfigurationRequest(BaseModel):
@@ -157,6 +158,7 @@ class Data:
         self.DATA_LE_USED = False
         self.DATA_LE_EMAIL = None
         self.DATA_LE_DNS_PROVIDER = None
+        self.DATA_LE_WILDCARD_USED = False
         self.DATA_LE_ACME_DNS_REGISTRATION = None
         self.DATA_PROXY_USED = False
         self.DATA_ORGANIZATION_TYPE = None
@@ -380,6 +382,7 @@ def createLECertificate(ledata: LECertificate, data: Data = Depends(getData)):
     data.DATA_LE_USED = True
     data.DATA_LE_EMAIL = ledata.email
     data.DATA_LE_DNS_PROVIDER = ledata.dns_provider
+    data.DATA_LE_WILDCARD_USED = ledata.wildcard
 
     # Register with acme-dns
     try:
@@ -883,6 +886,21 @@ http:
 
     # Traefik-Konfiguration basierend auf Proxy und Let's Encrypt anpassen
     if not data.DATA_PROXY_USED and data.DATA_LE_USED:
+        le_wildcard_used = data.DATA_LE_WILDCARD_USED or os.environ.get(
+            "EDULUTION_LE_WILDCARD", ""
+        ).lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+        le_tls_domains = f'          - main: "{data.DATA_EDULUTION_EXTERNAL_DOMAIN}"'
+        if le_wildcard_used:
+            le_tls_domains = (
+                f'          - main: "*.{data.DATA_EDULUTION_EXTERNAL_DOMAIN}"\n'
+                f'          - sans: "{data.DATA_EDULUTION_EXTERNAL_DOMAIN}"'
+            )
+
         # traefik.yml: Basis-Template + certificatesResolvers mit DNS-Challenge anhängen
         traefik_le_config = f"""entryPoints:
   web:
@@ -895,7 +913,10 @@ http:
   websecure:
     address: ":443"
     http:
-      tls: {{}}
+      tls:
+        certResolver: letsencrypt
+        domains:
+{le_tls_domains}
     transport:
       respondingTimeouts:
         readTimeout: 0s
@@ -931,27 +952,51 @@ certificatesResolvers:
         with open(f"{EDULUTION_DIRECTORY}/traefik.yml", "w") as f:
             f.write(traefik_le_config)
 
-        # edulution-default.yml aus LE-Template ableiten mit Domain-Ersetzung
+        # edulution-default.yml aus LE-Template ableiten mit robuster Domain-Ersetzung
         le_template_path = Path(EDULUTION_DIRECTORY) / "edulution-default-le.yml"
-        le_config = le_template_path.read_text().replace("{{DOMAIN}}", data.DATA_EDULUTION_EXTERNAL_DOMAIN)
+        le_config = re.sub(
+            r"{{\s*DOMAIN\s*}}",
+            data.DATA_EDULUTION_EXTERNAL_DOMAIN,
+            le_template_path.read_text(),
+        )
+        if le_wildcard_used:
+            le_config = re.sub(
+                rf'(?m)^(\s*)- main: "{re.escape(data.DATA_EDULUTION_EXTERNAL_DOMAIN)}"$',
+                rf'\1- main: "*.{data.DATA_EDULUTION_EXTERNAL_DOMAIN}"\n'
+                rf'\1- sans: "{data.DATA_EDULUTION_EXTERNAL_DOMAIN}"',
+                le_config,
+            )
 
-        with open(f"{EDULUTION_DIRECTORY}/data/traefik/config/edulution-default.yml", "w") as f:
-            f.write(le_config)
+        edulution_default_config_path = (
+            Path(EDULUTION_DIRECTORY) / "data/traefik/config/edulution-default.yml"
+        )
+        edulution_default_config_path.write_text(le_config)
 
-        # acme.json für ACME-Zertifikatsspeicher erstellen
-        acme_json_path = f"{EDULUTION_DIRECTORY}/data/traefik/ssl/acme.json"
-        with open(acme_json_path, "w") as f:
-            f.write("{}")
+        ssl_path = Path(EDULUTION_DIRECTORY) / "data/traefik/ssl"
+        ssl_path.mkdir(parents=True, exist_ok=True)
+
+        # ACME-Speicherdateien nur anlegen, wenn sie fehlen, damit bestehende
+        # Zertifikate und acme-dns Registrierungen bei erneutem Ausführen erhalten bleiben.
+        acme_json_path = ssl_path / "acme.json"
+        if not acme_json_path.exists():
+            acme_json_path.write_text("{}")
         os.chmod(acme_json_path, 0o600)
 
-        # acmedns.json mit Registrierungsdaten für ACME-DNS-Provider schreiben
-        if data.DATA_LE_ACME_DNS_REGISTRATION:
-            acmedns_data = {
-                data.DATA_EDULUTION_EXTERNAL_DOMAIN: data.DATA_LE_ACME_DNS_REGISTRATION
-            }
-            acmedns_json_path = f"{EDULUTION_DIRECTORY}/data/traefik/ssl/acmedns.json"
-            with open(acmedns_json_path, "w") as f:
-                json.dump(acmedns_data, f, indent=2)
+        acmedns_json_path = ssl_path / "acmedns.json"
+        acmedns_data = {
+            data.DATA_EDULUTION_EXTERNAL_DOMAIN: data.DATA_LE_ACME_DNS_REGISTRATION
+        }
+        if not acmedns_json_path.exists():
+            if data.DATA_LE_ACME_DNS_REGISTRATION:
+                acmedns_json_path.write_text(json.dumps(acmedns_data, indent=2))
+            else:
+                acmedns_json_path.write_text("{}")
+        elif (
+            data.DATA_LE_ACME_DNS_REGISTRATION
+            and acmedns_json_path.read_text().strip() in ("", "{}")
+        ):
+            acmedns_json_path.write_text(json.dumps(acmedns_data, indent=2))
+        os.chmod(acmedns_json_path, 0o600)
 
     elif os.path.exists("/edulution-ui/data/traefik/ssl/cert.cert") and os.path.exists(
         "/edulution-ui/data/traefik/ssl/cert.key"

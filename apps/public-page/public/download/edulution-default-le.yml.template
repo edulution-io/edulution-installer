@@ -8,8 +8,7 @@ http:
       tls:
         certResolver: letsencrypt
         domains:
-          - main: "*.{{DOMAIN}}"
-          - sans: "{{DOMAIN}}"
+          - main: "{{ DOMAIN }}"
 
     edulution-keycloak:
       rule: "PathPrefix(`/auth`)"
@@ -19,8 +18,7 @@ http:
       tls:
         certResolver: letsencrypt
         domains:
-          - main: "*.{{DOMAIN}}"
-          - sans: "{{DOMAIN}}"
+          - main: "{{ DOMAIN }}"
 
     edulution-ui:
       rule: "PathPrefix(`/`)"
@@ -30,8 +28,7 @@ http:
       tls:
         certResolver: letsencrypt
         domains:
-          - main: "*.{{DOMAIN}}"
-          - sans: "{{DOMAIN}}"
+          - main: "{{ DOMAIN }}"
 
   services:
     edulution-api:
