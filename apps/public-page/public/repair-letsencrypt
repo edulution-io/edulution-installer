@@ -39,7 +39,7 @@ source "$ENVIRONMENT_FILE"
 : "${LE_EMAIL:?LE_EMAIL fehlt in edulution.env}"
 
 if ! registration=$(curl --fail --show-error --silent --location --retry 3 \
-  https://acme-dns.netzint.de/register); then
+  --request POST https://acme-dns.netzint.de/register); then
   fatal "ACME-DNS-Registrierung konnte nicht angelegt werden."
 fi
 
