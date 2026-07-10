@@ -6,18 +6,14 @@
 curl -fsSL https://get.edulution.io/installer | sudo bash
 ```
 
-### Branch auf einem Testserver installieren
-
-Warte nach dem Push auf den erfolgreichen Workflow **Build docker image**. Anschließend können Script, Konfigurationsvorlagen und das Image aus demselben Branch installiert werden:
+### Branch-Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Supergamerx3000/edulution-installer/BRANCH/apps/public-page/public/installer \
+curl -fsSL https://raw.githubusercontent.com/OWNER/REPOSITORY/BRANCH/apps/public-page/public/installer \
   | sudo bash -s -- --branch BRANCH \
-      --image ghcr.io/supergamerx3000/edulution-installer \
-      --source-repository Supergamerx3000/edulution-installer
+      --image ghcr.io/OWNER/REPOSITORY \
+      --source-repository OWNER/REPOSITORY
 ```
-
-`BRANCH` durch den Namen des gepushten Branches ersetzen. Das Paket auf GHCR muss für den Testserver lesbar sein; bei einem privaten Paket vorab mit `docker login ghcr.io` anmelden.
 
 ## Project Structure
 

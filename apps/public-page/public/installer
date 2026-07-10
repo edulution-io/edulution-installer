@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-
-# Exit on errors, failed pipelines and failed commands in functions.  Do not use
-# `set -u`: edulution.env is created by the web installer and may intentionally
-# omit optional variables.
 set -Ee -o pipefail
 
 ###########################################################
@@ -145,9 +141,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# In a branch test the templates must come from the same source revision as the
-# container.  The public download page only follows main, so it cannot be used
-# for testing unpublished changes.
 if [ "$DOWNLOAD_BASE_URL_EXPLICIT" = false ] && [ "$EDULUTION_INSTALLER_BRANCH" != "main" ]; then
     DOWNLOAD_BASE_URL="https://raw.githubusercontent.com/${SOURCE_REPOSITORY}/${EDULUTION_INSTALLER_BRANCH}/apps/public-page/public/download"
 fi
@@ -224,8 +217,6 @@ else
     info "Docker und Docker Compose sind bereits installiert."
 fi
 
-# Do not overwrite /etc/docker/daemon.json.  It is a host-wide configuration
-# and may contain settings required by other services on the test server.
 docker info >/dev/null
 
 info "Erstelle Ordner für die edulution-Installation..."
@@ -263,8 +254,6 @@ mkdir -p "${DIRECTORY}data/public/downloads"
 mkdir -p "${DIRECTORY}data/apps"
 mkdir -p "${DIRECTORY}data/apps/desktopdeployment/edulution-guacamole/config"
 
-# The containers run as root where required.  Do not grant write permission to
-# every local user on the server.
 chmod -R u+rwX,go+rX "${DIRECTORY}data"
 
 mv "${DIRECTORY}edulution-default.yml" "${DIRECTORY}data/traefik/config"
@@ -274,7 +263,6 @@ if docker container inspect edulution-installer >/dev/null 2>&1; then
 fi
 
 info "Starte den edulution-Web-Installer (${EDULUTION_INSTALLER_IMAGE}:${EDULUTION_INSTALLER_TAG})..."
-info "Das Installationsverzeichnis ist im Container unter /edulution-ui eingebunden."
 
 docker pull "${EDULUTION_INSTALLER_IMAGE}:${EDULUTION_INSTALLER_TAG}"
 
