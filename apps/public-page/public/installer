@@ -17,7 +17,7 @@ EDULUTION_INSTALLER_TAG="main"
 # Git-Branch, aus dem der Installer arbeitet (z.B. LMN-Bootstrap). Darf "/" enthalten.
 EDULUTION_INSTALLER_BRANCH="main"
 EDULUTION_INSTALLER_IMAGE="ghcr.io/edulution-io/edulution-installer"
-SOURCE_REPOSITORY="Supergamerx3000/edulution-installer"
+SOURCE_REPOSITORY="edulution-io/edulution-installer"
 DOWNLOAD_BASE_URL="https://get.edulution.io/download"
 DOWNLOAD_BASE_URL_EXPLICIT=false
 
