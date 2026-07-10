@@ -10,5 +10,5 @@ services:
       - 443:8000
     entrypoint: /startup.sh
     environment:
-      - EDULUTION_DIRECTORY=/srv/docker/edulution-installer/data
+      - EDULUTION_DIRECTORY=/edulution-ui
       - BOOTSTRAP_BRANCH=${BOOTSTRAP_BRANCH:-main}
