@@ -1,4 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
+# Exit on errors, failed pipelines and failed commands in functions.  Do not use
+# `set -u`: edulution.env is created by the web installer and may intentionally
+# omit optional variables.
+set -Ee -o pipefail
 
 ###########################################################
 # Installer for edulution UI
@@ -11,6 +16,37 @@ DIRECTORY="/srv/docker/edulution-ui/"
 EDULUTION_INSTALLER_TAG="main"
 # Git-Branch, aus dem der Installer arbeitet (z.B. LMN-Bootstrap). Darf "/" enthalten.
 EDULUTION_INSTALLER_BRANCH="main"
+EDULUTION_INSTALLER_IMAGE="ghcr.io/edulution-io/edulution-installer"
+SOURCE_REPOSITORY="Supergamerx3000/edulution-installer"
+DOWNLOAD_BASE_URL="https://get.edulution.io/download"
+DOWNLOAD_BASE_URL_EXPLICIT=false
+
+info() {
+    printf '[*] %s\n' "$*"
+}
+
+fatal() {
+    printf '[!] %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    cat <<'EOF'
+Verwendung: installer [Optionen]
+
+Optionen:
+  --branch <name>              Installer-Image und Vorlagen aus diesem Git-Branch verwenden
+  --image <repository>         Docker-Image-Repository verwenden (ohne Tag)
+  --source-repository <name>   GitHub-Repository fuer Branch-Vorlagen (OWNER/REPO)
+  --download-base-url <url>    URL, unter der die Konfigurationsvorlagen liegen
+  --dev | --ssl                Kompatibilitaetsoptionen fuer die bisherigen Test-Tags
+  -h | --help                  Diese Hilfe anzeigen
+
+Beispiel fuer einen Branch-Test:
+  curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/BRANCH/apps/public-page/public/installer \
+    | sudo bash -s -- --branch BRANCH --image ghcr.io/OWNER/REPO --source-repository OWNER/REPO
+EOF
+}
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -27,7 +63,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --ssl)
-            echo "Entwicklermodus aktiviert! Es werden Test-Pakete verwendet!"
+            echo "SSL-Testmodus aktiviert! Es werden Test-Pakete verwendet!"
             read -p "Möchtest du wirklich fortfahren? [j/N] " confirm
             if [[ ! "$confirm" =~ ^[Jj]$ ]]; then
                 echo "Abgebrochen!"
@@ -46,24 +82,79 @@ while [[ $# -gt 0 ]]; do
             # Docker-Image-Tag: "/" ist in Tags nicht erlaubt -> durch "-" ersetzen
             # (entspricht dem Tag, das docker/metadata-action im CI erzeugt).
             EDULUTION_INSTALLER_TAG="${2//\//-}"
+            if [ "$DOWNLOAD_BASE_URL_EXPLICIT" = false ]; then
+                DOWNLOAD_BASE_URL="https://raw.githubusercontent.com/${SOURCE_REPOSITORY}/${EDULUTION_INSTALLER_BRANCH}/apps/public-page/public/download"
+            fi
             echo "Branch-Modus aktiviert! Es wird das Image des Branches '${EDULUTION_INSTALLER_BRANCH}' (Tag '${EDULUTION_INSTALLER_TAG}') verwendet!"
             shift 2
             ;;
         --branch=*)
             EDULUTION_INSTALLER_BRANCH="${1#*=}"
             EDULUTION_INSTALLER_TAG="${EDULUTION_INSTALLER_BRANCH//\//-}"
+            if [ "$DOWNLOAD_BASE_URL_EXPLICIT" = false ]; then
+                DOWNLOAD_BASE_URL="https://raw.githubusercontent.com/${SOURCE_REPOSITORY}/${EDULUTION_INSTALLER_BRANCH}/apps/public-page/public/download"
+            fi
             echo "Branch-Modus aktiviert! Es wird das Image des Branches '${EDULUTION_INSTALLER_BRANCH}' (Tag '${EDULUTION_INSTALLER_TAG}') verwendet!"
             shift
             ;;
+        --image)
+            if [[ -z "${2:-}" || "$2" == --* ]]; then
+                fatal "--image benötigt ein Image-Repository, z.B. ghcr.io/edulution-io/edulution-installer"
+            fi
+            EDULUTION_INSTALLER_IMAGE="$2"
+            shift 2
+            ;;
+        --image=*)
+            EDULUTION_INSTALLER_IMAGE="${1#*=}"
+            shift
+            ;;
+        --source-repository)
+            if [[ -z "${2:-}" || "$2" == --* ]]; then
+                fatal "--source-repository benötigt OWNER/REPO"
+            fi
+            SOURCE_REPOSITORY="$2"
+            shift 2
+            ;;
+        --source-repository=*)
+            SOURCE_REPOSITORY="${1#*=}"
+            shift
+            ;;
+        --download-base-url)
+            if [[ -z "${2:-}" || "$2" == --* ]]; then
+                fatal "--download-base-url benötigt eine URL"
+            fi
+            DOWNLOAD_BASE_URL="${2%/}"
+            DOWNLOAD_BASE_URL_EXPLICIT=true
+            shift 2
+            ;;
+        --download-base-url=*)
+            DOWNLOAD_BASE_URL="${1#*=}"
+            DOWNLOAD_BASE_URL="${DOWNLOAD_BASE_URL%/}"
+            DOWNLOAD_BASE_URL_EXPLICIT=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
         *)
             echo "Unbekannter Parameter: $1"
-            echo "Verwendung: $0 [--dev] [--ssl] [--branch <name>]"
+            usage
             exit 1
             ;;
     esac
 done
 
-clear
+# In a branch test the templates must come from the same source revision as the
+# container.  The public download page only follows main, so it cannot be used
+# for testing unpublished changes.
+if [ "$DOWNLOAD_BASE_URL_EXPLICIT" = false ] && [ "$EDULUTION_INSTALLER_BRANCH" != "main" ]; then
+    DOWNLOAD_BASE_URL="https://raw.githubusercontent.com/${SOURCE_REPOSITORY}/${EDULUTION_INSTALLER_BRANCH}/apps/public-page/public/download"
+fi
+
+if [[ -t 1 ]]; then
+    clear
+fi
 
 cat <<'EOF'
            _       _       _   _
@@ -77,8 +168,7 @@ cat <<'EOF'
 EOF
 
 if [ "$EUID" -ne 0 ]; then
-  echo "[!] Bitte führen Sie das Skript mit Root-Rechten aus."
-  exit 1
+  fatal "Bitte führen Sie das Skript mit Root-Rechten aus, z.B. mit 'sudo bash'."
 fi
 
 cpu_flags=$(grep -m1 'flags' /proc/cpuinfo | cut -d: -f2)
@@ -88,132 +178,111 @@ if ! (echo "$cpu_flags" | grep -qwE 'cx16' && \
       echo "$cpu_flags" | grep -qwE 'sse4_1' && \
       echo "$cpu_flags" | grep -qwE 'sse4_2' && \
       echo "$cpu_flags" | grep -qwE 'ssse3'); then
-    echo "[!] Die CPU unterstützt kein x86-64-v2. Bitte überprüfe die CPU Einstellungen deiner VM!"
-    exit 1
+    fatal "Die CPU unterstützt kein x86-64-v2. Bitte überprüfe die CPU-Einstellungen deiner VM!"
 fi
 
 if [ -f "${DIRECTORY}edulution.env" ]; then
-  echo "[!] Die edulution UI scheint bereits installiert zu sein. Bitte prüfe das Verzeichnis '$DIRECTORY'!"
-  exit 1
+  fatal "Die edulution UI scheint bereits installiert zu sein. Bitte prüfe das Verzeichnis '$DIRECTORY'!"
 fi
 
-if ! command -v docker &> /dev/null; then
-    echo "[*] Docker ist nicht installiert. Installation wird gestartet..."
-
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        OS=$ID
-        VERSION=$VERSION_ID
-    else
-        echo "[!] Betriebssystem konnte nicht ermittelt werden."
-        exit 1
-    fi
-
-    if [ "$OS" == "ubuntu" ] && ([[ "$VERSION" == "22.04" ]] || [[ "$VERSION" == "24.04" ]]); then
-
-        apt-get update
-
-        apt-get install -y \
-            ca-certificates \
-            curl \
-            gnupg \
-            lsb-release
-
-        install -m 0755 -d /etc/apt/keyrings
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-            gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-        chmod a+r /etc/apt/keyrings/docker.gpg
-
-        echo \
-          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-          $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-        apt-get update
-
-        apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-        systemctl enable docker --now
-
-        echo "[*] Konfiguriere Docker Daemon..."
-        cat <<DOCKEREOF > /etc/docker/daemon.json
-{
-  "live-restore": true,
-  "storage-driver": "overlay2",
-  "log-opts": {
-    "max-size": "100m",
-    "max-file": "3"
-  }
-}
-DOCKEREOF
-
-        systemctl daemon-reload
-        systemctl restart docker
-
-        echo "[*] Docker wurde erfolgreich installiert."
-
-    else
-        echo "[!] Dieses Skript unterstützt nur Ubuntu 22.04 und 24.04."
-        exit 1
-    fi
-else
-    echo "[*] Docker ist bereits installiert."
-    echo "[*] Konfiguriere Docker Daemon..."
-    cat <<DOCKEREOF > /etc/docker/daemon.json
-{
-  "live-restore": true,
-  "storage-driver": "overlay2",
-  "log-opts": {
-    "max-size": "100m",
-    "max-file": "3"
-  }
-}
-DOCKEREOF
-
-    systemctl daemon-reload
-    systemctl restart docker
-    echo "[*] Docker Daemon konfiguriert."
+if [[ ! "$DOWNLOAD_BASE_URL" =~ ^https:// ]]; then
+    fatal "Die Download-URL muss mit https:// beginnen."
 fi
 
-if ! command -v jq &> /dev/null; then
-    echo "[*] JQ ist nicht installiert. Installation wird gestartet..."
+if [[ -z "$EDULUTION_INSTALLER_IMAGE" || "$EDULUTION_INSTALLER_IMAGE" == *[[:space:]]* ]]; then
+    fatal "Ungültiges Installer-Image: '$EDULUTION_INSTALLER_IMAGE'"
+fi
+
+if [[ ! "$SOURCE_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+    fatal "Ungültiges GitHub-Repository: '$SOURCE_REPOSITORY'"
+fi
+
+if [ ! -f /etc/os-release ]; then
+    fatal "Betriebssystem konnte nicht ermittelt werden."
+fi
+
+. /etc/os-release
+if [ "$ID" != "ubuntu" ] || { [ "$VERSION_ID" != "22.04" ] && [ "$VERSION_ID" != "24.04" ]; }; then
+    fatal "Dieses Skript unterstützt nur Ubuntu 22.04 und 24.04."
+fi
+
+apt-get update
+apt-get install -y ca-certificates curl gnupg jq lsb-release
+
+if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
+    info "Docker oder Docker Compose ist nicht vollständig installiert. Installation wird gestartet..."
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+    chmod a+r /etc/apt/keyrings/docker.gpg
+
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
+        > /etc/apt/sources.list.d/docker.list
     apt-get update
-    apt-get install -y jq
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    systemctl enable --now docker
+else
+    info "Docker und Docker Compose sind bereits installiert."
 fi
 
-echo "[*] Erstelle Ordner für die edulution installation..."
-mkdir -p $DIRECTORY
-cd $DIRECTORY
+# Do not overwrite /etc/docker/daemon.json.  It is a host-wide configuration
+# and may contain settings required by other services on the test server.
+docker info >/dev/null
+
+info "Erstelle Ordner für die edulution-Installation..."
+mkdir -p "$DIRECTORY"
+cd "$DIRECTORY"
+
+download_template() {
+    local file="$1"
+    local target="${DIRECTORY}${file}"
+    local temporary_target="${target}.tmp"
+
+    info "Lade Datei ${file} herunter..."
+    rm -f "$temporary_target"
+    if ! curl --fail --show-error --silent --location --retry 3 \
+        --output "$temporary_target" "${DOWNLOAD_BASE_URL}/${file}.template"; then
+        rm -f "$temporary_target"
+        fatal "Datei '${file}' konnte nicht von ${DOWNLOAD_BASE_URL} heruntergeladen werden."
+    fi
+    if [ ! -s "$temporary_target" ]; then
+        rm -f "$temporary_target"
+        fatal "Die heruntergeladene Datei '${file}' ist leer."
+    fi
+    mv "$temporary_target" "$target"
+}
 
 for file in docker-compose.yml realm-edulution.json traefik.yml edulution-default.yml edulution-default-le.yml; do
-
-    echo "[*] Herunterladen der Datei $file..."
-    curl -s -o ${DIRECTORY}${file} https://get.edulution.io/download/${file}.template
-
-    if [ ! -f "${DIRECTORY}${file}" ]; then
-        echo "[!] Datei '$file' konnte nicht heruntergeladen werden!"
-        exit 1
-    fi
-
+    download_template "$file"
 done
 
-echo "[*] Anpassung der Proxy-Konfiguration..."
+info "Passe die Proxy-Konfiguration an..."
 
-mkdir -p ${DIRECTORY}data/traefik/config
-mkdir -p ${DIRECTORY}data/traefik/ssl
-mkdir -p ${DIRECTORY}data/public/downloads
-mkdir -p ${DIRECTORY}data/apps
-mkdir -p ${DIRECTORY}data/apps/desktopdeployment/edulution-guacamole/config
+mkdir -p "${DIRECTORY}data/traefik/config"
+mkdir -p "${DIRECTORY}data/traefik/ssl"
+mkdir -p "${DIRECTORY}data/public/downloads"
+mkdir -p "${DIRECTORY}data/apps"
+mkdir -p "${DIRECTORY}data/apps/desktopdeployment/edulution-guacamole/config"
 
-chmod -R 777 ${DIRECTORY}data
+# The containers run as root where required.  Do not grant write permission to
+# every local user on the server.
+chmod -R u+rwX,go+rX "${DIRECTORY}data"
 
-mv ${DIRECTORY}edulution-default.yml ${DIRECTORY}data/traefik/config
+mv "${DIRECTORY}edulution-default.yml" "${DIRECTORY}data/traefik/config"
 
-echo "[*] Starte den edulution Web-Installer..."
+if docker container inspect edulution-installer >/dev/null 2>&1; then
+    fatal "Der Container 'edulution-installer' existiert bereits. Bitte zuerst prüfen oder entfernen."
+fi
 
-docker pull ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
+info "Starte den edulution-Web-Installer (${EDULUTION_INSTALLER_IMAGE}:${EDULUTION_INSTALLER_TAG})..."
 
-docker run -d --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ -v /var/run/docker.sock:/var/run/docker.sock \
-    -e EDULUTION_DIRECTORY=${DIRECTORY} -e BOOTSTRAP_BRANCH=${EDULUTION_INSTALLER_BRANCH} ghcr.io/edulution-io/edulution-installer:${EDULUTION_INSTALLER_TAG} 2>&1 > /dev/zero
+docker pull "${EDULUTION_INSTALLER_IMAGE}:${EDULUTION_INSTALLER_TAG}"
+
+docker run -d --name edulution-installer -p 443:8000 \
+    -v "${DIRECTORY}:/edulution-ui/" \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -e "EDULUTION_DIRECTORY=${DIRECTORY}" \
+    -e "BOOTSTRAP_BRANCH=${EDULUTION_INSTALLER_BRANCH}" \
+    "${EDULUTION_INSTALLER_IMAGE}:${EDULUTION_INSTALLER_TAG}"
 
 # Warte bis der Installer bereit ist
 attempt=0
@@ -249,13 +318,13 @@ cat <<EOF
 EOF
 
 # Warte bis die Konfiguration vom Web-Installer erstellt wurde
-echo "[*] Warte auf Abschluss der Web-Installation..."
+info "Warte auf Abschluss der Web-Installation..."
 attempt=0
 while [ ! -f "${DIRECTORY}edulution.env" ]; do
     attempt=$((attempt+1))
 
     # Prüfe ob Container noch läuft
-    if ! docker ps | grep -q edulution-installer; then
+    if [ "$(docker container inspect -f '{{.State.Running}}' edulution-installer 2>/dev/null || true)" != "true" ]; then
         echo "[!] Der Web-Installer wurde unerwartet beendet!"
         docker logs edulution-installer
         exit 1
@@ -269,30 +338,30 @@ while [ ! -f "${DIRECTORY}edulution.env" ]; do
     sleep 3
 done
 
-echo "[*] Web-Installation abgeschlossen! Fahre mit der Konfiguration fort..."
-docker rm -f edulution-installer 2>&1 > /dev/zero
+info "Web-Installation abgeschlossen! Fahre mit der Konfiguration fort..."
+docker rm -f edulution-installer
 
-echo "[*] Starte den Authentifizierungserver um die Einstellungen festzulegen..."
+info "Starte den Authentifizierungsserver, um die Einstellungen festzulegen..."
 
-docker network create edulution-prepare 2>&1 > /dev/zero
+docker network create edulution-prepare
 
-docker pull postgres:16 2>&1 > /dev/zero
-docker pull quay.io/keycloak/keycloak:25.0 2>&1 > /dev/zero
+docker pull postgres:16
+docker pull quay.io/keycloak/keycloak:26.4
 
 docker run -d \
   --name edulution-keycloak-db \
   --restart always \
-  --env-file ${DIRECTORY}edulution.env \
+  --env-file "${DIRECTORY}edulution.env" \
   -e POSTGRES_DB=keycloak \
-  -v ${DIRECTORY}data/keycloak/db:/var/lib/postgresql/data \
+  -v "${DIRECTORY}data/keycloak/db:/var/lib/postgresql/data" \
   --network edulution-prepare \
-  postgres:16 2>&1 > /dev/zero
+  postgres:16
 
 docker run -d \
   --name edulution-keycloak \
   --restart always \
-  --env-file ${DIRECTORY}edulution.env \
-  -v ${DIRECTORY}realm-edulution.json:/opt/keycloak/data/import/realm-edulution.json \
+  --env-file "${DIRECTORY}edulution.env" \
+  -v "${DIRECTORY}realm-edulution.json:/opt/keycloak/data/import/realm-edulution.json" \
   -e KC_DB_URL=jdbc:postgresql://edulution-keycloak-db/keycloak \
   -e KC_DB=postgres \
   -e KC_DB_URL_DATABASE=keycloak \
@@ -303,9 +372,9 @@ docker run -d \
   -e KC_HTTP_RELATIVE_PATH=/auth \
   -p 8080:8080 \
   --network edulution-prepare \
-  quay.io/keycloak/keycloak:25.0 \
+  quay.io/keycloak/keycloak:26.4 \
   start-dev \
-  --import-realm 2>&1 > /dev/zero
+  --import-realm
 
 attempt=0
 until curl --output /dev/null --silent --get --fail "http://localhost:8080/auth/realms/master"; do
@@ -320,59 +389,62 @@ until curl --output /dev/null --silent --get --fail "http://localhost:8080/auth/
     sleep 3
 done
 
-source ${DIRECTORY}edulution.env
+source "${DIRECTORY}edulution.env"
 
-AUTH_TOKEN=$(curl -s --request POST 'http://localhost:8080/auth/realms/master/protocol/openid-connect/token' \
+if ! AUTH_TOKEN=$(curl --fail --show-error --silent --request POST 'http://localhost:8080/auth/realms/master/protocol/openid-connect/token' \
                 --header 'Content-Type: application/x-www-form-urlencoded' \
                 --data-urlencode "username=${KEYCLOAK_ADMIN}" \
                 --data-urlencode "password=${KEYCLOAK_ADMIN_PASSWORD}" \
                 --data-urlencode 'grant_type=password' \
-                --data-urlencode 'client_id=admin-cli' | jq '.access_token' | sed 's/\"//g')
+                --data-urlencode 'client_id=admin-cli' | jq -er '.access_token'); then
+    fatal "Es konnte kein Token vom Authentifizierungsserver abgerufen werden."
+fi
 
 if [ -z "${AUTH_TOKEN}" ]; then
-    echo "[!] Es konnte kein Verbindung zum Authentifizierungserver hergestellt werden!"
-    exit 1
+    fatal "Es konnte kein Token vom Authentifizierungsserver abgerufen werden."
 fi
 
-KEYCLOAK_PUBLIC_KEY=$(curl -s --request GET 'http://localhost:8080/auth/admin/realms/edulution/keys' \
+if ! KEYCLOAK_KEYS=$(curl --fail --show-error --silent --request GET 'http://localhost:8080/auth/admin/realms/edulution/keys' \
                         --header "Authorization: Bearer ${AUTH_TOKEN}" \
-                        --header 'Content-Type: application/json' | jq '.keys[] | select(.algorithm == "RS256") | .publicKey' | sed 's/\"//g')
-
-KEYCLOAK_CERTIFICATE_KEY=$(curl -s --request GET 'http://localhost:8080/auth/admin/realms/edulution/keys' \
-                        --header "Authorization: Bearer ${AUTH_TOKEN}" \
-                        --header 'Content-Type: application/json' | jq '.keys[] | select(.algorithm == "RS256") | .certificate' | sed 's/\"//g')
-
-if [[ -z "${KEYCLOAK_PUBLIC_KEY}" && -z "${KEYCLOAK_CERTIFICATE_KEY}" ]]; then
-    echo "[!] Die Authentifizierungsschlüssel konnten nicht abgerufen werden!"
-    exit 1
+                        --header 'Content-Type: application/json'); then
+    fatal "Die Authentifizierungsschlüssel konnten nicht abgerufen werden."
 fi
 
-cat <<EOF > ${DIRECTORY}data/edulution.pem
+if ! KEYCLOAK_PUBLIC_KEY=$(jq -er '[.keys[] | select(.algorithm == "RS256") | .publicKey][0]' <<<"${KEYCLOAK_KEYS}"); then
+    fatal "Der öffentliche RS256-Schlüssel konnte nicht abgerufen werden."
+fi
+if ! KEYCLOAK_CERTIFICATE_KEY=$(jq -er '[.keys[] | select(.algorithm == "RS256") | .certificate][0]' <<<"${KEYCLOAK_KEYS}"); then
+    fatal "Das RS256-Zertifikat konnte nicht abgerufen werden."
+fi
+
+if [[ -z "${KEYCLOAK_PUBLIC_KEY}" || -z "${KEYCLOAK_CERTIFICATE_KEY}" ]]; then
+    fatal "Die Authentifizierungsschlüssel sind unvollständig."
+fi
+
+cat <<EOF > "${DIRECTORY}data/edulution.pem"
 -----BEGIN CERTIFICATE-----
 ${KEYCLOAK_CERTIFICATE_KEY}
 -----END CERTIFICATE-----
 
------BEGIN PRIVATE KEY-----
+-----BEGIN PUBLIC KEY-----
 ${KEYCLOAK_PUBLIC_KEY}
------END PRIVATE KEY-----
+-----END PUBLIC KEY-----
 EOF
 
-docker stop edulution-keycloak 2>&1 > /dev/zero
-docker stop edulution-keycloak-db 2>&1 > /dev/zero
-docker rm edulution-keycloak 2>&1 > /dev/zero
-docker rm edulution-keycloak-db 2>&1 > /dev/zero
-docker network rm edulution-prepare 2>&1 > /dev/zero
+docker stop edulution-keycloak edulution-keycloak-db
+docker rm edulution-keycloak edulution-keycloak-db
+docker network rm edulution-prepare
 
-rm ${DIRECTORY}realm-edulution.json
+rm "${DIRECTORY}realm-edulution.json"
 
-echo "[*] Arbeiten am Authentifizierungserver abgeschlossen."
+info "Arbeiten am Authentifizierungsserver abgeschlossen."
 
-echo "[*] Herunterladen der edulution Container..."
-docker compose --project-directory ${DIRECTORY} pull 2>&1 > /dev/zero
+info "Lade die edulution-Container herunter..."
+docker compose --project-directory "$DIRECTORY" pull
 
-echo "[*] Konfiguration abgeschlossen. Starte edulution!"
+info "Konfiguration abgeschlossen. Starte edulution!"
 
-docker compose --project-directory ${DIRECTORY} up -d 2>&1 > /dev/zero
+docker compose --project-directory "$DIRECTORY" up -d
 
 if [ -z "$EDULUTION_BASE_DOMAIN" ]; then
     EDULUTION_BASE_DOMAIN=$(hostname)

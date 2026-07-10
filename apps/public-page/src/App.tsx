@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { Button } from '@edulution-io/ui-kit';
 import { Card, CardContent, Input } from '@shared-ui';
 
-const INSTALL_COMMAND = 'bash <(curl -s https://get.edulution.io/installer)';
+const INSTALL_COMMAND = 'curl -fsSL https://get.edulution.io/installer | sudo bash';
 
 const App = () => {
   const [copied, setCopied] = useState(false);
