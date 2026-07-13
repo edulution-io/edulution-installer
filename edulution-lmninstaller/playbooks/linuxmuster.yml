@@ -81,6 +81,19 @@
     lmn_local_install: false
     lmn_webui_port: 8443
 
+    # Datenplatte: linuxmuster legt seine Daten (/srv/samba, /srv/linbo) und /var
+    # auf einer zweiten Platte via LVM ab. Das erledigt lmn-appliance/lmn-prepare
+    # selbst, wenn man ihm die Platte per -l uebergibt (VG vg_srv, Volumes s.u.,
+    # Quota auf global/default-school). Ist eine zweite, LEERE Platte vorhanden,
+    # uebergeben wir sie automatisch.
+    lmn_setup_data_disk: true
+    # Leer lassen -> automatische Erkennung der ersten komplett leeren
+    # Nicht-System-Platte (z.B. /dev/vdb, /dev/sdb). Sonst Geraet explizit setzen.
+    lmn_data_disk: ''
+    # Leer lassen -> Standard von lmn-prepare:
+    # var:10,linbo:40,global:10,default-school:100%FREE
+    lmn_lvm_volumes: ''
+
     # Firewall wird standardmaessig NICHT installiert (lmn_skip_firewall: true).
     # Die Firewall muss separat eingerichtet werden.
 
@@ -88,7 +101,11 @@
     lmn_repo_url: 'https://deb.linuxmuster.net/'
     lmn_repo_gpg_url: 'https://deb.linuxmuster.net/pub.gpg'
     lmn_repo_distribution: 'lmn73'
-    lmn_appliance_url: 'https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/master/lmn-appliance'
+    # lmn-appliance MUSS von einem 7.3-Release geladen werden: master hat die
+    # Auswertung von -l/--pvdevice verloren (die Datenplatte wuerde ignoriert)
+    # und wuerde ausserdem die lmn74-Quelle (7.4-Prerelease) einrichten.
+    lmn_prepare_version: 'v7.3.1'
+    lmn_appliance_url: 'https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/{{ lmn_prepare_version }}/lmn-appliance'
 
     # Pakete
     lmn_additional_packages:
@@ -101,6 +118,7 @@
       - wget
       - curl
       - gnupg
+      - lvm2
 
   tasks:
     # =========================================================================
@@ -266,7 +284,42 @@
       ansible.builtin.set_fact:
         lmn_cidr: "{{ (lmn_server_ip + '/' + lmn_netmask) | ansible.utils.ipaddr('prefix') }}"
 
-    - name: lmn-appliance ausführen (Server-Profil, ohne LVM)
+    # -------------------------------------------------------------------------
+    # DATENPLATTE ERMITTELN (wird per -l an lmn-appliance uebergeben)
+    # -------------------------------------------------------------------------
+    - name: Leere zweite Platte fuer LVM ermitteln
+      ansible.builtin.shell: |
+        # Erste vollstaendig leere Nicht-System-Platte:
+        # keine Partitionen, kein Dateisystem, keine Signatur (fs/parttable/LVM).
+        for d in $(lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}'); do
+          dev="/dev/$d"
+          [ "$(lsblk -n -o NAME "$dev" | wc -l)" -eq 1 ] || continue
+          [ -z "$(lsblk -dn -o FSTYPE "$dev")" ] || continue
+          blkid "$dev" >/dev/null 2>&1 && continue
+          echo "$dev"; break
+        done
+      args:
+        executable: /bin/bash
+      register: lmn_detected_disk
+      changed_when: false
+      when: lmn_setup_data_disk | bool
+
+    - name: Zu verwendende Datenplatte festlegen
+      ansible.builtin.set_fact:
+        lmn_data_disk_final: "{{ (lmn_data_disk | default('', true)) or (lmn_detected_disk.stdout | default('') | trim) }}"
+      when: lmn_setup_data_disk | bool
+
+    - name: Hinweis wenn keine leere Datenplatte gefunden wurde
+      ansible.builtin.debug:
+        msg: >-
+          Keine leere zweite Platte gefunden - Installation erfolgt auf der
+          Systemplatte (kein separates LVM). Vorhandene Platten werden nie
+          ueberschrieben; ggf. lmn_data_disk explizit setzen.
+      when:
+        - lmn_setup_data_disk | bool
+        - (lmn_data_disk_final | default('')) == ''
+
+    - name: lmn-appliance ausführen (Server-Profil, LVM auf Datenplatte falls vorhanden)
       ansible.builtin.shell: |
         set -o pipefail
         /root/lmn-appliance -p server -u \
@@ -274,6 +327,8 @@
           -f {{ lmn_gateway }} \
           -d {{ lmn_domainname }} \
           -t {{ lmn_servername }} \
+          {{ ('-l ' + lmn_data_disk_final) if (lmn_data_disk_final | default('')) != '' else '' }} \
+          {{ ('-v ' + lmn_lvm_volumes) if (lmn_lvm_volumes | default('')) != '' else '' }} \
           2>&1 | while IFS= read -r line; do
           echo "$line"
         done
