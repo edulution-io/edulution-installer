@@ -39,7 +39,13 @@ from pathlib import Path
 BASE_PATH = Path(__file__).parent
 STATIC_PATH = BASE_PATH / "static"
 
-EDULUTION_DIRECTORY = os.environ.get("EDULUTION_DIRECTORY", "/srv/docker/edulution-ui")
+# Verzeichnis, unter dem der Installer-Container das gemountete edulution-ui
+# sieht (docker run ... -v <host>:/edulution-ui). Das ist ein fester
+# CONTAINER-Pfad, nicht der Host-Pfad -- alle uebrigen Schreibzugriffe in dieser
+# Datei nutzen ebenfalls /edulution-ui. Frueher kam der Wert aus der Env
+# EDULUTION_DIRECTORY, die das Install-Script aber auf den HOST-Pfad setzte;
+# dadurch schrieb der Let's-Encrypt-Zweig seine Konfig ins Leere.
+EDULUTION_DIRECTORY = "/edulution-ui"
 
 
 # --- Pydantic Models ---
@@ -979,20 +985,30 @@ certificatesResolvers:
         with open(f"{EDULUTION_DIRECTORY}/data/traefik/config/edulution-default.yml", "w") as f:
             f.write(le_config)
 
-        # acme.json für ACME-Zertifikatsspeicher erstellen
-        acme_json_path = f"{EDULUTION_DIRECTORY}/data/traefik/ssl/acme.json"
-        with open(acme_json_path, "w") as f:
-            f.write("{}")
+        ssl_dir = f"{EDULUTION_DIRECTORY}/data/traefik/ssl"
+        os.makedirs(ssl_dir, exist_ok=True)
+
+        # acme.json (ACME-Zertifikatsspeicher) nur anlegen, wenn nicht vorhanden,
+        # damit bereits ausgestellte Zertifikate bei erneutem Ausfuehren nicht
+        # verworfen werden. Enthaelt private Schluessel -> 0600.
+        acme_json_path = f"{ssl_dir}/acme.json"
+        if not os.path.exists(acme_json_path):
+            with open(acme_json_path, "w") as f:
+                f.write("{}")
         os.chmod(acme_json_path, 0o600)
 
-        # acmedns.json mit Registrierungsdaten für ACME-DNS-Provider schreiben
-        if data.DATA_LE_ACME_DNS_REGISTRATION:
+        # acmedns.json mit den ACME-DNS-Registrierungsdaten schreiben -- ebenfalls
+        # nur, wenn noch keine Registrierung hinterlegt ist, sonst wuerde ein
+        # erneuter Lauf einen neuen CNAME erzwingen. Enthaelt Zugangsdaten -> 0600.
+        acmedns_json_path = f"{ssl_dir}/acmedns.json"
+        if data.DATA_LE_ACME_DNS_REGISTRATION and not os.path.exists(acmedns_json_path):
             acmedns_data = {
                 data.DATA_EDULUTION_EXTERNAL_DOMAIN: data.DATA_LE_ACME_DNS_REGISTRATION
             }
-            acmedns_json_path = f"{EDULUTION_DIRECTORY}/data/traefik/ssl/acmedns.json"
             with open(acmedns_json_path, "w") as f:
                 json.dump(acmedns_data, f, indent=2)
+        if os.path.exists(acmedns_json_path):
+            os.chmod(acmedns_json_path, 0o600)
 
     elif os.path.exists("/edulution-ui/data/traefik/ssl/cert.cert") and os.path.exists(
         "/edulution-ui/data/traefik/ssl/cert.key"

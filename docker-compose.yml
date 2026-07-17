@@ -10,5 +10,6 @@ services:
       - 443:8000
     entrypoint: /startup.sh
     environment:
-      - EDULUTION_DIRECTORY=/srv/docker/edulution-installer/data
+      # EDULUTION_DIRECTORY wird nicht mehr gesetzt: der Installer verwendet den
+      # festen Container-Pfad /edulution-ui (siehe ./data:/edulution-ui Mount).
       - BOOTSTRAP_BRANCH=${BOOTSTRAP_BRANCH:-main}
