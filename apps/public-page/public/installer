@@ -200,7 +200,7 @@ echo "[*] Erstelle Ordner für die edulution installation..."
 mkdir -p $DIRECTORY
 cd $DIRECTORY
 
-for file in docker-compose.yml realm-edulution.json traefik.yml edulution-default.yml edulution-default-le.yml; do
+for file in docker-compose.yml realm-edulution.json traefik.yml edulution-default.yml; do
 
     echo "[*] Herunterladen der Datei $file..."
     curl -s -o ${DIRECTORY}${file} https://get.edulution.io/download/${file}.template

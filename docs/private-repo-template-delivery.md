@@ -103,13 +103,24 @@ Auslieferung und gelten weiter:
   auf `0600` gesetzt (keine Zerstörung bestehender Zertifikate/Registrierungen,
   keine world-readable Credentials).
 
-## Weitere LE-Reworks (Vorschlag, noch offen)
+## Weitere LE-Reworks
 
-- **Traefik-Configs als Daten statt f-String:** `dict` + `yaml.safe_dump()` statt
-  handgezählter Einrückung; Wildcard wird damit ein Datenfeld statt Regex.
-- **Ein einziges LE-Template** (Resolver am EntryPoint) statt der Doppelpflege
-  `edulution-default.yml` ↔ `edulution-default-le.yml`.
+Erledigt auf `feat/le-hardening`:
+
+- **Traefik-`traefik.yml` als Daten statt f-String:** Das Basis-Template wird
+  geladen, per `dict` um Resolver/Domains erweitert und mit `yaml.dump()`
+  geschrieben — kein handgezählter Einzug, keine Regex, keine Divergenz zum
+  Basis-Template mehr (die alte LE-Variante hatte z.B. veraltete `imap`/`imaps`
+  und kein `wireguard`).
+- **Ein einziges dynamisches Template:** Resolver + Wildcard-Domains sitzen am
+  `websecure`-EntryPoint, daher reicht `edulution-default.yml` (`tls: {}`) für LE
+  und Nicht-LE. `edulution-default-le.yml` wurde entfernt.
+
+Noch offen (eigene PRs):
+
 - **CNAME-Preflight:** `_acme-challenge.<domain>` vor dem Durchlauf wirklich
   auflösen und gegen `<subdomain>.acme-dns.netzint.de` prüfen.
 - **Zertifikatsstatus live** im Finish-Screen (acme.json / Traefik-Log pollen).
 - **LE-Staging (`caServer`)** als Trockenlauf gegen Rate-Limits.
+- **acme-dns-Registrierung** direkt persistieren (nicht nur im RAM), damit
+  Retries denselben CNAME behalten.

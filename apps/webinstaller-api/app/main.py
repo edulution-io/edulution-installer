@@ -12,6 +12,7 @@ import shutil
 import asyncio
 import threading
 import urllib3
+import yaml
 
 # Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -38,6 +39,21 @@ from pathlib import Path
 
 BASE_PATH = Path(__file__).parent
 STATIC_PATH = BASE_PATH / "static"
+
+
+# YAML-Dumper fuer Traefik-Configs: quotet Strings, die mit ":" beginnen
+# (z.B. Adressen wie ":443"), damit die Ausgabe der von Traefik erwarteten
+# Schreibweise entspricht. Aendert den globalen SafeDumper nicht.
+class _TraefikDumper(yaml.SafeDumper):
+    pass
+
+
+def _represent_traefik_str(dumper: yaml.SafeDumper, value: str):
+    style = '"' if value[:1] == ":" else None
+    return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)
+
+
+_TraefikDumper.add_representer(str, _represent_traefik_str)
 
 # Verzeichnis, unter dem der Installer-Container das gemountete edulution-ui
 # sieht (docker run ... -v <host>:/edulution-ui). Das ist ein fester
@@ -930,60 +946,43 @@ http:
 
     # Traefik-Konfiguration basierend auf Proxy und Let's Encrypt anpassen
     if not data.DATA_PROXY_USED and data.DATA_LE_USED:
-        # traefik.yml: Basis-Template + certificatesResolvers mit DNS-Challenge anhängen
-        traefik_le_config = f"""entryPoints:
-  web:
-    address: ":80"
-    http:
-      redirections:
-        entryPoint:
-          to: "websecure"
-          scheme: "https"
-  websecure:
-    address: ":443"
-    http:
-      tls: {{}}
-    transport:
-      respondingTimeouts:
-        readTimeout: 0s
-        writeTimeout: 0s
-        idleTimeout: 0s
-  imap:
-    address: ":143"
-  imaps:
-    address: ":993"
+        # Die vorhandene traefik.yml (aus dem Basis-Template) laden und
+        # datengetrieben um den ACME-Resolver und die Zertifikatsdomains
+        # erweitern -- am websecure-EntryPoint statt pro Router. Dadurch reicht
+        # das eine dynamische Template (edulution-default.yml mit tls: {}) fuer
+        # LE und Nicht-LE; ein separates -le-Template und String-/Regex-Basteln
+        # am YAML entfallen, und der EntryPoint bleibt konsistent zum Template.
+        domain = data.DATA_EDULUTION_EXTERNAL_DOMAIN
+        traefik_yml_path = f"{EDULUTION_DIRECTORY}/traefik.yml"
+        with open(traefik_yml_path) as f:
+            traefik_conf = yaml.safe_load(f)
 
-providers:
-  file:
-    directory: "/etc/traefik/dynamic/"
-    watch: true
+        websecure_http = (
+            traefik_conf.setdefault("entryPoints", {})
+            .setdefault("websecure", {})
+            .setdefault("http", {})
+        )
+        websecure_http["tls"] = {
+            "certResolver": "letsencrypt",
+            # Wildcard-Zertifikat fuer alle Subdomains plus die Apex-Domain.
+            "domains": [{"main": f"*.{domain}", "sans": [domain]}],
+        }
+        traefik_conf.setdefault("certificatesResolvers", {})["letsencrypt"] = {
+            "acme": {
+                "email": data.DATA_LE_EMAIL,
+                "storage": "/etc/traefik/ssl/acme.json",
+                "dnsChallenge": {"provider": "acme-dns"},
+            }
+        }
 
-log:
-  level: ERROR
-
-serversTransport:
-  insecureSkipVerify: true
-
-ping: {{}}
-
-certificatesResolvers:
-  letsencrypt:
-    acme:
-      email: {data.DATA_LE_EMAIL}
-      storage: /etc/traefik/ssl/acme.json
-      dnsChallenge:
-        provider: acme-dns
-"""
-
-        with open(f"{EDULUTION_DIRECTORY}/traefik.yml", "w") as f:
-            f.write(traefik_le_config)
-
-        # edulution-default.yml aus LE-Template ableiten mit Domain-Ersetzung
-        le_template_path = Path(EDULUTION_DIRECTORY) / "edulution-default-le.yml"
-        le_config = le_template_path.read_text().replace("{{DOMAIN}}", data.DATA_EDULUTION_EXTERNAL_DOMAIN)
-
-        with open(f"{EDULUTION_DIRECTORY}/data/traefik/config/edulution-default.yml", "w") as f:
-            f.write(le_config)
+        with open(traefik_yml_path, "w") as f:
+            yaml.dump(
+                traefik_conf,
+                f,
+                Dumper=_TraefikDumper,
+                sort_keys=False,
+                default_flow_style=False,
+            )
 
         ssl_dir = f"{EDULUTION_DIRECTORY}/data/traefik/ssl"
         os.makedirs(ssl_dir, exist_ok=True)
