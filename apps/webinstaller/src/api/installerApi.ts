@@ -28,7 +28,12 @@ interface SsCertificateRequest {
 
 interface LeCertificateRequest {
   email: string;
+  // "http" (HTTP-01) oder "dns" (DNS-01)
+  challenge: string;
+  // Bei "dns": "netzint" oder ein Provider-Code (cloudflare, hetzner, ...)
   dns_provider: string;
+  // Provider-Credentials (ENV-Name -> Wert), nur bei DNS-Providern ausser netzint
+  credentials: Record<string, string>;
 }
 
 export interface AcmeDnsRegistration {

@@ -64,6 +64,30 @@ _TraefikDumper.add_representer(str, _represent_traefik_str)
 EDULUTION_DIRECTORY = "/edulution-ui"
 
 
+# Kuratierte Let's-Encrypt-DNS-Provider (Traefik/lego). Pro Provider-Code die
+# ERLAUBTEN ENV-Variablen -- zugleich Whitelist, damit aus den vom Nutzer
+# gelieferten Credentials keine beliebigen Variablen in edulution.env landen.
+# Sonderfaelle: "netzint" (acme-dns von netzint mit Registrierung) und die
+# HTTP-Challenge werden getrennt behandelt.
+LE_DNS_PROVIDERS = {
+    "cloudflare": ["CF_DNS_API_TOKEN"],
+    "hetzner": ["HETZNER_API_TOKEN"],
+    "ionos": ["IONOS_API_KEY"],
+    "netcup": ["NETCUP_CUSTOMER_NUMBER", "NETCUP_API_KEY", "NETCUP_API_PASSWORD"],
+    "inwx": ["INWX_USERNAME", "INWX_PASSWORD"],
+    "desec": ["DESEC_TOKEN"],
+    "digitalocean": ["DO_AUTH_TOKEN"],
+    "gandiv5": ["GANDIV5_PERSONAL_ACCESS_TOKEN"],
+    "ovh": [
+        "OVH_ENDPOINT",
+        "OVH_APPLICATION_KEY",
+        "OVH_APPLICATION_SECRET",
+        "OVH_CONSUMER_KEY",
+    ],
+    "route53": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"],
+}
+
+
 # --- Pydantic Models ---
 
 class Token(BaseModel):
@@ -80,7 +104,13 @@ class SSCertificate(BaseModel):
 
 class LECertificate(BaseModel):
     email: str
-    dns_provider: str
+    # "http" (HTTP-01, kein Wildcard) oder "dns" (DNS-01, Wildcard).
+    challenge: str = "dns"
+    # Bei "dns": "netzint" (acme-dns von netzint) oder ein Provider-Code aus
+    # LE_DNS_PROVIDERS (cloudflare, hetzner, ...).
+    dns_provider: str = "netzint"
+    # Provider-Credentials (ENV-Name -> Wert), nur bei DNS-Providern ausser netzint.
+    credentials: dict[str, str] = {}
 
 
 class ConfigurationRequest(BaseModel):
@@ -180,7 +210,9 @@ class Data:
         self.DATA_EDULUTION_EXTERNAL_DOMAIN = None
         self.DATA_LE_USED = False
         self.DATA_LE_EMAIL = None
+        self.DATA_LE_CHALLENGE = "dns"
         self.DATA_LE_DNS_PROVIDER = None
+        self.DATA_LE_CREDENTIALS = {}
         self.DATA_LE_ACME_DNS_REGISTRATION = None
         self.DATA_PROXY_USED = False
         self.DATA_ORGANIZATION_TYPE = None
@@ -432,37 +464,66 @@ def createSSCertificate(ssdata: SSCertificate, data: Data = Depends(getData)):
 def createLECertificate(ledata: LECertificate, data: Data = Depends(getData)):
     data.DATA_LE_USED = True
     data.DATA_LE_EMAIL = ledata.email
+    data.DATA_LE_CHALLENGE = ledata.challenge
     data.DATA_LE_DNS_PROVIDER = ledata.dns_provider
+    data.DATA_LE_CREDENTIALS = {}
+    data.DATA_LE_ACME_DNS_REGISTRATION = None
 
-    # Register with acme-dns
-    try:
-        acme_dns_url = "https://acme-dns.netzint.de/register"
-        response = requests.post(acme_dns_url, timeout=15)
-        if response.status_code not in (200, 201):
-            return {
-                "status": False,
-                "message": f"ACME-DNS Registrierung fehlgeschlagen (HTTP {response.status_code})",
-            }
-
-        registration = response.json()
-        data.DATA_LE_ACME_DNS_REGISTRATION = registration
-
+    # HTTP-01-Challenge: keine DNS-Provider-Konfiguration noetig.
+    if ledata.challenge == "http":
         return {
             "status": True,
-            "message": "Let's Encrypt wird beim Start von Traefik konfiguriert",
-            "registration": registration,
+            "message": "Let's Encrypt (HTTP-Challenge) wird beim Start von Traefik konfiguriert",
         }
-    except requests.exceptions.Timeout:
+
+    # DNS-01 via acme-dns von netzint: dynamische Registrierung + CNAME-Hinweis.
+    if ledata.dns_provider == "netzint":
+        try:
+            response = requests.post(
+                "https://acme-dns.netzint.de/register", timeout=15
+            )
+            if response.status_code not in (200, 201):
+                return {
+                    "status": False,
+                    "message": f"ACME-DNS Registrierung fehlgeschlagen (HTTP {response.status_code})",
+                }
+            registration = response.json()
+            data.DATA_LE_ACME_DNS_REGISTRATION = registration
+            return {
+                "status": True,
+                "message": "Let's Encrypt wird beim Start von Traefik konfiguriert",
+                "registration": registration,
+            }
+        except requests.exceptions.Timeout:
+            return {
+                "status": False,
+                "message": "ACME-DNS Registrierung fehlgeschlagen: Timeout",
+            }
+        except Exception as e:
+            print(e)
+            return {
+                "status": False,
+                "message": f"ACME-DNS Registrierung fehlgeschlagen: {str(e)}",
+            }
+
+    # DNS-01 direkt beim Provider: nur die fuer den Provider erlaubten Credentials
+    # uebernehmen (Whitelist) und Werte mit Zeilenumbruechen ablehnen (Injection).
+    allowed = LE_DNS_PROVIDERS.get(ledata.dns_provider)
+    if allowed is None:
         return {
             "status": False,
-            "message": "ACME-DNS Registrierung fehlgeschlagen: Timeout",
+            "message": f"Unbekannter DNS-Provider: {ledata.dns_provider}",
         }
-    except Exception as e:
-        print(e)
-        return {
-            "status": False,
-            "message": f"ACME-DNS Registrierung fehlgeschlagen: {str(e)}",
-        }
+    creds = {}
+    for name in allowed:
+        value = (ledata.credentials or {}).get(name, "").strip()
+        if value and "\n" not in value and "\r" not in value:
+            creds[name] = value
+    data.DATA_LE_CREDENTIALS = creds
+    return {
+        "status": True,
+        "message": "Let's Encrypt wird beim Start von Traefik konfiguriert",
+    }
 
 
 @api.post("/upload-certificate")
@@ -887,11 +948,17 @@ EDULUTION_ONLYOFFICE_JWT_SECRET={onlyoffice_jwt_secret}
 EDULUTION_ONLYOFFICE_POSTGRES_PASSWORD={onlyoffice_postgres_secret}
 """
 
-    # Let's Encrypt E-Mail und ACME-DNS Konfiguration hinzufügen wenn verwendet
+    # Let's Encrypt: E-Mail immer; bei DNS-Challenge zusaetzlich die Provider-
+    # Env-Variablen (Traefik/lego liest sie aus edulution.env via env_file).
     if data.DATA_LE_USED and data.DATA_LE_EMAIL:
         environment_file += f"\n# Let's Encrypt\n\nLE_EMAIL={data.DATA_LE_EMAIL}\n"
-        environment_file += "ACME_DNS_API_BASE=https://acme-dns.netzint.de\n"
-        environment_file += "ACME_DNS_STORAGE_PATH=/etc/traefik/ssl/acmedns.json\n"
+        if data.DATA_LE_CHALLENGE != "http":
+            if data.DATA_LE_DNS_PROVIDER == "netzint":
+                environment_file += "ACME_DNS_API_BASE=https://acme-dns.netzint.de\n"
+                environment_file += "ACME_DNS_STORAGE_PATH=/etc/traefik/ssl/acmedns.json\n"
+            else:
+                for name, value in (data.DATA_LE_CREDENTIALS or {}).items():
+                    environment_file += f"{name}={value}\n"
 
     with open("/edulution-ui/edulution.env", "w") as f:
         f.write(environment_file)
@@ -953,6 +1020,28 @@ http:
         # LE und Nicht-LE; ein separates -le-Template und String-/Regex-Basteln
         # am YAML entfallen, und der EntryPoint bleibt konsistent zum Template.
         domain = data.DATA_EDULUTION_EXTERNAL_DOMAIN
+        challenge = data.DATA_LE_CHALLENGE or "dns"
+
+        # ACME-Block je nach Methode: HTTP-01 (kein Wildcard) oder DNS-01 mit dem
+        # gewaehlten Provider (netzint -> lego-Provider "acme-dns").
+        acme = {
+            "email": data.DATA_LE_EMAIL,
+            "storage": "/etc/traefik/ssl/acme.json",
+        }
+        if challenge == "http":
+            acme["httpChallenge"] = {"entryPoint": "web"}
+            # HTTP-01 kann kein Wildcard -> nur die konkrete Domain.
+            tls_domains = [{"main": domain}]
+        else:
+            provider = (
+                "acme-dns"
+                if data.DATA_LE_DNS_PROVIDER == "netzint"
+                else data.DATA_LE_DNS_PROVIDER
+            )
+            acme["dnsChallenge"] = {"provider": provider}
+            # Wildcard fuer alle Subdomains plus die Apex-Domain.
+            tls_domains = [{"main": f"*.{domain}", "sans": [domain]}]
+
         traefik_yml_path = f"{EDULUTION_DIRECTORY}/traefik.yml"
         with open(traefik_yml_path) as f:
             traefik_conf = yaml.safe_load(f)
@@ -964,15 +1053,10 @@ http:
         )
         websecure_http["tls"] = {
             "certResolver": "letsencrypt",
-            # Wildcard-Zertifikat fuer alle Subdomains plus die Apex-Domain.
-            "domains": [{"main": f"*.{domain}", "sans": [domain]}],
+            "domains": tls_domains,
         }
         traefik_conf.setdefault("certificatesResolvers", {})["letsencrypt"] = {
-            "acme": {
-                "email": data.DATA_LE_EMAIL,
-                "storage": "/etc/traefik/ssl/acme.json",
-                "dnsChallenge": {"provider": "acme-dns"},
-            }
+            "acme": acme
         }
 
         with open(traefik_yml_path, "w") as f:

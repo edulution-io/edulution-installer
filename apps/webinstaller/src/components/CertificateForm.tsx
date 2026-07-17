@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner, faCircleCheck, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
@@ -18,6 +18,105 @@ interface AcmeDnsRegistration {
   allowfrom: string[];
 }
 
+type LeKind = 'http' | 'acme-dns' | 'dns';
+
+interface LeCredentialField {
+  env: string;
+  label: string;
+  secret?: boolean;
+  optional?: boolean;
+}
+
+interface LeMethod {
+  id: string;
+  label: string;
+  kind: LeKind;
+  fields?: LeCredentialField[];
+}
+
+// Kuratierte Let's-Encrypt-Methoden. Provider-Codes und ENV-Namen entsprechen
+// exakt Traefik/lego. "netzint" nutzt acme-dns mit dynamischer Registrierung.
+const LE_METHODS: LeMethod[] = [
+  { id: 'http', label: 'HTTP-Challenge (Port 80, kein Wildcard)', kind: 'http' },
+  { id: 'netzint', label: 'DNS · acme-dns (Netzint)', kind: 'acme-dns' },
+  {
+    id: 'cloudflare',
+    label: 'DNS · Cloudflare',
+    kind: 'dns',
+    fields: [{ env: 'CF_DNS_API_TOKEN', label: 'API-Token', secret: true }],
+  },
+  {
+    id: 'hetzner',
+    label: 'DNS · Hetzner',
+    kind: 'dns',
+    fields: [{ env: 'HETZNER_API_TOKEN', label: 'API-Token', secret: true }],
+  },
+  {
+    id: 'ionos',
+    label: 'DNS · IONOS',
+    kind: 'dns',
+    fields: [{ env: 'IONOS_API_KEY', label: 'API-Key (prefix.secret)', secret: true }],
+  },
+  {
+    id: 'netcup',
+    label: 'DNS · netcup',
+    kind: 'dns',
+    fields: [
+      { env: 'NETCUP_CUSTOMER_NUMBER', label: 'Kundennummer' },
+      { env: 'NETCUP_API_KEY', label: 'API-Key', secret: true },
+      { env: 'NETCUP_API_PASSWORD', label: 'API-Passwort', secret: true },
+    ],
+  },
+  {
+    id: 'inwx',
+    label: 'DNS · INWX',
+    kind: 'dns',
+    fields: [
+      { env: 'INWX_USERNAME', label: 'Benutzername' },
+      { env: 'INWX_PASSWORD', label: 'Passwort', secret: true },
+    ],
+  },
+  {
+    id: 'desec',
+    label: 'DNS · deSEC',
+    kind: 'dns',
+    fields: [{ env: 'DESEC_TOKEN', label: 'Token', secret: true }],
+  },
+  {
+    id: 'digitalocean',
+    label: 'DNS · DigitalOcean',
+    kind: 'dns',
+    fields: [{ env: 'DO_AUTH_TOKEN', label: 'API-Token', secret: true }],
+  },
+  {
+    id: 'gandiv5',
+    label: 'DNS · Gandi',
+    kind: 'dns',
+    fields: [{ env: 'GANDIV5_PERSONAL_ACCESS_TOKEN', label: 'Personal Access Token', secret: true }],
+  },
+  {
+    id: 'ovh',
+    label: 'DNS · OVH',
+    kind: 'dns',
+    fields: [
+      { env: 'OVH_ENDPOINT', label: 'Endpoint (z.B. ovh-eu)' },
+      { env: 'OVH_APPLICATION_KEY', label: 'Application Key' },
+      { env: 'OVH_APPLICATION_SECRET', label: 'Application Secret', secret: true },
+      { env: 'OVH_CONSUMER_KEY', label: 'Consumer Key', secret: true },
+    ],
+  },
+  {
+    id: 'route53',
+    label: 'DNS · AWS Route53',
+    kind: 'dns',
+    fields: [
+      { env: 'AWS_ACCESS_KEY_ID', label: 'Access Key ID' },
+      { env: 'AWS_SECRET_ACCESS_KEY', label: 'Secret Access Key', secret: true },
+      { env: 'AWS_REGION', label: 'Region (z.B. eu-central-1)', optional: true },
+    ],
+  },
+];
+
 const CertificateForm = () => {
   const { t } = useTranslation();
   const { edulutionExternalDomain, setCertificateConfigured } = useInstallerStore();
@@ -34,9 +133,12 @@ const CertificateForm = () => {
   const [validDays, setValidDays] = useState('');
 
   // Let's Encrypt fields
-  const [dnsProvider, setDnsProvider] = useState('netzint-dns');
+  const [leMethodId, setLeMethodId] = useState('netzint');
+  const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [email, setEmail] = useState('');
   const [acmeDnsRegistration, setAcmeDnsRegistration] = useState<AcmeDnsRegistration | null>(null);
+
+  const leMethod = LE_METHODS.find((m) => m.id === leMethodId) ?? LE_METHODS[0];
 
   // Upload fields
   const [certFile, setCertFile] = useState<File | null>(null);
@@ -65,7 +167,10 @@ const CertificateForm = () => {
     validDays.trim() !== '' &&
     Number(validDays) > 0;
 
-  const isLeValid = email.trim() !== '' && dnsProvider.trim() !== '';
+  const credentialsValid = (leMethod.fields ?? []).every(
+    (f) => f.optional || (credentials[f.env] ?? '').trim() !== '',
+  );
+  const isLeValid = email.trim() !== '' && credentialsValid;
 
   const isUploadValid = certFile !== null && keyFile !== null;
 
@@ -90,7 +195,12 @@ const CertificateForm = () => {
   const handleCreateLe = useCallback(async () => {
     setStatus('loading');
     setAcmeDnsRegistration(null);
-    const result = await createLeCertificate({ email, dns_provider: dnsProvider });
+    const result = await createLeCertificate({
+      email,
+      challenge: leMethod.kind === 'http' ? 'http' : 'dns',
+      dns_provider: leMethod.id,
+      credentials: leMethod.kind === 'dns' ? credentials : {},
+    });
     if (result.status) {
       setStatus('success');
       setCertificateConfigured(true);
@@ -102,7 +212,7 @@ const CertificateForm = () => {
       setStatus('error');
       setErrorMessage(result.message);
     }
-  }, [email, dnsProvider, setCertificateConfigured]);
+  }, [email, leMethod, credentials, setCertificateConfigured]);
 
   const handleUpload = useCallback(async () => {
     if (!certFile || !keyFile) return;
@@ -251,14 +361,22 @@ const CertificateForm = () => {
           <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
             <span className="text-sm text-gray-600">{t('certificateForm.dnsProvider')}</span>
             <select
-              value={dnsProvider}
+              value={leMethodId}
               onChange={(e) => {
-                setDnsProvider(e.target.value);
+                setLeMethodId(e.target.value);
+                setCredentials({});
                 resetStatus();
               }}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800"
             >
-              <option value="netzint-dns">Netzint DNS</option>
+              {LE_METHODS.map((m) => (
+                <option
+                  key={m.id}
+                  value={m.id}
+                >
+                  {m.label}
+                </option>
+              ))}
             </select>
             <span className="text-sm text-gray-600">{t('common.domain')}</span>
             <Input
@@ -274,7 +392,26 @@ const CertificateForm = () => {
               onChange={(e) => setEmail(e.target.value)}
               className={email.trim() ? 'valid-input' : ''}
             />
+            {(leMethod.fields ?? []).map((f) => (
+              <Fragment key={f.env}>
+                <span className="text-sm text-gray-600">{f.label}</span>
+                <Input
+                  variant="login"
+                  type={f.secret ? 'password' : 'text'}
+                  value={credentials[f.env] ?? ''}
+                  onChange={(e) => setCredentials((c) => ({ ...c, [f.env]: e.target.value }))}
+                  className={f.optional || (credentials[f.env] ?? '').trim() ? 'valid-input' : ''}
+                />
+              </Fragment>
+            ))}
           </div>
+
+          {leMethod.kind === 'http' && (
+            <p className="text-xs text-gray-500">{t('certificateForm.leHttpHint')}</p>
+          )}
+          {leMethod.kind === 'dns' && (
+            <p className="text-xs text-gray-500">{t('certificateForm.leDnsCredentialsHint')}</p>
+          )}
           <div className="flex items-center gap-3">
             <Button
               variant="btn-security"
