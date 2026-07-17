@@ -47,3 +47,21 @@ The web installer runs on `https://localhost:443`.
 
 - **Public Page** — Automatically deployed to GitHub Pages via GitHub Actions on push to `main` or `dev`
 - **Web Installer** — Docker image built via `docker-compose.yml` / `Dockerfile`
+
+### `get` image (self-hosted download page)
+
+For running `get.edulution.io` without GitHub Pages (e.g. when the repository is
+private), the `get` image serves the download page together with the `installer`
+bootstrap script and the config templates. It is built by
+`.github/workflows/build-get-docker.yml` (from `Dockerfile.get` + the built
+`public-page` bundle) and published as `ghcr.io/edulution-io/edulution-installer-get`.
+
+Run it behind your reverse proxy for `get.edulution.io`:
+
+```bash
+docker run -d --name edulution-get -p 80:80 \
+  ghcr.io/edulution-io/edulution-installer-get:main
+```
+
+Because the `installer` keeps downloading templates from `get.edulution.io/download/*`,
+the install flow is unchanged.

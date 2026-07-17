@@ -182,3 +182,5 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+# oh-my-claudecode operational state (never commit)
+.omc/

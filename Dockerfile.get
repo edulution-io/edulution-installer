@@ -1,0 +1,14 @@
+# "get" image: serves the public download page (get.edulution.io) together with
+# the installer bootstrap script and the config templates. This replaces GitHub
+# Pages so the repository can be private while these public, non-secret assets
+# stay reachable (see docs/private-repo-template-delivery.md).
+#
+# The public-page bundle (dist/apps/public-page) is built in CI beforehand and
+# already contains index.html, the assets, the `installer` script and
+# download/*.template (Vite copies apps/public-page/public/ into the output).
+FROM nginx:1.27-alpine
+
+COPY apps/public-page/nginx.conf /etc/nginx/conf.d/default.conf
+COPY dist/apps/public-page /usr/share/nginx/html
+
+EXPOSE 80
