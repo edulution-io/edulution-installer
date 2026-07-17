@@ -100,6 +100,61 @@ export const createLeCertificate = (data: LeCertificateRequest): Promise<LeCerti
     body: JSON.stringify(data),
   });
 
+export interface LeTestRequest {
+  email: string;
+  challenge: string;
+  dns_provider: string;
+  credentials: Record<string, string>;
+  domain: string;
+}
+
+// Startet den Let's-Encrypt-Staging-Test und streamt die lego-Ausgabe per SSE.
+export const testLeCertificate = async (
+  payload: LeTestRequest,
+  onMessage: (line: string) => void,
+  onDone: () => void,
+  onError: (error: string) => void,
+): Promise<() => void> => {
+  try {
+    const response = await fetch('/api/test-le', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      let message = 'Test konnte nicht gestartet werden';
+      try {
+        const body = (await response.json()) as { message?: string };
+        if (body?.message) message = body.message;
+      } catch {
+        // keine JSON-Antwort
+      }
+      onError(message);
+      return () => {};
+    }
+  } catch {
+    onError('Netzwerkfehler');
+    return () => {};
+  }
+
+  const es = new EventSource('/api/test-le/stream');
+  es.onmessage = (event: MessageEvent<string>) => onMessage(event.data);
+  es.addEventListener('done', () => {
+    es.close();
+    onDone();
+  });
+  es.addEventListener('failed', (event: MessageEvent<string>) => {
+    es.close();
+    onError(event.data || 'Test fehlgeschlagen');
+  });
+  es.onerror = () => {
+    if (es.readyState === EventSource.CLOSED) {
+      onError('Verbindung zum Test verloren');
+    }
+  };
+  return () => es.close();
+};
+
 export const uploadCertificate = (certFile: File, keyFile: File): Promise<StatusResponse> => {
   const formData = new FormData();
   formData.append('cert', certFile);

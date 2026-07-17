@@ -1,11 +1,11 @@
-import { useState, useCallback, Fragment } from 'react';
+import { useState, useCallback, useRef, useEffect, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner, faCircleCheck, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
 import { Button } from '@edulution-io/ui-kit';
 import { Input } from '@shared-ui';
 import useInstallerStore from '../store/useInstallerStore';
-import { createSsCertificate, createLeCertificate, uploadCertificate } from '../api/installerApi';
+import { createSsCertificate, createLeCertificate, testLeCertificate, uploadCertificate } from '../api/installerApi';
 
 type CertType = 'self-signed' | 'letsencrypt' | 'upload';
 type OperationStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -140,6 +140,25 @@ const CertificateForm = () => {
 
   const leMethod = LE_METHODS.find((m) => m.id === leMethodId) ?? LE_METHODS[0];
 
+  // Let's-Encrypt-Staging-Test
+  const [testStatus, setTestStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
+  const [testLog, setTestLog] = useState<string[]>([]);
+  const testCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(
+    () => () => {
+      if (testCleanupRef.current) testCleanupRef.current();
+    },
+    [],
+  );
+
+  const resetTest = useCallback(() => {
+    if (testCleanupRef.current) testCleanupRef.current();
+    testCleanupRef.current = null;
+    setTestStatus('idle');
+    setTestLog([]);
+  }, []);
+
   // Upload fields
   const [certFile, setCertFile] = useState<File | null>(null);
   const [keyFile, setKeyFile] = useState<File | null>(null);
@@ -213,6 +232,28 @@ const CertificateForm = () => {
       setErrorMessage(result.message);
     }
   }, [email, leMethod, credentials, setCertificateConfigured]);
+
+  const handleTestLe = useCallback(async () => {
+    if (testCleanupRef.current) testCleanupRef.current();
+    setTestStatus('running');
+    setTestLog([]);
+    const cleanup = await testLeCertificate(
+      {
+        email,
+        challenge: leMethod.kind === 'http' ? 'http' : 'dns',
+        dns_provider: leMethod.id,
+        credentials: leMethod.kind === 'dns' ? credentials : {},
+        domain: edulutionExternalDomain,
+      },
+      (line) => setTestLog((l) => [...l, line]),
+      () => setTestStatus('success'),
+      (error) => {
+        setTestLog((l) => [...l, `[FEHLER] ${error}`]);
+        setTestStatus('error');
+      },
+    );
+    testCleanupRef.current = cleanup;
+  }, [email, leMethod, credentials, edulutionExternalDomain]);
 
   const handleUpload = useCallback(async () => {
     if (!certFile || !keyFile) return;
@@ -366,6 +407,7 @@ const CertificateForm = () => {
                 setLeMethodId(e.target.value);
                 setCredentials({});
                 resetStatus();
+                resetTest();
               }}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800"
             >
@@ -412,7 +454,7 @@ const CertificateForm = () => {
           {leMethod.kind === 'dns' && (
             <p className="text-xs text-gray-500">{t('certificateForm.leDnsCredentialsHint')}</p>
           )}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Button
               variant="btn-security"
               size="md"
@@ -424,8 +466,45 @@ const CertificateForm = () => {
             >
               {t('certificateForm.createCertificate')}
             </Button>
+            <Button
+              variant="btn-outline"
+              size="md"
+              onClick={() => {
+                void handleTestLe();
+              }}
+              disabled={
+                !isLeValid ||
+                testStatus === 'running' ||
+                (leMethod.kind === 'acme-dns' && !acmeDnsRegistration)
+              }
+            >
+              {testStatus === 'running' ? t('certificateForm.leTestRunning') : t('certificateForm.leTest')}
+            </Button>
             {statusIcon}
           </div>
+
+          {leMethod.kind === 'acme-dns' && !acmeDnsRegistration && (
+            <p className="text-xs text-gray-500">{t('certificateForm.leTestNetzintHint')}</p>
+          )}
+
+          {testLog.length > 0 && (
+            <div className="max-h-48 overflow-y-auto rounded-lg bg-gray-900 p-3 font-mono text-xs text-green-400">
+              {testLog.map((line, i) => (
+                <div
+                  key={i}
+                  className={line.includes('[FEHLER]') ? 'text-red-400' : ''}
+                >
+                  {line}
+                </div>
+              ))}
+              {testStatus === 'running' && <div className="animate-pulse text-gray-500">_</div>}
+            </div>
+          )}
+          {testStatus === 'success' && (
+            <div className="rounded-lg bg-green-50 p-3 text-sm text-green-800">
+              {t('certificateForm.leTestSuccess')}
+            </div>
+          )}
 
           {acmeDnsRegistration && (
             <div className="flex flex-col gap-2 rounded-lg border border-blue-200 bg-blue-50 p-4">

@@ -11,6 +11,7 @@ import ssl
 import shutil
 import asyncio
 import threading
+import subprocess
 import urllib3
 import yaml
 
@@ -87,6 +88,10 @@ LE_DNS_PROVIDERS = {
     "route53": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"],
 }
 
+# Let's-Encrypt-Staging (ungueltige Test-Zertifikate, aber hohe Rate-Limits) fuer
+# den Vorab-Test der gewaehlten Methode direkt im Installer.
+LE_STAGING_SERVER = "https://acme-staging-v02.api.letsencrypt.org/directory"
+
 
 # --- Pydantic Models ---
 
@@ -111,6 +116,14 @@ class LECertificate(BaseModel):
     dns_provider: str = "netzint"
     # Provider-Credentials (ENV-Name -> Wert), nur bei DNS-Providern ausser netzint.
     credentials: dict[str, str] = {}
+
+
+class LeTestRequest(BaseModel):
+    email: str
+    challenge: str = "dns"
+    dns_provider: str = "netzint"
+    credentials: dict[str, str] = {}
+    domain: str
 
 
 class ConfigurationRequest(BaseModel):
@@ -196,6 +209,8 @@ class BootstrapManager:
 
 
 bootstrap_manager = BootstrapManager()
+# Zweite Instanz derselben SSE-Mechanik fuer den Let's-Encrypt-Staging-Test.
+le_test_manager = BootstrapManager()
 
 
 # --- Data Store ---
@@ -524,6 +539,142 @@ def createLECertificate(ledata: LECertificate, data: Data = Depends(getData)):
         "status": True,
         "message": "Let's Encrypt wird beim Start von Traefik konfiguriert",
     }
+
+
+@api.post("/test-le")
+def testLECertificate(req: LeTestRequest, data: Data = Depends(getData)):
+    """Fuehrt die gewaehlte LE-Methode als Dry-Run gegen den Staging-Server aus
+    (via lego), damit man Erreichbarkeit / Provider-Zugangsdaten testen kann,
+    bevor edulution startet."""
+    if le_test_manager.status == "running":
+        return JSONResponse(
+            status_code=409,
+            content={"status": False, "message": "Test läuft bereits"},
+        )
+
+    domain = (req.domain or "").strip()
+    email = (req.email or "").strip()
+    if not domain or not email:
+        return JSONResponse(
+            status_code=400,
+            content={"status": False, "message": "Domain und E-Mail erforderlich"},
+        )
+
+    cmd = [
+        "lego",
+        "--accept-tos",
+        "--email",
+        email,
+        "--server",
+        LE_STAGING_SERVER,
+        "--domains",
+        domain,
+        "--path",
+        "/tmp/lego-test",
+    ]
+    env = os.environ.copy()
+
+    if req.challenge == "http":
+        cmd += ["--http"]
+    elif req.dns_provider == "netzint":
+        if not data.DATA_LE_ACME_DNS_REGISTRATION:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": False,
+                    "message": "Bitte zuerst 'Zertifikat erstellen' (acme-dns Registrierung) ausführen und den CNAME setzen.",
+                },
+            )
+        acmedns_path = "/tmp/acmedns-test.json"
+        try:
+            with open(acmedns_path, "w") as f:
+                json.dump({domain: data.DATA_LE_ACME_DNS_REGISTRATION}, f)
+        except Exception as e:
+            return JSONResponse(
+                status_code=500,
+                content={"status": False, "message": f"Fehler: {e}"},
+            )
+        env["ACME_DNS_API_BASE"] = "https://acme-dns.netzint.de"
+        env["ACME_DNS_STORAGE_PATH"] = acmedns_path
+        cmd += ["--dns", "acme-dns"]
+    else:
+        allowed = LE_DNS_PROVIDERS.get(req.dns_provider)
+        if allowed is None:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": False,
+                    "message": f"Unbekannter DNS-Provider: {req.dns_provider}",
+                },
+            )
+        for name in allowed:
+            value = (req.credentials or {}).get(name, "").strip()
+            if value and "\n" not in value and "\r" not in value:
+                env[name] = value
+        cmd += ["--dns", req.dns_provider]
+
+    cmd += ["run"]
+
+    le_test_manager.reset()
+
+    def run_test():
+        try:
+            le_test_manager.add_event(
+                f"Let's-Encrypt-Test (Staging) fuer {domain} wird gestartet ..."
+            )
+            proc = subprocess.Popen(
+                cmd,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            # Watchdog: nach 300s hart abbrechen, falls lego haengt.
+            killer = threading.Timer(300, proc.kill)
+            killer.start()
+            try:
+                for line in proc.stdout:
+                    le_test_manager.add_event(line.rstrip())
+                rc = proc.wait()
+            finally:
+                killer.cancel()
+
+            if rc == 0:
+                le_test_manager.add_event(
+                    "Test erfolgreich: Das Zertifikat konnte im Staging ausgestellt werden.",
+                    "done",
+                )
+                le_test_manager.finish("completed")
+            else:
+                le_test_manager.add_event(
+                    f"Test fehlgeschlagen (Exit-Code {rc}).", "failed"
+                )
+                le_test_manager.finish("failed")
+        except Exception as e:
+            le_test_manager.add_event(f"Fehler: {e}", "failed")
+            le_test_manager.finish("failed")
+
+    threading.Thread(target=run_test, daemon=True).start()
+    return {"status": True, "message": "Test gestartet"}
+
+
+@api.get("/test-le/stream")
+async def test_le_stream(request: Request):
+    if le_test_manager.status == "idle":
+        return JSONResponse(
+            status_code=404,
+            content={"status": False, "message": "Kein Test gestartet"},
+        )
+
+    last_event_id = request.headers.get("last-event-id", "")
+    start_id = int(last_event_id) + 1 if last_event_id.isdigit() else 0
+
+    return StreamingResponse(
+        le_test_manager.stream_from(start_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @api.post("/upload-certificate")
