@@ -30,6 +30,11 @@ services:
       #EDUI_MAIL_IMAP_TIMEOUT:
       # Cache TTL for storing oidc config request in redis in ms, default 1h
       #EDUI_OIDC_CONFIG_CACHE_TTL=
+      # optional: fallback address of the fileproxy serving the wiki HTTP API,
+      # used when a WebDAV root server carries no address of its own. Must be an
+      # origin without a path and must be the fileproxy itself, not the public
+      # UI host, e.g. https://fileproxy.example.edu:8443
+      #EDUI_FILEPROXY_API_URL=
       KEYCLOAK_API: http://edu-keycloak:8080/auth
       KEYCLOAK_EDU_UI_REALM: edulution
       KEYCLOAK_EDU_UI_CLIENT_ID: edu-ui
