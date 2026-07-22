@@ -16,7 +16,7 @@
 # Installiert Elasticsearch + edulution-fileproxy + schreibt Config + Secret.
 fp_install_fileproxy: true
 
-# Schreibt die Traefik `/wiki`-Route in die dynamic-config. Aktiviere auf dem
+# Schreibt die Traefik-Route für die Wiki-API in die dynamic-config. Aktiviere auf dem
 # Host, der Traefik für die edulution-Front betreibt (meist 10.0.0.x wo
 # edulution-ui + edulution-api Container laufen).
 fp_install_traefik_route: false
@@ -113,7 +113,7 @@ fp_log_file: '/var/log/edulution-fileproxy/server.log'
 # edulution-ui-docker-compose-Setup.
 fp_traefik_config_dir: '/srv/docker/edulution-ui/data/traefik/config'
 
-# URL die Traefik als Backend für die /wiki-Route verwendet. Das ist die
+# URL die Traefik als Backend für die Wiki-API-Route verwendet. Das ist die
 # externe Adresse des Fileproxy-Hosts, NICHT localhost — Traefik läuft in
 # einem eigenen Container.
 # Beispiel: 'https://10.0.0.29:443'

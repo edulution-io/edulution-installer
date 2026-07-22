@@ -4,7 +4,7 @@
 # =============================================================================
 #
 # Installiert edulution-fileproxy (SMB-proxy + Wiki-HTTP-API) + Elasticsearch
-# + integriert die Traefik-Route für /wiki.
+# + integriert die Traefik-Route für die Wiki-API-Endpunkte.
 #
 # Der Indexer nutzt den existierenden global-admin Account — es werden
 # keine eigenen AD-Objekte (User, Gruppen, Share-Grants) angelegt.
@@ -14,6 +14,8 @@
 #
 #   fp_install_fileproxy        → ES + Paket + Config + Secret + Systemd
 #   fp_install_traefik_route    → dynamic-config-File für Traefik
+#                                 (routet /wiki/search + /wiki/list, NICHT
+#                                  den gesamten /wiki-Prefix — siehe unten)
 #
 # Verwendung:
 #   ansible-playbook edulution-fileproxy.yml -e @vars/edulution-fileproxy_vars.yml
@@ -44,7 +46,10 @@
 #
 #     2. Auf dem Traefik-Host (typisch 10.0.0.4 im edulution-ui-Setup):
 #          fp_install_traefik_route=true, fp_install_fileproxy=false
-#          → Schreibt wiki.yml in die traefik dynamic-config.
+#          → Schreibt wiki.yml in die traefik dynamic-config. Die Route matcht
+#            ausschliesslich /wiki/search und /wiki/list. Ein PathPrefix(`/wiki`)
+#            würde die Client-Route der SPA (/wiki/<share>/<pfad>) verdecken und
+#            jeden Wiki-Deeplink beim Reload auf 404 laufen lassen.
 #
 #   Kein DC-Lauf mehr nötig — global-admin existiert bereits.
 # =============================================================================
@@ -217,12 +222,12 @@
             daemon_reload: true
 
     # =========================================================================
-    # ABSCHNITT 2 — TRAEFIK /wiki-ROUTE (auf dem Host der Traefik betreibt)
+    # ABSCHNITT 2 — TRAEFIK-ROUTE FÜR DIE WIKI-API (auf dem Traefik-Host)
     # =========================================================================
     # Traefik hot-reloaded den file-provider bei `watch: true` (default im
     # edulution-ui-preset). Kein Restart nötig.
 
-    - name: Traefik — install /wiki dynamic route
+    - name: Traefik — install the wiki API dynamic route
       when: fp_install_traefik_route
       block:
 
@@ -232,7 +237,7 @@
             state: directory
             mode: '0755'
 
-        - name: Render /wiki traefik route
+        - name: Render the wiki API traefik route
           ansible.builtin.template:
             src: traefik-wiki.yml.j2
             dest: '{{ fp_traefik_config_dir }}/wiki.yml'
