@@ -42,6 +42,13 @@
     lmn_netmask: '255.255.0.0'
     lmn_gateway: '10.0.0.254'
 
+    # DNS-Forwarder fuer die Samba-interne DNS.
+    # linuxmuster-setup schreibt in die smb.conf zwingend
+    # "dns forwarder = <firewallip>". Ohne installierte Firewall zeigt das ins
+    # Leere und die externe Namensaufloesung (und damit apt) schlaegt fehl.
+    # Daher setzen wir nach dem Setup einen funktionierenden Resolver.
+    lmn_dns_forwarder: '9.9.9.9'
+
     # Server
     lmn_servername: 'server'
     lmn_domainname: 'linuxmuster.lan'
@@ -67,6 +74,26 @@
     lmn_unattended: true
     lmn_disable_auto_updates: true
 
+    # Lokale Installation (edulution-UI und LMN-Server auf derselben Maschine).
+    # Wird bei "gleiche Maschine" in der Installer-UI auf true gesetzt.
+    # In diesem Fall kollidiert die Ajenti-Web-UI (Port 443) mit dem Traefik
+    # von edulution, daher wird Ajenti auf lmn_webui_port verschoben.
+    lmn_local_install: false
+    lmn_webui_port: 8443
+
+    # Datenplatte: linuxmuster legt seine Daten (/srv/samba, /srv/linbo) und /var
+    # auf einer zweiten Platte via LVM ab. Das erledigt lmn-appliance/lmn-prepare
+    # selbst, wenn man ihm die Platte per -l uebergibt (VG vg_srv, Volumes s.u.,
+    # Quota auf global/default-school). Ist eine zweite, LEERE Platte vorhanden,
+    # uebergeben wir sie automatisch.
+    lmn_setup_data_disk: true
+    # Leer lassen -> automatische Erkennung der ersten komplett leeren
+    # Nicht-System-Platte (z.B. /dev/vdb, /dev/sdb). Sonst Geraet explizit setzen.
+    lmn_data_disk: ''
+    # Leer lassen -> Standard von lmn-prepare:
+    # var:10,linbo:40,global:10,default-school:100%FREE
+    lmn_lvm_volumes: ''
+
     # Firewall wird standardmaessig NICHT installiert (lmn_skip_firewall: true).
     # Die Firewall muss separat eingerichtet werden.
 
@@ -74,7 +101,11 @@
     lmn_repo_url: 'https://deb.linuxmuster.net/'
     lmn_repo_gpg_url: 'https://deb.linuxmuster.net/pub.gpg'
     lmn_repo_distribution: 'lmn73'
-    lmn_appliance_url: 'https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/master/lmn-appliance'
+    # lmn-appliance MUSS von einem 7.3-Release geladen werden: master hat die
+    # Auswertung von -l/--pvdevice verloren (die Datenplatte wuerde ignoriert)
+    # und wuerde ausserdem die lmn74-Quelle (7.4-Prerelease) einrichten.
+    lmn_prepare_version: 'v7.3.1'
+    lmn_appliance_url: 'https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/{{ lmn_prepare_version }}/lmn-appliance'
 
     # Pakete
     lmn_additional_packages:
@@ -87,6 +118,7 @@
       - wget
       - curl
       - gnupg
+      - lvm2
 
   tasks:
     # =========================================================================
@@ -252,7 +284,42 @@
       ansible.builtin.set_fact:
         lmn_cidr: "{{ (lmn_server_ip + '/' + lmn_netmask) | ansible.utils.ipaddr('prefix') }}"
 
-    - name: lmn-appliance ausführen (Server-Profil, ohne LVM)
+    # -------------------------------------------------------------------------
+    # DATENPLATTE ERMITTELN (wird per -l an lmn-appliance uebergeben)
+    # -------------------------------------------------------------------------
+    - name: Leere zweite Platte fuer LVM ermitteln
+      ansible.builtin.shell: |
+        # Erste vollstaendig leere Nicht-System-Platte:
+        # keine Partitionen, kein Dateisystem, keine Signatur (fs/parttable/LVM).
+        for d in $(lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}'); do
+          dev="/dev/$d"
+          [ "$(lsblk -n -o NAME "$dev" | wc -l)" -eq 1 ] || continue
+          [ -z "$(lsblk -dn -o FSTYPE "$dev")" ] || continue
+          blkid "$dev" >/dev/null 2>&1 && continue
+          echo "$dev"; break
+        done
+      args:
+        executable: /bin/bash
+      register: lmn_detected_disk
+      changed_when: false
+      when: lmn_setup_data_disk | bool
+
+    - name: Zu verwendende Datenplatte festlegen
+      ansible.builtin.set_fact:
+        lmn_data_disk_final: "{{ (lmn_data_disk | default('', true)) or (lmn_detected_disk.stdout | default('') | trim) }}"
+      when: lmn_setup_data_disk | bool
+
+    - name: Hinweis wenn keine leere Datenplatte gefunden wurde
+      ansible.builtin.debug:
+        msg: >-
+          Keine leere zweite Platte gefunden - Installation erfolgt auf der
+          Systemplatte (kein separates LVM). Vorhandene Platten werden nie
+          ueberschrieben; ggf. lmn_data_disk explizit setzen.
+      when:
+        - lmn_setup_data_disk | bool
+        - (lmn_data_disk_final | default('')) == ''
+
+    - name: lmn-appliance ausführen (Server-Profil, LVM auf Datenplatte falls vorhanden)
       ansible.builtin.shell: |
         set -o pipefail
         /root/lmn-appliance -p server -u \
@@ -260,6 +327,8 @@
           -f {{ lmn_gateway }} \
           -d {{ lmn_domainname }} \
           -t {{ lmn_servername }} \
+          {{ ('-l ' + lmn_data_disk_final) if (lmn_data_disk_final | default('')) != '' else '' }} \
+          {{ ('-v ' + lmn_lvm_volumes) if (lmn_lvm_volumes | default('')) != '' else '' }} \
           2>&1 | while IFS= read -r line; do
           echo "$line"
         done
@@ -348,6 +417,17 @@
         mode: '0644'
       when: lmn_setup_result is defined and lmn_setup_result.rc == 0
 
+    # linuxmuster-setup verankert "dns forwarder = <firewallip>" in der
+    # smb.conf. Ohne Firewall ist das ein toter Resolver -> externe DNS-Namen
+    # (deb.linuxmuster.net, archive.ubuntu.com, ...) lassen sich nicht mehr
+    # aufloesen. Vor dem Samba-Neustart auf einen funktionierenden Forwarder
+    # umbiegen, damit die anschliessenden apt-Tasks nicht scheitern.
+    - name: DNS-Forwarder in smb.conf auf funktionierenden Resolver setzen
+      ansible.builtin.replace:
+        path: /etc/samba/smb.conf
+        regexp: '^(\s*dns forwarder\s*=\s*).*$'
+        replace: '\g<1>{{ lmn_dns_forwarder }}'
+
     - name: Samba AD DC neu starten
       ansible.builtin.systemd:
         name: samba-ad-dc
@@ -367,6 +447,16 @@
         exit 1
       changed_when: false
 
+    - name: Warten bis externe DNS-Aufloesung funktioniert
+      ansible.builtin.command:
+        cmd: getent hosts deb.linuxmuster.net
+      register: lmn_dns_check
+      until: lmn_dns_check.rc == 0
+      retries: 12
+      delay: 5
+      changed_when: false
+      failed_when: lmn_dns_check.rc != 0
+
     # =========================================================================
     # EDULUTION BINDUSER ERSTELLEN (via sophomorix)
     # =========================================================================
@@ -382,6 +472,10 @@
       failed_when: false
       changed_when: false
 
+    # Nach dem samba-ad-dc-Neustart antwortet samba-tool (lokale DB) bereits,
+    # waehrend das Netzwerk-LDAP, das sophomorix nutzt, noch nicht bereit ist
+    # ("No connection to Samba4 AD!"). Daher den Aufruf mit kurzem Delay
+    # wiederholen, bis die Verbindung steht (nichts wird vorher angelegt).
     - name: edulutionui-binduser mit sophomorix erstellen
       ansible.builtin.command:
         cmd: >
@@ -390,6 +484,9 @@
           --random-passwd-save
       register: binduser_create_result
       when: binduser_exists.rc != 0
+      until: binduser_create_result.rc == 0
+      retries: 12
+      delay: 5
 
     - name: Debug - Binduser-Erstellung Ergebnis
       ansible.builtin.debug:
@@ -465,6 +562,94 @@
         daemon_reload: true
 
     # =========================================================================
+    # SSH-ZUGRIFF FUER EDULUTION-INSTALLER
+    # =========================================================================
+    # Erlaubt Root-/Passwort-Login ausschliesslich von localhost und aus dem
+    # Docker-Bridge-Netz (docker0, 172.17.0.0/16). Wird immer angelegt, wirkt
+    # sich aber nur auf Verbindungen aus diesen Netzen aus. Bei einer
+    # "gleiche Maschine"-Installation erreicht der edulution-Container den
+    # Host darueber ueber die docker0-IP.
+
+    - name: SSH-Konfiguration fuer edulution-installer erstellen
+      ansible.builtin.copy:
+        content: |
+          Match Address 127.0.0.1,172.17.0.0/16
+              PermitRootLogin yes
+              PasswordAuthentication yes
+        dest: /etc/ssh/sshd_config.d/edulution_installer.conf
+        owner: root
+        group: root
+        mode: '0644'
+      notify: SSH-Dienst neustarten
+
+    # =========================================================================
+    # AJENTI-PORT ANPASSEN (nur bei lokaler Installation)
+    # =========================================================================
+    # Auf derselben Maschine belegt der edulution-Traefik den Host-Port 443.
+    # Damit die Ajenti-Web-UI (linuxmuster.net) nicht kollidiert, wird sie auf
+    # lmn_webui_port verschoben.
+
+    - name: Ajenti-Port anpassen (lokale Installation)
+      ansible.builtin.replace:
+        path: /etc/ajenti/config.yml
+        regexp: '(^\s*port:\s*)443\b'
+        replace: '\g<1>{{ lmn_webui_port }}'
+      when: lmn_local_install | bool
+      notify: Linuxmuster-WebUI neustarten
+
+    # =========================================================================
+    # REBOOT-ERSATZ: gezielte Dienst-Neustarts statt vollem Neustart
+    # =========================================================================
+    # linuxmuster.net empfiehlt nach dem Setup einen Reboot. Wo das nicht moeglich
+    # ist, ersetzen wir ihn so weit wie sinnvoll:
+    #  - needrestart startet Dienste mit veralteten Bibliotheken neu (apt-Upgrade)
+    #  - der LMN-Stack wird gezielt neu gestartet, damit er die neue Konfiguration
+    #    liest -- bewusst OHNE Netzwerk (netplan/IP-Wechsel), um die laufende
+    #    Verbindung nicht zu kappen.
+    #  - Bleibt ein Kernel-Update, ist ein echter Reboot weiterhin noetig; das
+    #    wird am Ende gemeldet.
+
+    - name: needrestart installieren (falls nicht vorhanden)
+      ansible.builtin.apt:
+        name: needrestart
+        state: present
+      failed_when: false
+
+    - name: Dienste mit veralteten Bibliotheken automatisch neu starten
+      ansible.builtin.command:
+        cmd: needrestart -r a -b
+      register: needrestart_auto
+      changed_when: false
+      failed_when: false
+
+    - name: Installierte Dienste ermitteln
+      ansible.builtin.service_facts:
+
+    - name: LMN-Stack neu starten (Reboot-Ersatz, ohne Netzwerk)
+      ansible.builtin.systemd:
+        name: '{{ item }}'
+        state: restarted
+      loop:
+        - isc-dhcp-server
+        - ntpsec
+        - apparmor
+        - linuxmuster-api
+        - linuxmuster-webui
+      when: (item ~ '.service') in ansible_facts.services
+      failed_when: false
+
+    - name: Pruefen ob ein Kernel-Reboot noetig ist
+      ansible.builtin.command:
+        cmd: needrestart -k -b
+      register: needrestart_kernel
+      changed_when: false
+      failed_when: false
+
+    - name: Kernel-Reboot-Status merken
+      ansible.builtin.set_fact:
+        lmn_kernel_reboot_required: "{{ 'NEEDRESTART-KSTA: 3' in (needrestart_kernel.stdout | default('')) }}"
+
+    # =========================================================================
     # ABSCHLUSSMELDUNG
     # =========================================================================
 
@@ -478,11 +663,29 @@
           Server: {{ lmn_servername }}.{{ lmn_domainname }}
           IP:     {{ lmn_server_ip }}
 
-          Web-UI: https://{{ lmn_server_ip }}
+          Web-UI: https://{{ lmn_server_ip }}{{ (':' + lmn_webui_port | string) if (lmn_local_install | bool) else '' }}
           Login:  global-admin / {{ lmn_adminpw }}
 
           edulution Binduser: CN=edulutionui-binduser,OU=Management,OU=GLOBAL,{{ edulution_dc_parts }}
 
-          WICHTIG: System neustarten mit 'sudo reboot'
+          Dienste wurden gezielt neugestartet (Reboot-Ersatz, ohne Netzwerk).
+          {{ 'ACHTUNG: Der Kernel wurde aktualisiert - ein echter Reboot ist noetig!'
+             if (lmn_kernel_reboot_required | default(false) | bool)
+             else 'Kein Kernel-Reboot noetig - die Dienst-Neustarts genuegen.' }}
 
           ====================================================================
+
+  # ===========================================================================
+  # HANDLERS
+  # ===========================================================================
+
+  handlers:
+    - name: SSH-Dienst neustarten
+      ansible.builtin.systemd:
+        name: ssh
+        state: restarted
+
+    - name: Linuxmuster-WebUI neustarten
+      ansible.builtin.systemd:
+        name: linuxmuster-webui
+        state: restarted

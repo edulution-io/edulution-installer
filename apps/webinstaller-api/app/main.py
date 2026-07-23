@@ -70,6 +70,8 @@ class ConfigurationRequest(BaseModel):
     lmnLdapSchema: str
     lmnLdapPort: int
     edulutionExternalDomain: str
+    lmnLocalInstall: bool = False
+    lmnWebuiPort: int = 8443
 
 
 class AdminGroupRequest(BaseModel):
@@ -163,6 +165,8 @@ class Data:
         self.DATA_DEPLOYMENT_TARGET = None
         self.DATA_INITIAL_ADMIN_GROUP = None
         self.DATA_LMN_TARGET_HOST = None
+        self.DATA_LMN_LOCAL_INSTALL = False
+        self.DATA_LMN_WEBUI_PORT = 443
 
 
 data = Data()
@@ -212,6 +216,10 @@ def configure(config: ConfigurationRequest, data: Data = Depends(getData)):
     data.DATA_LMN_LDAP_SCHEMA = config.lmnLdapSchema
     data.DATA_LMN_LDAP_PORT = config.lmnLdapPort
     data.DATA_EDULUTION_EXTERNAL_DOMAIN = config.edulutionExternalDomain
+    data.DATA_LMN_LOCAL_INSTALL = config.lmnLocalInstall
+    # Ajenti/webdav bleibt auf 443, ausser bei "gleiche Maschine": dort weicht
+    # die linuxmuster-Web-UI dem edulution-Traefik auf lmnWebuiPort aus.
+    data.DATA_LMN_WEBUI_PORT = config.lmnWebuiPort if config.lmnLocalInstall else 443
     return {"status": True, "message": "Konfiguration gespeichert"}
 
 
@@ -237,7 +245,9 @@ def checkAPIStatus(data: Data = Depends(getData)):
 def checkWebDAV(data: Data = Depends(getData)):
     try:
         result = requests.get(
-            "https://" + data.DATA_LMN_EXTERNAL_DOMAIN + ":443", verify=False, timeout=3
+            "https://" + data.DATA_LMN_EXTERNAL_DOMAIN + ":" + str(data.DATA_LMN_WEBUI_PORT),
+            verify=False,
+            timeout=3,
         )
         if result.status_code == 200:
             return {"status": True, "message": "Successful"}
@@ -318,6 +328,27 @@ def setAdminGroup(req: AdminGroupRequest, data: Data = Depends(getData)):
 @api.get("/proxy-check")
 def proxyCheck(request: Request):
     return {"proxyDetected": request.headers.get("x-forwarded-for") is not None}
+
+
+@api.get("/docker-host-ip")
+def dockerHostIp():
+    # The container's default gateway is the docker bridge (docker0) address on
+    # the host. In "same machine" mode this is how edulution reaches the LMN
+    # server running on the host.
+    try:
+        with open("/proc/net/route") as f:
+            for line in f.readlines()[1:]:
+                fields = line.strip().split()
+                # Destination 00000000 == default route; field[2] is the gateway
+                if len(fields) >= 3 and fields[1] == "00000000":
+                    gw_hex = fields[2]
+                    ip = ".".join(
+                        str(int(gw_hex[i : i + 2], 16)) for i in (6, 4, 2, 0)
+                    )
+                    return {"ip": ip}
+    except Exception as e:
+        print(e)
+    return {"ip": "172.17.0.1"}
 
 
 @api.post("/create-ss-certificate")
@@ -699,6 +730,16 @@ def generateRandom(length=5):
 def createEdulutionEnvFile(data: Data):
     root_dn = re.search(r"(DC=.*$)", data.DATA_LMN_BINDUSER_DN).group(1)
 
+    # Ajenti serves the LMN webdav. On a "same machine" install it is moved off
+    # 443 (which the edulution Traefik occupies), so webdav must be addressed on
+    # the new port. On 443 the netloc stays bare to preserve prior behaviour.
+    webdav_port = data.DATA_LMN_WEBUI_PORT or 443
+    webdav_netloc = (
+        data.DATA_LMN_EXTERNAL_DOMAIN
+        if webdav_port == 443
+        else f"{data.DATA_LMN_EXTERNAL_DOMAIN}:{webdav_port}"
+    )
+
     keycloak_eduapi_secret = generateSecret()
     keycloak_eduui_secret = generateSecret()
     keycloak_edumailcow_sync_secret = generateSecret()
@@ -771,7 +812,7 @@ def createEdulutionEnvFile(data: Data):
 EDUI_ORGANIZATION_TYPE={data.DATA_ORGANIZATION_TYPE}
 EDUI_DEPLOYMENT_TARGET={data.DATA_DEPLOYMENT_TARGET}
 
-EDUI_WEBDAV_URL=https://{data.DATA_LMN_EXTERNAL_DOMAIN}/webdav/
+EDUI_WEBDAV_URL=https://{webdav_netloc}/webdav/
 
 MONGODB_USERNAME=root
 MONGODB_PASSWORD={mongodb_secret}
@@ -875,7 +916,7 @@ http:
     webdav:
       loadBalancer:
         servers:
-          - url: "https://{data.DATA_LMN_EXTERNAL_DOMAIN}/webdav"
+          - url: "https://{webdav_netloc}/webdav"
 """
 
     with open("/edulution-ui/data/traefik/config/webdav.yml", "w") as f:

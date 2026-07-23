@@ -54,12 +54,16 @@ const LmnConfigPage = () => {
   const [timezone, setTimezone] = useState(store.lmnTimezone);
   const [locale, setLocale] = useState(store.lmnLocale);
 
+  // Bei "gleiche Maschine" ist das Netzwerk des Hosts bereits korrekt konfiguriert.
+  // Server-IP/Netzmaske/Gateway werden dann automatisch erkannt und nicht abgefragt.
+  const isLocal = store.lmnLocalInstall;
+
   useEffect(() => {
     void getLmnNetworkInfo()
       .then((info) => {
-        if (info.ip && !serverIp) setServerIp(info.ip);
-        if (info.netmask && !netmask) setNetmask(info.netmask);
-        if (info.gateway && !gateway) setGateway(info.gateway);
+        if (info.ip && (!serverIp || isLocal)) setServerIp(info.ip);
+        if (info.netmask && (!netmask || isLocal)) setNetmask(info.netmask);
+        if (info.gateway && (!gateway || isLocal)) setGateway(info.gateway);
         if (info.hostname && !servername) setServername(info.hostname);
       })
       .catch(() => {
@@ -71,9 +75,7 @@ const LmnConfigPage = () => {
   const pwMatch = adminpw === adminpwConfirm;
 
   const step1Valid =
-    isValidIp(serverIp) &&
-    isValidIp(netmask) &&
-    isValidIp(gateway) &&
+    (isLocal || (isValidIp(serverIp) && isValidIp(netmask) && isValidIp(gateway))) &&
     servername.trim() !== '' &&
     domainname.trim() !== '';
 
@@ -107,9 +109,16 @@ const LmnConfigPage = () => {
 
       {step === 1 && (
         <>
-          {/* Netzwerk */}
-          <h4 className="text-sm font-bold text-gray-600">{t('lmnConfig.network')}</h4>
-          <div className="grid grid-cols-3 gap-3">
+          {/* Netzwerk – bei gleicher Maschine bereits korrekt konfiguriert, daher ausgeblendet */}
+          {isLocal && (
+            <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">
+              {t('lmnConfig.networkAutoDetected')}
+            </div>
+          )}
+          {!isLocal && (
+            <>
+              <h4 className="text-sm font-bold text-gray-600">{t('lmnConfig.network')}</h4>
+              <div className="grid grid-cols-3 gap-3">
             <div>
               <label
                 htmlFor="lmn_server_ip"
@@ -156,6 +165,8 @@ const LmnConfigPage = () => {
               />
             </div>
           </div>
+            </>
+          )}
 
           {/* Server */}
           <h4 className="text-sm font-bold text-gray-600">{t('lmnConfig.server')}</h4>

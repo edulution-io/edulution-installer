@@ -14,6 +14,8 @@ interface ConfigurationRequest {
   lmnLdapSchema: 'ldap' | 'ldaps';
   lmnLdapPort: number;
   edulutionExternalDomain: string;
+  lmnLocalInstall: boolean;
+  lmnWebuiPort: number;
 }
 
 interface SsCertificateRequest {
@@ -108,6 +110,11 @@ export const startInstallation = (): Promise<StatusResponse> =>
 
 export const checkProxy = (): Promise<{ proxyDetected: boolean }> =>
   apiFetch<{ proxyDetected: boolean }>('/api/proxy-check');
+
+// docker0 gateway IP as seen from inside the edulution container.
+// Used in "same machine" mode as the address to reach the LMN server on the host.
+export const getDockerHostIp = (): Promise<{ ip: string }> =>
+  apiFetch<{ ip: string }>('/api/docker-host-ip');
 
 // --- LMN Installer API ---
 
