@@ -104,9 +104,9 @@
     # linuxmuster-Version automatisch anhand der Ubuntu-Version:
     #   Ubuntu 24.04 -> lmn73 (7.3),  Ubuntu 26.04 -> lmn74 (7.4).
     # lmn_repo_distribution/lmn_prepare_version werden daraus per set_fact
-    # abgeleitet (per -e ueberschreibbar). Wichtig: nur die 7.3-Tooling (v7.3.1)
-    # wertet -l/--pvdevice (Datenplatte) aus; die 7.4-Tooling (v7.4.0) noch nicht
-    # (dort ist die Options-Auswertung entfernt) -> dort wird -l nicht uebergeben.
+    # abgeleitet (per -e ueberschreibbar). Nur 7.3 nutzt eine separate Datenplatte
+    # via LVM (lmn-appliance -l/--pvdevice); 7.4 hat das LVM-Setup abgeschafft und
+    # installiert direkt auf die Systemplatte -> dort wird kein -l uebergeben.
     lmn_version_map:
       '24': { distribution: 'lmn73', prepare_version: 'v7.3.1', label: '7.3', pvdevice: true }
       '26': { distribution: 'lmn74', prepare_version: 'v7.4.0', label: '7.4', pvdevice: false }
@@ -340,14 +340,13 @@
         - lmn_setup_data_disk | bool
         - (lmn_data_disk_final | default('')) == ''
 
-    - name: Hinweis Datenplatte auf 7.4 (noch) nicht automatisch
+    - name: Hinweis Datenplatte (7.4 ohne separates LVM)
       ansible.builtin.debug:
         msg: >-
-          Leere Datenplatte {{ lmn_data_disk_final }} gefunden, aber die
-          linuxmuster-{{ lmn_version_label }}-Tooling (lmn-appliance
-          {{ lmn_prepare_version }}) wertet -l/--pvdevice nicht aus. Die Platte
-          wird daher NICHT automatisch als LVM eingerichtet; Installation
-          erfolgt auf der Systemplatte.
+          linuxmuster.net {{ lmn_version_label }} verwendet kein separates
+          Daten-LVM mehr - die Installation erfolgt direkt auf der Systemplatte.
+          Eine evtl. erkannte zweite Platte ({{ lmn_data_disk_final }}) bleibt
+          unangetastet.
       when:
         - lmn_setup_data_disk | bool
         - (lmn_data_disk_final | default('')) != ''
