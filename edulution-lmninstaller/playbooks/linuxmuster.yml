@@ -397,7 +397,7 @@
           - linuxmuster-linbo7
           - linuxmuster-linbo-gui7
           - sophomorix-samba
-        state: present
+        state: latest
         update_cache: true
       environment:
         DEBIAN_FRONTEND: noninteractive
@@ -436,6 +436,7 @@
           [setup]
           serverip = {{ lmn_server_ip }}
           netmask = {{ lmn_netmask }}
+          bitmask = {{ lmn_cidr }}
           gatewayip = {{ lmn_gateway }}
           firewallip = {{ lmn_gateway }}
           servername = {{ lmn_servername }}
