@@ -816,7 +816,11 @@ EDUI_WEBDAV_URL=https://{webdav_netloc}/webdav/
 
 MONGODB_USERNAME=root
 MONGODB_PASSWORD={mongodb_secret}
-MONGODB_SERVER_URL=mongodb://root:{mongodb_secret}@edu-db:27017/
+MONGODB_AUTH_SOURCE=admin
+# directConnection=true skips replica set discovery, the single node set only
+# advertises its container name. Quoted because this file is also sourced by
+# the shell installer, where the unquoted "&" would split the assignment.
+MONGODB_SERVER_URL="mongodb://root:{mongodb_secret}@edu-db:27017/?replicaSet=rs0&directConnection=true"
 
 KEYCLOAK_EDU_UI_SECRET={keycloak_eduui_secret}
 KEYCLOAK_EDU_API_CLIENT_SECRET={keycloak_eduapi_secret}
