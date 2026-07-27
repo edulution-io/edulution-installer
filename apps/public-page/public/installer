@@ -109,7 +109,7 @@ if ! command -v docker &> /dev/null; then
         exit 1
     fi
 
-    if [ "$OS" == "ubuntu" ] && ([[ "$VERSION" == "22.04" ]] || [[ "$VERSION" == "24.04" ]]); then
+    if [ "$OS" == "ubuntu" ] && ([[ "$VERSION" == "22.04" ]] || [[ "$VERSION" == "24.04" ]] || [[ "$VERSION" == "26.04" ]]); then
 
         apt-get update
 
@@ -152,7 +152,7 @@ DOCKEREOF
         echo "[*] Docker wurde erfolgreich installiert."
 
     else
-        echo "[!] Dieses Skript unterstützt nur Ubuntu 22.04 und 24.04."
+        echo "[!] Dieses Skript unterstützt nur Ubuntu 22.04, 24.04 und 26.04."
         exit 1
     fi
 else
