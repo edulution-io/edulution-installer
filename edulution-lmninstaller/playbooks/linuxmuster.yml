@@ -27,6 +27,17 @@
   become: true
   gather_facts: true
 
+  # System-Proxy (falls gesetzt) an alle Tasks durchreichen, damit get_url/curl/
+  # apt auch in Proxy-Umgebungen funktionieren. Die Werte werden frueh aus
+  # /etc/environment gelesen (leer = kein Proxy).
+  environment:
+    http_proxy: "{{ lmn_http_proxy | default('') }}"
+    https_proxy: "{{ lmn_https_proxy | default('') }}"
+    HTTP_PROXY: "{{ lmn_http_proxy | default('') }}"
+    HTTPS_PROXY: "{{ lmn_https_proxy | default('') }}"
+    no_proxy: "{{ lmn_no_proxy | default('') }}"
+    NO_PROXY: "{{ lmn_no_proxy | default('') }}"
+
   # Variablen können überschrieben werden durch:
   # 1. vars/linuxmuster.yml Datei
   # 2. -e / --extra-vars auf der Kommandozeile
@@ -46,9 +57,11 @@
     # DNS-Forwarder fuer die Samba-interne DNS.
     # linuxmuster-setup schreibt in die smb.conf zwingend
     # "dns forwarder = <firewallip>". Ohne installierte Firewall zeigt das ins
-    # Leere und die externe Namensaufloesung (und damit apt) schlaegt fehl.
-    # Daher setzen wir nach dem Setup einen funktionierenden Resolver.
-    lmn_dns_forwarder: '9.9.9.9'
+    # Leere. 'auto' -> wir lesen den tatsaechlich genutzten Upstream-DNS des
+    # Hosts (aus /run/systemd/resolve/resolv.conf bzw. resolv.conf) aus und nehmen
+    # den; nur wenn nichts gefunden wird, Fallback 9.9.9.9. Fest ueberschreibbar
+    # per -e lmn_dns_forwarder=<ip>.
+    lmn_dns_forwarder: 'auto'
 
     # Server
     lmn_servername: 'server'
@@ -153,6 +166,54 @@
           Ubuntu {{ ansible_distribution_version }} erkannt -> linuxmuster.net
           {{ lmn_version_label }} ({{ lmn_repo_distribution }}, lmn-appliance
           {{ lmn_prepare_version }})
+
+    # -------------------------------------------------------------------------
+    # PROXY + UPSTREAM-DNS ERMITTELN (vor der Netz-Neukonfiguration)
+    # -------------------------------------------------------------------------
+    - name: System-Proxy aus /etc/environment lesen
+      ansible.builtin.shell: |
+        . /etc/environment 2>/dev/null || true
+        printf '%s\n%s\n%s\n' "${http_proxy:-${HTTP_PROXY:-}}" "${https_proxy:-${HTTPS_PROXY:-}}" "${no_proxy:-${NO_PROXY:-}}"
+      args:
+        executable: /bin/bash
+      register: lmn_proxy_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Proxy-Variablen setzen
+      ansible.builtin.set_fact:
+        lmn_http_proxy: "{{ lmn_proxy_raw.stdout_lines[0] | default('') }}"
+        lmn_https_proxy: "{{ lmn_proxy_raw.stdout_lines[1] | default('') }}"
+        lmn_no_proxy: "{{ lmn_proxy_raw.stdout_lines[2] | default('') }}"
+
+    - name: Proxy-Konfiguration anzeigen
+      ansible.builtin.debug:
+        msg: >-
+          Proxy: http='{{ lmn_http_proxy }}' https='{{ lmn_https_proxy }}'
+          no_proxy='{{ lmn_no_proxy }}'
+
+    - name: Upstream-DNS des Hosts ermitteln
+      ansible.builtin.shell: |
+        for f in /run/systemd/resolve/resolv.conf /etc/resolv.conf; do
+          [ -r "$f" ] || continue
+          ns=$(awk '/^[[:space:]]*nameserver/ {print $2}' "$f" | grep -vE '^(127\.|::1|fe80)' | head -1)
+          [ -n "$ns" ] && { echo "$ns"; exit 0; }
+        done
+        command -v resolvectl >/dev/null 2>&1 && resolvectl dns 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | grep -vE '^127\.' | head -1
+      args:
+        executable: /bin/bash
+      register: lmn_detected_dns
+      changed_when: false
+      failed_when: false
+
+    - name: DNS-Forwarder bestimmen (auto -> erkannter Upstream, sonst 9.9.9.9)
+      ansible.builtin.set_fact:
+        lmn_dns_forwarder: "{{ (lmn_detected_dns.stdout | default('') | trim) or '9.9.9.9' }}"
+      when: lmn_dns_forwarder == 'auto'
+
+    - name: Verwendeten DNS-Forwarder anzeigen
+      ansible.builtin.debug:
+        msg: "DNS-Forwarder fuer Samba: {{ lmn_dns_forwarder }}"
 
     - name: Warten bis apt-Lock frei ist
       ansible.builtin.shell: |
@@ -523,15 +584,24 @@
         exit 1
       changed_when: false
 
-    - name: Warten bis externe DNS-Aufloesung funktioniert
+    - name: Externe DNS-Aufloesung pruefen (nicht kritisch)
       ansible.builtin.command:
         cmd: getent hosts deb.linuxmuster.net
       register: lmn_dns_check
       until: lmn_dns_check.rc == 0
-      retries: 12
+      retries: 6
       delay: 5
       changed_when: false
-      failed_when: lmn_dns_check.rc != 0
+      failed_when: false
+
+    - name: Hinweis wenn externe DNS-Aufloesung nicht funktioniert
+      ansible.builtin.debug:
+        msg: >-
+          Externe Namensaufloesung (deb.linuxmuster.net) ueber den DNS-Forwarder
+          {{ lmn_dns_forwarder }} funktioniert nicht. In Proxy-Umgebungen ist das
+          oft normal (apt laeuft ueber den Proxy). Falls danach apt-Tasks
+          scheitern, bitte lmn_dns_forwarder pruefen.
+      when: lmn_dns_check.rc != 0
 
     # =========================================================================
     # EDULUTION BINDUSER ERSTELLEN (via sophomorix)
