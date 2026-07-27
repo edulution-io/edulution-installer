@@ -72,7 +72,7 @@ services:
 
   edu-redis:
     container_name: edulution-redis
-    image: redis:8.2
+    image: redis:8.6
     restart: always
     healthcheck:
       test:
