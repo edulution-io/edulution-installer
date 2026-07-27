@@ -374,6 +374,48 @@
       poll: 30
 
     # =========================================================================
+    # LINUXMUSTER-SERVER-PAKETE SICHERSTELLEN
+    # =========================================================================
+    # lmn-appliance/lmn-prepare installiert die Server-Pakete zwar selbst, prueft
+    # den Return-Code aber nicht und laeuft ggf. ohne DEBIAN_FRONTEND -> bei
+    # Paketen mit debconf-Rueckfragen bricht der Install im nicht-interaktiven
+    # Lauf still ab, sodass /usr/sbin/linuxmuster-setup fehlt. Daher hier explizit
+    # und nicht-interaktiv nachziehen (idempotent, klare Fehlermeldung).
+
+    - name: Halb-konfigurierte Pakete abschliessen
+      ansible.builtin.command:
+        cmd: dpkg --configure -a
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      changed_when: false
+
+    - name: linuxmuster-Server-Pakete installieren (nicht-interaktiv)
+      ansible.builtin.apt:
+        name:
+          - linuxmuster-base7
+          - linuxmuster-webui7
+          - linuxmuster-linbo7
+          - linuxmuster-linbo-gui7
+          - sophomorix-samba
+        state: present
+        update_cache: true
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Sicherstellen dass linuxmuster-setup vorhanden ist
+      ansible.builtin.stat:
+        path: /usr/sbin/linuxmuster-setup
+      register: lmn_setup_bin
+
+    - name: Abbrechen wenn linuxmuster-setup fehlt
+      ansible.builtin.assert:
+        that: lmn_setup_bin.stat.exists
+        fail_msg: >-
+          /usr/sbin/linuxmuster-setup fehlt - die linuxmuster-Server-Pakete
+          konnten nicht installiert werden. Bitte 'apt-get install
+          linuxmuster-base7' pruefen (Repo/Abhaengigkeiten).
+
+    # =========================================================================
     # LINUXMUSTER-SETUP KONFIGURATIONSDATEI
     # =========================================================================
 
