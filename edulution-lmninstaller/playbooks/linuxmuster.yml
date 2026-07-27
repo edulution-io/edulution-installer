@@ -1,6 +1,7 @@
 ---
 # =============================================================================
-# LINUXMUSTER.NET 7.3 INSTALLATION PLAYBOOK
+# LINUXMUSTER.NET 7.3 / 7.4 INSTALLATION PLAYBOOK
+# (Version automatisch nach Ubuntu: 24.04 -> 7.3 (lmn73), 26.04 -> 7.4 (lmn74))
 # =============================================================================
 #
 # Verwendung:
@@ -20,7 +21,7 @@
 #
 # =============================================================================
 
-- name: linuxmuster.net 7.3 Installation
+- name: linuxmuster.net 7.3/7.4 Installation
   hosts: localhost
   connection: local
   become: true
@@ -100,11 +101,15 @@
     # Repository (normalerweise nicht ändern)
     lmn_repo_url: 'https://deb.linuxmuster.net/'
     lmn_repo_gpg_url: 'https://deb.linuxmuster.net/pub.gpg'
-    lmn_repo_distribution: 'lmn73'
-    # lmn-appliance MUSS von einem 7.3-Release geladen werden: master hat die
-    # Auswertung von -l/--pvdevice verloren (die Datenplatte wuerde ignoriert)
-    # und wuerde ausserdem die lmn74-Quelle (7.4-Prerelease) einrichten.
-    lmn_prepare_version: 'v7.3.1'
+    # linuxmuster-Version automatisch anhand der Ubuntu-Version:
+    #   Ubuntu 24.04 -> lmn73 (7.3),  Ubuntu 26.04 -> lmn74 (7.4).
+    # lmn_repo_distribution/lmn_prepare_version werden daraus per set_fact
+    # abgeleitet (per -e ueberschreibbar). Wichtig: nur die 7.3-Tooling (v7.3.1)
+    # wertet -l/--pvdevice (Datenplatte) aus; die 7.4-Tooling (v7.4.0) noch nicht
+    # (dort ist die Options-Auswertung entfernt) -> dort wird -l nicht uebergeben.
+    lmn_version_map:
+      '24': { distribution: 'lmn73', prepare_version: 'v7.3.1', label: '7.3', pvdevice: true }
+      '26': { distribution: 'lmn74', prepare_version: 'v7.4.0', label: '7.4', pvdevice: false }
     lmn_appliance_url: 'https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/{{ lmn_prepare_version }}/lmn-appliance'
 
     # Pakete
@@ -125,13 +130,29 @@
     # GRUNDLEGENDE SYSTEMKONFIGURATION
     # =========================================================================
 
-    - name: Betriebssystem prüfen
+    - name: Betriebssystem pruefen (Ubuntu 24.04 -> 7.3, 26.04 -> 7.4)
       ansible.builtin.assert:
         that:
           - ansible_distribution == "Ubuntu"
-          - ansible_distribution_version is version('24.04', '>=')
-        fail_msg: 'linuxmuster.net 7.3 benötigt Ubuntu 24.04 LTS oder neuer'
+          - ansible_distribution_major_version in ['24', '26']
+        fail_msg: >-
+          linuxmuster.net benoetigt Ubuntu 24.04 (-> 7.3) oder 26.04 (-> 7.4).
+          Gefunden: {{ ansible_distribution }} {{ ansible_distribution_version }}
         success_msg: 'Ubuntu {{ ansible_distribution_version }} erkannt'
+
+    - name: linuxmuster-Version anhand der Ubuntu-Version bestimmen
+      ansible.builtin.set_fact:
+        lmn_repo_distribution: "{{ lmn_version_map[ansible_distribution_major_version].distribution }}"
+        lmn_prepare_version: "{{ lmn_version_map[ansible_distribution_major_version].prepare_version }}"
+        lmn_version_label: "{{ lmn_version_map[ansible_distribution_major_version].label }}"
+        lmn_appliance_supports_pvdevice: "{{ lmn_version_map[ansible_distribution_major_version].pvdevice }}"
+
+    - name: Gewaehlte linuxmuster-Version anzeigen
+      ansible.builtin.debug:
+        msg: >-
+          Ubuntu {{ ansible_distribution_version }} erkannt -> linuxmuster.net
+          {{ lmn_version_label }} ({{ lmn_repo_distribution }}, lmn-appliance
+          {{ lmn_prepare_version }})
 
     - name: Warten bis apt-Lock frei ist
       ansible.builtin.shell: |
@@ -319,6 +340,19 @@
         - lmn_setup_data_disk | bool
         - (lmn_data_disk_final | default('')) == ''
 
+    - name: Hinweis Datenplatte auf 7.4 (noch) nicht automatisch
+      ansible.builtin.debug:
+        msg: >-
+          Leere Datenplatte {{ lmn_data_disk_final }} gefunden, aber die
+          linuxmuster-{{ lmn_version_label }}-Tooling (lmn-appliance
+          {{ lmn_prepare_version }}) wertet -l/--pvdevice nicht aus. Die Platte
+          wird daher NICHT automatisch als LVM eingerichtet; Installation
+          erfolgt auf der Systemplatte.
+      when:
+        - lmn_setup_data_disk | bool
+        - (lmn_data_disk_final | default('')) != ''
+        - not (lmn_appliance_supports_pvdevice | default(false) | bool)
+
     - name: lmn-appliance ausführen (Server-Profil, LVM auf Datenplatte falls vorhanden)
       ansible.builtin.shell: |
         set -o pipefail
@@ -327,8 +361,8 @@
           -f {{ lmn_gateway }} \
           -d {{ lmn_domainname }} \
           -t {{ lmn_servername }} \
-          {{ ('-l ' + lmn_data_disk_final) if (lmn_data_disk_final | default('')) != '' else '' }} \
-          {{ ('-v ' + lmn_lvm_volumes) if (lmn_lvm_volumes | default('')) != '' else '' }} \
+          {{ ('-l ' + lmn_data_disk_final) if ((lmn_data_disk_final | default('')) != '' and (lmn_appliance_supports_pvdevice | default(false) | bool)) else '' }} \
+          {{ ('-v ' + lmn_lvm_volumes) if ((lmn_lvm_volumes | default('')) != '' and (lmn_appliance_supports_pvdevice | default(false) | bool)) else '' }} \
           2>&1 | while IFS= read -r line; do
           echo "$line"
         done
@@ -657,7 +691,7 @@
       ansible.builtin.debug:
         msg: |
           ====================================================================
-          LINUXMUSTER.NET 7.3 INSTALLATION ABGESCHLOSSEN
+          LINUXMUSTER.NET {{ lmn_version_label }} INSTALLATION ABGESCHLOSSEN
           ====================================================================
 
           Server: {{ lmn_servername }}.{{ lmn_domainname }}
