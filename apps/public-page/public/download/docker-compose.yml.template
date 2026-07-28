@@ -61,14 +61,55 @@ services:
     restart: always
     env_file:
       - edulution.env
+    # MongoDB runs as a single-node replica set (rs0) because the API writes
+    # across collections in multi-document transactions, which are only
+    # available on a replica set. Enabling replication together with
+    # authorization requires a keyfile for internal auth; it is generated once
+    # on first start and kept in ./data/db-keyfile.
+    entrypoint:
+      - bash
+      - -c
+      - |
+        set -e
+        KEYFILE=/keyfile/mongo.key
+        if [ ! -s "$$KEYFILE" ]; then
+          openssl rand -base64 756 > "$$KEYFILE"
+        fi
+        chmod 400 "$$KEYFILE"
+        chown mongodb:mongodb "$$KEYFILE" 2>/dev/null || true
+        exec docker-entrypoint.sh "$$@"
+      - bash
+    command:
+      - mongod
+      - --replSet
+      - rs0
+      - --keyFile
+      - /keyfile/mongo.key
+      - --bind_ip_all
     volumes:
       - ./data/db:/data/db
+      - ./data/db-keyfile:/keyfile
+    ulimits:
+      nofile:
+        soft: 64000
+        hard: 64000
+    # Initiates the replica set on the first run and reports healthy only once
+    # a PRIMARY exists, so that edu-api starts against a transaction capable
+    # database. rs.initiate() is idempotent, an existing standalone data
+    # directory is promoted in place.
     healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      test:
+        - CMD-SHELL
+        - >
+          tr -d '[:space:]' < /keyfile/mongo.key |
+          mongosh --quiet -u __system
+          --authenticationDatabase local --eval "
+          let status; try { status = rs.status(); } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'edulution-db:27017' }] }); status = rs.status(); }
+          const primary = status && status.members && status.members.some(m => m.stateStr === 'PRIMARY'); if (!primary) { quit(1); }"
       interval: 5s
-      timeout: 1s
+      timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
 
   edu-redis:
     container_name: edulution-redis
