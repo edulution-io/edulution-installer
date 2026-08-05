@@ -854,7 +854,7 @@ POSTGRES_PASSWORD={postgres_secret}
 
 KEYCLOAK_EDU_MAILCOW_SYNC_SECRET={keycloak_edumailcow_sync_secret}
 MAILCOW_API_TOKEN={mailcow_api_secret}
-MAILCOW_API_URL=https://edu-traefik/sogo-mail
+MAILCOW_API_URL=https://mailcowdockerized-nginx-mailcow-1
 
 # edulution-guacamole
 
