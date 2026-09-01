@@ -1,0 +1,158 @@
+name: Installer E2E
+
+# Fuehrt den echten `installer` auf einem Runner aus und treibt den
+# Web-Installer per API bis zum laufenden edulution-Stack durch.
+#
+# Der Lauf holt die Vorlagen bewusst von der produktiven get.edulution.io und
+# nicht aus dem Checkout: genau dieser Download ist in der Vergangenheit bei
+# Kunden fehlgeschlagen, und ein geplanter Lauf schlaegt damit Alarm, bevor es
+# jemand meldet. Der Docker-Image-Teil kommt dagegen aus dem Checkout, damit
+# der Lauf die Aenderungen des jeweiligen Branches testet.
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Taeglich um 03:17 UTC - faengt Ausfaelle von get.edulution.io und
+    # kaputte Upstream-Images unabhaengig von Commits ab.
+    - cron: '17 3 * * *'
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: installer-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    env:
+      DIRECTORY: /srv/docker/edulution-ui/
+      # Ein Tag, den es in der Registry nicht gibt: der `docker pull` im
+      # Installer laeuft dadurch ins Leere und `docker run` nimmt das lokal
+      # gebaute Image. So testet der Lauf den Stand des Branches.
+      INSTALLER_TAG: ci-${{ github.run_id }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Plattenplatz schaffen
+        run: |
+          echo "vorher:"; df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          echo "nachher:"; df -h / | tail -1
+
+      - name: Node einrichten
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Abhaengigkeiten installieren
+        run: npm ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Web-Installer bauen
+        run: npx nx build webinstaller
+
+      - name: Installer-Image lokal bauen
+        run: |
+          docker build -t "ghcr.io/edulution-io/edulution-installer:${INSTALLER_TAG}" .
+          docker images "ghcr.io/edulution-io/edulution-installer"
+
+      - name: Vorlagen auf get.edulution.io pruefen
+        # Eigenstaendiger Check der Ausfallursache, die Kunden gemeldet haben:
+        # jede der vier GitHub-Pages-Adressen einzeln, nicht nur der Round-Robin.
+        run: |
+          status=0
+          for file in docker-compose.yml realm-edulution.json traefik.yml \
+                      edulution-default.yml edulution-default-le.yml; do
+            url="https://get.edulution.io/download/${file}.template"
+            for ip in 185.199.108.153 185.199.109.153 185.199.110.153 185.199.111.153; do
+              code=$(curl -sS --max-time 20 --retry 3 --retry-delay 2 --retry-all-errors \
+                       --resolve "get.edulution.io:443:${ip}" \
+                       -o /dev/null -w '%{http_code}' "${url}") || code="curl-fehler"
+              if [ "${code}" != "200" ]; then
+                echo "::error::${file} ueber ${ip}: ${code}"
+                status=1
+              else
+                echo "ok  ${file} ueber ${ip}"
+              fi
+            done
+          done
+          exit $status
+
+      - name: Vorlagen im Repo mit den ausgelieferten vergleichen
+        # Weicht beides ab, ist der GitHub-Pages-Deploy hinterher. Auf einem
+        # Feature-Branch ist das normal, deshalb nur ein Hinweis.
+        continue-on-error: true
+        run: |
+          for file in docker-compose.yml realm-edulution.json traefik.yml \
+                      edulution-default.yml edulution-default-le.yml; do
+            curl -fsSL "https://get.edulution.io/download/${file}.template" -o "/tmp/${file}.live"
+            if diff -q "apps/public-page/public/download/${file}.template" "/tmp/${file}.live" >/dev/null; then
+              echo "gleich:     ${file}"
+            else
+              echo "::notice::${file} unterscheidet sich zwischen Repo und get.edulution.io"
+            fi
+          done
+
+      - name: Installer starten
+        run: |
+          WS="${{ github.workspace }}"
+          nohup sudo bash -c "bash '${WS}/apps/public-page/public/installer' --branch '${INSTALLER_TAG}' > '${WS}/installer.log' 2>&1; echo \$? > '${WS}/installer.rc'" >/dev/null 2>&1 &
+          sleep 5
+          echo "Installer im Hintergrund gestartet."
+
+      - name: Web-Installer per API durchfahren
+        run: .github/e2e/drive-webinstaller.sh
+
+      - name: Auf Abschluss des Installers warten
+        run: |
+          WS="${{ github.workspace }}"
+          for attempt in $(seq 1 150); do
+            if [ -f "${WS}/installer.rc" ]; then
+              rc=$(cat "${WS}/installer.rc")
+              echo "Installer beendet mit Exitcode ${rc}."
+              exit "${rc}"
+            fi
+            if [ $((attempt % 6)) -eq 0 ]; then
+              echo "--- noch am Laufen (${attempt}/150), letzte Zeilen: ---"
+              sudo tail -5 "${WS}/installer.log" || true
+            fi
+            sleep 10
+          done
+          echo "::error::Der Installer wurde nicht innerhalb von 25 Minuten fertig."
+          exit 1
+
+      - name: Stack pruefen
+        run: sudo -E .github/e2e/assert-stack.sh
+
+      - name: Installer-Ausgabe
+        if: always()
+        run: sudo cat "${{ github.workspace }}/installer.log" || echo "(kein Log vorhanden)"
+
+      - name: Container-Logs bei Fehlschlag
+        if: failure()
+        run: |
+          docker ps -a
+          for c in $(docker ps -aq); do
+            echo "===== $(docker inspect --format '{{.Name}}' "$c") ====="
+            docker logs --tail 100 "$c" 2>&1 || true
+          done
+
+      - name: Artefakte sichern
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-e2e-logs
+          path: |
+            installer.log
+            installer.rc
+          if-no-files-found: warn

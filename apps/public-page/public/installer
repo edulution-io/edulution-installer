@@ -200,13 +200,82 @@ echo "[*] Erstelle Ordner für die edulution installation..."
 mkdir -p $DIRECTORY
 cd $DIRECTORY
 
+# Laedt eine Vorlage von get.edulution.io herunter.
+#
+# Die fruehere Fassung pruefte nur mit [ -f ], ob die Datei existiert. Das war
+# in beide Richtungen unbrauchbar: curl legt die Datei auch bei HTTP 404 an und
+# schreibt die HTML-Fehlerseite hinein, sodass ein 404 unbemerkt durchlief und
+# der Installer mit Muell weiterarbeitete. Umgekehrt blieb bei einem echten
+# Netzfehler nur die Meldung "konnte nicht heruntergeladen werden" ohne jeden
+# Hinweis auf die Ursache. Deshalb hier: -f fuer HTTP-Fehler, Wiederholungen
+# gegen sporadische Aussetzer und der curl-Exitcode in der Fehlermeldung.
+download_template() {
+    local file="$1"
+    local url="https://get.edulution.io/download/${file}.template"
+    local target="${DIRECTORY}${file}"
+    local rc
+
+    curl -fsSL \
+        --connect-timeout 15 \
+        --max-time 300 \
+        --retry 5 \
+        --retry-delay 3 \
+        --retry-connrefused \
+        --retry-all-errors \
+        -o "${target}" "${url}"
+    rc=$?
+
+    if [ $rc -ne 0 ]; then
+        rm -f "${target}"
+        echo "[!] Datei '$file' konnte nicht heruntergeladen werden! (curl-Exitcode ${rc})"
+        echo "[!] URL: ${url}"
+
+        case $rc in
+            6)
+                echo "[!] 'get.edulution.io' konnte nicht aufgeloest werden - bitte DNS pruefen."
+                ;;
+            7)
+                echo "[!] Es kam keine Verbindung zustande - bitte Firewall oder Proxy pruefen."
+                ;;
+            22)
+                echo "[!] Der Server antwortete mit einem HTTP-Fehlercode."
+                ;;
+            28)
+                echo "[!] Zeitueberschreitung - die Gegenstelle war nicht erreichbar."
+                ;;
+            35 | 60)
+                echo "[!] TLS-Fehler - bricht eine Firewall die HTTPS-Verbindung auf?"
+                ;;
+        esac
+
+        echo "[!] Zur genaueren Diagnose bitte ausfuehren:"
+        echo "[!]   curl -v -o /dev/null ${url}"
+        return 1
+    fi
+
+    if [ ! -s "${target}" ]; then
+        echo "[!] Datei '$file' wurde leer heruntergeladen! (URL: ${url})"
+        rm -f "${target}"
+        return 1
+    fi
+
+    # Ein Captive Portal oder eine Proxy-Fehlerseite antwortet mit HTTP 200 und
+    # liefert HTML aus. Keine der Vorlagen beginnt mit '<'.
+    if [ "$(head -c 1 "${target}")" = "<" ]; then
+        echo "[!] Datei '$file' enthaelt HTML statt der erwarteten Konfiguration!"
+        echo "[!] Vermutlich antwortet ein Proxy oder Portal anstelle von get.edulution.io."
+        rm -f "${target}"
+        return 1
+    fi
+
+    return 0
+}
+
 for file in docker-compose.yml realm-edulution.json traefik.yml edulution-default.yml edulution-default-le.yml; do
 
     echo "[*] Herunterladen der Datei $file..."
-    curl -s -o ${DIRECTORY}${file} https://get.edulution.io/download/${file}.template
 
-    if [ ! -f "${DIRECTORY}${file}" ]; then
-        echo "[!] Datei '$file' konnte nicht heruntergeladen werden!"
+    if ! download_template "${file}"; then
         exit 1
     fi
 
