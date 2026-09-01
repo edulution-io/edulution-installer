@@ -67,7 +67,6 @@ setup_directory_structure() {
 
     mkdir -p "${INSTALL_DIR}/api/routes"
     mkdir -p "${INSTALL_DIR}/api/services"
-    mkdir -p "${INSTALL_DIR}/playbooks/vars"
     mkdir -p "${INSTALL_DIR}/ansible/project"
     mkdir -p "${INSTALL_DIR}/ansible/inventory"
 

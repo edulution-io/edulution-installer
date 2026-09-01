@@ -316,8 +316,6 @@ edulution-lmninstaller/
 |       +-- system_checker.py    # Requirements checking
 +-- playbooks/
     |-- linuxmuster.yml          # linuxmuster.net server playbook
-    |-- vars/
-    |   +-- linuxmuster_vars.yml # Configuration variables
     +-- requirements/
         +-- linuxmuster.yml      # System requirements
 ```
