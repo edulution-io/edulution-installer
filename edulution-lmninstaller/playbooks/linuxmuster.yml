@@ -1,6 +1,7 @@
 ---
 # =============================================================================
-# LINUXMUSTER.NET 7.3 INSTALLATION PLAYBOOK
+# LINUXMUSTER.NET 7.3 / 7.4 INSTALLATION PLAYBOOK
+# (Version automatisch nach Ubuntu: 24.04 -> 7.3 (lmn73), 26.04 -> 7.4 (lmn74))
 # =============================================================================
 #
 # Verwendung:
@@ -20,11 +21,22 @@
 #
 # =============================================================================
 
-- name: linuxmuster.net 7.3 Installation
+- name: linuxmuster.net 7.3/7.4 Installation
   hosts: localhost
   connection: local
   become: true
   gather_facts: true
+
+  # System-Proxy (falls gesetzt) an alle Tasks durchreichen, damit get_url/curl/
+  # apt auch in Proxy-Umgebungen funktionieren. Die Werte werden frueh aus
+  # /etc/environment gelesen (leer = kein Proxy).
+  environment:
+    http_proxy: "{{ lmn_http_proxy | default('') }}"
+    https_proxy: "{{ lmn_https_proxy | default('') }}"
+    HTTP_PROXY: "{{ lmn_http_proxy | default('') }}"
+    HTTPS_PROXY: "{{ lmn_https_proxy | default('') }}"
+    no_proxy: "{{ lmn_no_proxy | default('') }}"
+    NO_PROXY: "{{ lmn_no_proxy | default('') }}"
 
   # Variablen können überschrieben werden durch:
   # 1. vars/linuxmuster.yml Datei
@@ -45,9 +57,11 @@
     # DNS-Forwarder fuer die Samba-interne DNS.
     # linuxmuster-setup schreibt in die smb.conf zwingend
     # "dns forwarder = <firewallip>". Ohne installierte Firewall zeigt das ins
-    # Leere und die externe Namensaufloesung (und damit apt) schlaegt fehl.
-    # Daher setzen wir nach dem Setup einen funktionierenden Resolver.
-    lmn_dns_forwarder: '9.9.9.9'
+    # Leere. 'auto' -> wir lesen den tatsaechlich genutzten Upstream-DNS des
+    # Hosts (aus /run/systemd/resolve/resolv.conf bzw. resolv.conf) aus und nehmen
+    # den; nur wenn nichts gefunden wird, Fallback 9.9.9.9. Fest ueberschreibbar
+    # per -e lmn_dns_forwarder=<ip>.
+    lmn_dns_forwarder: 'auto'
 
     # Server
     lmn_servername: 'server'
@@ -100,11 +114,15 @@
     # Repository (normalerweise nicht ändern)
     lmn_repo_url: 'https://deb.linuxmuster.net/'
     lmn_repo_gpg_url: 'https://deb.linuxmuster.net/pub.gpg'
-    lmn_repo_distribution: 'lmn73'
-    # lmn-appliance MUSS von einem 7.3-Release geladen werden: master hat die
-    # Auswertung von -l/--pvdevice verloren (die Datenplatte wuerde ignoriert)
-    # und wuerde ausserdem die lmn74-Quelle (7.4-Prerelease) einrichten.
-    lmn_prepare_version: 'v7.3.1'
+    # linuxmuster-Version automatisch anhand der Ubuntu-Version:
+    #   Ubuntu 24.04 -> lmn73 (7.3),  Ubuntu 26.04 -> lmn74 (7.4).
+    # lmn_repo_distribution/lmn_prepare_version werden daraus per set_fact
+    # abgeleitet (per -e ueberschreibbar). Nur 7.3 nutzt eine separate Datenplatte
+    # via LVM (lmn-appliance -l/--pvdevice); 7.4 hat das LVM-Setup abgeschafft und
+    # installiert direkt auf die Systemplatte -> dort wird kein -l uebergeben.
+    lmn_version_map:
+      '24': { distribution: 'lmn73', prepare_version: 'v7.3.1', label: '7.3', pvdevice: true }
+      '26': { distribution: 'lmn74', prepare_version: 'v7.4.0', label: '7.4', pvdevice: false }
     lmn_appliance_url: 'https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/{{ lmn_prepare_version }}/lmn-appliance'
 
     # Pakete
@@ -125,13 +143,77 @@
     # GRUNDLEGENDE SYSTEMKONFIGURATION
     # =========================================================================
 
-    - name: Betriebssystem prüfen
+    - name: Betriebssystem pruefen (Ubuntu 24.04 -> 7.3, 26.04 -> 7.4)
       ansible.builtin.assert:
         that:
           - ansible_distribution == "Ubuntu"
-          - ansible_distribution_version is version('24.04', '>=')
-        fail_msg: 'linuxmuster.net 7.3 benötigt Ubuntu 24.04 LTS oder neuer'
+          - ansible_distribution_major_version in ['24', '26']
+        fail_msg: >-
+          linuxmuster.net benoetigt Ubuntu 24.04 (-> 7.3) oder 26.04 (-> 7.4).
+          Gefunden: {{ ansible_distribution }} {{ ansible_distribution_version }}
         success_msg: 'Ubuntu {{ ansible_distribution_version }} erkannt'
+
+    - name: linuxmuster-Version anhand der Ubuntu-Version bestimmen
+      ansible.builtin.set_fact:
+        lmn_repo_distribution: "{{ lmn_version_map[ansible_distribution_major_version].distribution }}"
+        lmn_prepare_version: "{{ lmn_version_map[ansible_distribution_major_version].prepare_version }}"
+        lmn_version_label: "{{ lmn_version_map[ansible_distribution_major_version].label }}"
+        lmn_appliance_supports_pvdevice: "{{ lmn_version_map[ansible_distribution_major_version].pvdevice }}"
+
+    - name: Gewaehlte linuxmuster-Version anzeigen
+      ansible.builtin.debug:
+        msg: >-
+          Ubuntu {{ ansible_distribution_version }} erkannt -> linuxmuster.net
+          {{ lmn_version_label }} ({{ lmn_repo_distribution }}, lmn-appliance
+          {{ lmn_prepare_version }})
+
+    # -------------------------------------------------------------------------
+    # PROXY + UPSTREAM-DNS ERMITTELN (vor der Netz-Neukonfiguration)
+    # -------------------------------------------------------------------------
+    - name: System-Proxy aus /etc/environment lesen
+      ansible.builtin.shell: |
+        . /etc/environment 2>/dev/null || true
+        printf '%s\n%s\n%s\n' "${http_proxy:-${HTTP_PROXY:-}}" "${https_proxy:-${HTTPS_PROXY:-}}" "${no_proxy:-${NO_PROXY:-}}"
+      args:
+        executable: /bin/bash
+      register: lmn_proxy_raw
+      changed_when: false
+      failed_when: false
+
+    - name: Proxy-Variablen setzen
+      ansible.builtin.set_fact:
+        lmn_http_proxy: "{{ lmn_proxy_raw.stdout_lines[0] | default('') }}"
+        lmn_https_proxy: "{{ lmn_proxy_raw.stdout_lines[1] | default('') }}"
+        lmn_no_proxy: "{{ lmn_proxy_raw.stdout_lines[2] | default('') }}"
+
+    - name: Proxy-Konfiguration anzeigen
+      ansible.builtin.debug:
+        msg: >-
+          Proxy: http='{{ lmn_http_proxy }}' https='{{ lmn_https_proxy }}'
+          no_proxy='{{ lmn_no_proxy }}'
+
+    - name: Upstream-DNS des Hosts ermitteln
+      ansible.builtin.shell: |
+        for f in /run/systemd/resolve/resolv.conf /etc/resolv.conf; do
+          [ -r "$f" ] || continue
+          ns=$(awk '/^[[:space:]]*nameserver/ {print $2}' "$f" | grep -vE '^(127\.|::1|fe80)' | head -1)
+          [ -n "$ns" ] && { echo "$ns"; exit 0; }
+        done
+        command -v resolvectl >/dev/null 2>&1 && resolvectl dns 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | grep -vE '^127\.' | head -1
+      args:
+        executable: /bin/bash
+      register: lmn_detected_dns
+      changed_when: false
+      failed_when: false
+
+    - name: DNS-Forwarder bestimmen (auto -> erkannter Upstream, sonst 9.9.9.9)
+      ansible.builtin.set_fact:
+        lmn_dns_forwarder: "{{ (lmn_detected_dns.stdout | default('') | trim) or '9.9.9.9' }}"
+      when: lmn_dns_forwarder == 'auto'
+
+    - name: Verwendeten DNS-Forwarder anzeigen
+      ansible.builtin.debug:
+        msg: "DNS-Forwarder fuer Samba: {{ lmn_dns_forwarder }}"
 
     - name: Warten bis apt-Lock frei ist
       ansible.builtin.shell: |
@@ -319,6 +401,18 @@
         - lmn_setup_data_disk | bool
         - (lmn_data_disk_final | default('')) == ''
 
+    - name: Hinweis Datenplatte (7.4 ohne separates LVM)
+      ansible.builtin.debug:
+        msg: >-
+          linuxmuster.net {{ lmn_version_label }} verwendet kein separates
+          Daten-LVM mehr - die Installation erfolgt direkt auf der Systemplatte.
+          Eine evtl. erkannte zweite Platte ({{ lmn_data_disk_final }}) bleibt
+          unangetastet.
+      when:
+        - lmn_setup_data_disk | bool
+        - (lmn_data_disk_final | default('')) != ''
+        - not (lmn_appliance_supports_pvdevice | default(false) | bool)
+
     - name: lmn-appliance ausführen (Server-Profil, LVM auf Datenplatte falls vorhanden)
       ansible.builtin.shell: |
         set -o pipefail
@@ -327,8 +421,8 @@
           -f {{ lmn_gateway }} \
           -d {{ lmn_domainname }} \
           -t {{ lmn_servername }} \
-          {{ ('-l ' + lmn_data_disk_final) if (lmn_data_disk_final | default('')) != '' else '' }} \
-          {{ ('-v ' + lmn_lvm_volumes) if (lmn_lvm_volumes | default('')) != '' else '' }} \
+          {{ ('-l ' + lmn_data_disk_final) if ((lmn_data_disk_final | default('')) != '' and (lmn_appliance_supports_pvdevice | default(false) | bool)) else '' }} \
+          {{ ('-v ' + lmn_lvm_volumes) if ((lmn_lvm_volumes | default('')) != '' and (lmn_appliance_supports_pvdevice | default(false) | bool)) else '' }} \
           2>&1 | while IFS= read -r line; do
           echo "$line"
         done
@@ -339,6 +433,48 @@
       changed_when: lmn_appliance_result.rc == 0
       async: 1800
       poll: 30
+
+    # =========================================================================
+    # LINUXMUSTER-SERVER-PAKETE SICHERSTELLEN
+    # =========================================================================
+    # lmn-appliance/lmn-prepare installiert die Server-Pakete zwar selbst, prueft
+    # den Return-Code aber nicht und laeuft ggf. ohne DEBIAN_FRONTEND -> bei
+    # Paketen mit debconf-Rueckfragen bricht der Install im nicht-interaktiven
+    # Lauf still ab, sodass /usr/sbin/linuxmuster-setup fehlt. Daher hier explizit
+    # und nicht-interaktiv nachziehen (idempotent, klare Fehlermeldung).
+
+    - name: Halb-konfigurierte Pakete abschliessen
+      ansible.builtin.command:
+        cmd: dpkg --configure -a
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      changed_when: false
+
+    - name: linuxmuster-Server-Pakete installieren (nicht-interaktiv)
+      ansible.builtin.apt:
+        name:
+          - linuxmuster-base7
+          - linuxmuster-webui7
+          - linuxmuster-linbo7
+          - linuxmuster-linbo-gui7
+          - sophomorix-samba
+        state: latest
+        update_cache: true
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Sicherstellen dass linuxmuster-setup vorhanden ist
+      ansible.builtin.stat:
+        path: /usr/sbin/linuxmuster-setup
+      register: lmn_setup_bin
+
+    - name: Abbrechen wenn linuxmuster-setup fehlt
+      ansible.builtin.assert:
+        that: lmn_setup_bin.stat.exists
+        fail_msg: >-
+          /usr/sbin/linuxmuster-setup fehlt - die linuxmuster-Server-Pakete
+          konnten nicht installiert werden. Bitte 'apt-get install
+          linuxmuster-base7' pruefen (Repo/Abhaengigkeiten).
 
     # =========================================================================
     # LINUXMUSTER-SETUP KONFIGURATIONSDATEI
@@ -361,6 +497,7 @@
           [setup]
           serverip = {{ lmn_server_ip }}
           netmask = {{ lmn_netmask }}
+          bitmask = {{ lmn_cidr }}
           gatewayip = {{ lmn_gateway }}
           firewallip = {{ lmn_gateway }}
           servername = {{ lmn_servername }}
@@ -447,15 +584,24 @@
         exit 1
       changed_when: false
 
-    - name: Warten bis externe DNS-Aufloesung funktioniert
+    - name: Externe DNS-Aufloesung pruefen (nicht kritisch)
       ansible.builtin.command:
         cmd: getent hosts deb.linuxmuster.net
       register: lmn_dns_check
       until: lmn_dns_check.rc == 0
-      retries: 12
+      retries: 6
       delay: 5
       changed_when: false
-      failed_when: lmn_dns_check.rc != 0
+      failed_when: false
+
+    - name: Hinweis wenn externe DNS-Aufloesung nicht funktioniert
+      ansible.builtin.debug:
+        msg: >-
+          Externe Namensaufloesung (deb.linuxmuster.net) ueber den DNS-Forwarder
+          {{ lmn_dns_forwarder }} funktioniert nicht. In Proxy-Umgebungen ist das
+          oft normal (apt laeuft ueber den Proxy). Falls danach apt-Tasks
+          scheitern, bitte lmn_dns_forwarder pruefen.
+      when: lmn_dns_check.rc != 0
 
     # =========================================================================
     # EDULUTION BINDUSER ERSTELLEN (via sophomorix)
@@ -657,7 +803,7 @@
       ansible.builtin.debug:
         msg: |
           ====================================================================
-          LINUXMUSTER.NET 7.3 INSTALLATION ABGESCHLOSSEN
+          LINUXMUSTER.NET {{ lmn_version_label }} INSTALLATION ABGESCHLOSSEN
           ====================================================================
 
           Server: {{ lmn_servername }}.{{ lmn_domainname }}
