@@ -1,57 +1,57 @@
 #!/usr/bin/env bash
 #
-# Prueft nach dem Installer-Lauf, dass der edulution-Stack tatsaechlich steht.
+# Verifies after the installer run that the edulution stack is actually up.
 
 set -uo pipefail
 
 DIRECTORY="${DIRECTORY:-/srv/docker/edulution-ui/}"
 failed=0
 
-fail() { echo "[assert] FEHLER: $*" >&2; failed=1; }
+fail() { echo "[assert] FAILED: $*" >&2; failed=1; }
 ok()   { echo "[assert] ok: $*"; }
 
 echo "=== edulution.env ==="
 if [ ! -s "${DIRECTORY}edulution.env" ]; then
-    fail "${DIRECTORY}edulution.env fehlt oder ist leer"
+    fail "${DIRECTORY}edulution.env is missing or empty"
 else
-    ok "edulution.env vorhanden ($(wc -l <"${DIRECTORY}edulution.env") Zeilen)"
+    ok "edulution.env present ($(wc -l <"${DIRECTORY}edulution.env") lines)"
     for key in KEYCLOAK_ADMIN KEYCLOAK_ADMIN_PASSWORD EDULUTION_BASE_DOMAIN; do
         if grep -q "^${key}=" "${DIRECTORY}edulution.env"; then
-            ok "Schluessel ${key} gesetzt"
+            ok "key ${key} is set"
         else
-            fail "Schluessel ${key} fehlt in edulution.env"
+            fail "key ${key} is missing from edulution.env"
         fi
     done
 fi
 
 echo
-echo "=== Heruntergeladene Vorlagen ==="
-# realm-edulution.json wird vom Installer nach dem Keycloak-Schritt geloescht.
+echo "=== Downloaded templates ==="
+# realm-edulution.json is removed by the installer after the Keycloak step.
 for file in docker-compose.yml traefik.yml; do
     if [ ! -s "${DIRECTORY}${file}" ]; then
-        fail "${file} fehlt oder ist leer"
+        fail "${file} is missing or empty"
     elif [ "$(head -c 1 "${DIRECTORY}${file}")" = "<" ]; then
-        fail "${file} enthaelt HTML statt Konfiguration"
+        fail "${file} contains HTML instead of configuration"
     else
-        ok "${file} ($(stat -c%s "${DIRECTORY}${file}") Bytes)"
+        ok "${file} ($(stat -c%s "${DIRECTORY}${file}") bytes)"
     fi
 done
 if [ ! -s "${DIRECTORY}data/traefik/config/edulution-default.yml" ]; then
-    fail "data/traefik/config/edulution-default.yml fehlt"
+    fail "data/traefik/config/edulution-default.yml is missing"
 else
-    ok "edulution-default.yml an den richtigen Ort verschoben"
+    ok "edulution-default.yml moved to the right place"
 fi
 
 echo
-echo "=== Zertifikat ==="
+echo "=== Certificate ==="
 if [ -s "${DIRECTORY}data/traefik/ssl/cert.cert" ] && [ -s "${DIRECTORY}data/traefik/ssl/cert.key" ]; then
-    ok "selbstsigniertes Zertifikat erzeugt"
+    ok "self-signed certificate created"
 else
-    fail "Zertifikat unter data/traefik/ssl/ fehlt"
+    fail "certificate under data/traefik/ssl/ is missing"
 fi
 
 echo
-echo "=== Container ==="
+echo "=== Containers ==="
 docker compose --project-directory "${DIRECTORY}" ps --all --format 'table {{.Service}}\t{{.State}}\t{{.Status}}' || true
 echo
 
@@ -61,9 +61,9 @@ service_state() {
         | awk -v s="$1" '$1 == s {print $2}'
 }
 
-# Diese Dienste muessen ohne externe Abhaengigkeiten hochkommen. `up -d` kehrt
-# zurueck, sobald die Container gestartet sind - Mongo und Keycloak brauchen
-# danach noch einen Moment, deshalb wird hier gewartet statt sofort geprueft.
+# These services must come up without external dependencies. `up -d` returns as
+# soon as the containers are started; Mongo and Keycloak need a moment after
+# that, so wait here instead of taking an immediate snapshot.
 for service in edu-traefik edu-db edu-redis edu-keycloak edu-keycloak-db; do
     state=""
     for _ in $(seq 1 30); do
@@ -73,35 +73,35 @@ for service in edu-traefik edu-db edu-redis edu-keycloak edu-keycloak-db; do
     done
 
     if [ -z "${state}" ]; then
-        fail "Dienst ${service} existiert nicht"
+        fail "service ${service} does not exist"
     elif [ "${state}" != "running" ]; then
-        fail "Dienst ${service} ist '${state}' statt 'running'"
+        fail "service ${service} is '${state}' instead of 'running'"
     else
-        ok "Dienst ${service} laeuft"
+        ok "service ${service} is running"
     fi
 done
 
-# edu-ui und edu-api brauchen eine erreichbare LDAP-Quelle und einen fertig
-# foederierten Keycloak. Beides gibt es im CI nicht, deshalb wird ihr Zustand
-# nur berichtet und bricht den Lauf nicht ab.
+# edu-ui and edu-api are only reported, on the assumption that they need a
+# reachable LDAP source. They have come up healthy on a runner regardless, so
+# they can be promoted to required assertions once that proves stable.
 echo
-echo "=== Nur informativ (brauchen echtes LDAP) ==="
+echo "=== Informational only ==="
 for service in edu-ui edu-api; do
     state=$(service_state "${service}")
-    echo "[assert] info: ${service} = ${state:-nicht vorhanden}"
+    echo "[assert] info: ${service} = ${state:-not present}"
 done
 
 echo
-echo "=== Traefik antwortet auf 443 ==="
+echo "=== Traefik responds on 443 ==="
 if curl -sS --insecure --max-time 15 -o /dev/null -w 'HTTP=%{http_code}\n' https://localhost:443/; then
-    ok "Traefik nimmt Verbindungen auf 443 an"
+    ok "traefik accepts connections on 443"
 else
-    fail "Traefik antwortet nicht auf 443"
+    fail "traefik does not respond on 443"
 fi
 
 echo
 if [ "${failed}" -ne 0 ]; then
-    echo "[assert] E2E fehlgeschlagen."
+    echo "[assert] E2E failed."
     exit 1
 fi
-echo "[assert] Alle Pruefungen bestanden."
+echo "[assert] All checks passed."

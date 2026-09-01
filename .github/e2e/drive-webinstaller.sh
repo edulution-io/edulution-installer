@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 #
-# Faehrt den edulution Web-Installer non-interaktiv durch.
+# Drives the edulution web installer non-interactively.
 #
-# Im normalen Betrieb klickt sich ein Mensch durch die Oberflaeche; das Skript
-# `installer` blockiert so lange, bis der Web-Installer `edulution.env`
-# geschrieben hat. Fuer den E2E-Lauf uebernehmen wir diesen Teil per API und
-# erzeugen damit denselben Zustand, den die Oberflaeche erzeugen wuerde.
+# Normally a human clicks through the interface and the `installer` script
+# blocks until the web installer has written `edulution.env`. For the E2E run
+# we take that part over via the API and produce the same state the interface
+# would produce.
 #
-# Der letzte Aufruf (/api/finish) schreibt `edulution.env` und entsperrt das
-# wartende Installer-Skript.
+# The last call (/api/finish) writes `edulution.env` and releases the waiting
+# installer script.
 
 set -euo pipefail
 
 BASE="${BASE_URL:-https://localhost:443}"
 EDU_DOMAIN="${EDU_DOMAIN:-edulution.e2e.local}"
 LMN_DOMAIN="${LMN_DOMAIN:-lmn.e2e.local}"
-# createEdulutionEnvFile() schneidet den Root-DN per Regex aus diesem Wert
-# heraus, der DN muss also einen DC=-Anteil besitzen.
+# createEdulutionEnvFile() carves the root DN out of this value with a regex,
+# so the DN has to contain a DC= part.
 BIND_DN="${BIND_DN:-CN=global-binduser,OU=Management,OU=GLOBAL,DC=linuxmuster,DC=lan}"
 BIND_PW="${BIND_PW:-e2e-not-a-real-password}"
 ADMIN_GROUP="${ADMIN_GROUP:-role-admin}"
@@ -33,27 +33,27 @@ api() {
 expect_ok() {
     local response="$1" step="$2"
     if [ "$(jq -r '.status' <<<"${response}")" != "true" ]; then
-        echo "[e2e] FEHLER in Schritt '${step}':" >&2
+        echo "[e2e] step '${step}' failed:" >&2
         jq . <<<"${response}" >&2 || echo "${response}" >&2
         exit 1
     fi
     log "${step}: ok"
 }
 
-log "Warte auf den Web-Installer unter ${BASE} ..."
+log "Waiting for the web installer at ${BASE} ..."
 for attempt in $(seq 1 120); do
     if curl -sS --insecure --fail --max-time 10 -o /dev/null "${BASE}" 2>/dev/null; then
-        log "Web-Installer erreichbar (nach ${attempt} Versuchen)"
+        log "Web installer reachable (after ${attempt} attempts)"
         break
     fi
     if [ "${attempt}" -eq 120 ]; then
-        echo "[e2e] Web-Installer wurde nicht erreichbar." >&2
+        echo "[e2e] The web installer never became reachable." >&2
         exit 1
     fi
     sleep 3
 done
 
-log "Sende Konfiguration (deploymentTarget=generic) ..."
+log "Submitting configuration (deploymentTarget=generic) ..."
 response=$(api POST /api/configure -H 'Content-Type: application/json' -d @- <<JSON
 {
   "organizationType": "school",
@@ -71,7 +71,7 @@ JSON
 )
 expect_ok "${response}" "configure"
 
-log "Erzeuge selbstsigniertes Zertifikat ..."
+log "Creating a self-signed certificate ..."
 response=$(api POST /api/create-ss-certificate -H 'Content-Type: application/json' -d @- <<JSON
 {
   "countrycode": "DE",
@@ -84,13 +84,13 @@ JSON
 )
 expect_ok "${response}" "create-ss-certificate"
 
-log "Setze Admin-Gruppe ..."
+log "Setting the admin group ..."
 response=$(api POST /api/set-admin-group -H 'Content-Type: application/json' \
     -d "{\"admin_group\": \"${ADMIN_GROUP}\"}")
 expect_ok "${response}" "set-admin-group"
 
-log "Schliesse Web-Installation ab (schreibt edulution.env) ..."
+log "Finishing the web installation (writes edulution.env) ..."
 response=$(api POST /api/finish)
 expect_ok "${response}" "finish"
 
-log "Web-Installer erfolgreich durchlaufen."
+log "Web installer completed successfully."
