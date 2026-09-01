@@ -92,6 +92,17 @@ if ! (echo "$cpu_flags" | grep -qwE 'cx16' && \
     exit 1
 fi
 
+# MongoDB ab 5.0 (hier: mongo:7) wird mit AVX kompiliert und stuerzt ohne diese
+# CPU-Erweiterung sofort mit "Illegal instruction (core dumped)" ab. AVX gehoert
+# zu x86-64-v3 und ist von der Pruefung oben daher NICHT abgedeckt: verbreitete
+# Standard-CPU-Typen wie "x86-64-v2-AES" (Default in Proxmox VE 8) bestehen den
+# v2-Test, lassen die Installation aber spaeter an edulution-db scheitern.
+if ! echo "$cpu_flags" | grep -qwE 'avx'; then
+    echo "[!] Die CPU unterstützt kein AVX (x86-64-v3), das von der Datenbank (MongoDB) benötigt wird."
+    echo "[!] Bitte stelle den CPU-Typ deiner VM auf 'host' (mindestens 'x86-64-v3') um!"
+    exit 1
+fi
+
 if [ -f "${DIRECTORY}edulution.env" ]; then
   echo "[!] Die edulution UI scheint bereits installiert zu sein. Bitte prüfe das Verzeichnis '$DIRECTORY'!"
   exit 1
