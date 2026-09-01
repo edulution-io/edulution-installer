@@ -1,0 +1,154 @@
+name: Installer E2E
+
+# Runs the real `installer` on a runner and drives the web installer through
+# its API until the edulution stack is up.
+#
+# Templates are fetched from the production get.edulution.io rather than from
+# the checkout: that download is what has failed for customers in the past, so
+# a run doubles as an availability check. The Docker image, in contrast, is
+# built from the checkout so the run tests the state of this branch.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: installer-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    env:
+      DIRECTORY: /srv/docker/edulution-ui/
+      # A tag that does not exist in the registry: the installer's `docker pull`
+      # comes up empty and `docker run` picks the locally built image, so the
+      # run exercises this branch.
+      INSTALLER_TAG: ci-${{ github.run_id }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Free up disk space
+        run: |
+          echo "before:"; df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          echo "after:"; df -h / | tail -1
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build webinstaller
+        run: npx nx build webinstaller
+
+      - name: Build installer image locally
+        run: |
+          docker build -t "ghcr.io/edulution-io/edulution-installer:${INSTALLER_TAG}" .
+          docker images "ghcr.io/edulution-io/edulution-installer"
+
+      - name: Check templates on get.edulution.io
+        # Checks the failure mode customers reported: every GitHub Pages address
+        # individually, not just whichever one round-robin happens to pick.
+        run: |
+          status=0
+          for file in docker-compose.yml realm-edulution.json traefik.yml \
+                      edulution-default.yml edulution-default-le.yml; do
+            url="https://get.edulution.io/download/${file}.template"
+            for ip in 185.199.108.153 185.199.109.153 185.199.110.153 185.199.111.153; do
+              code=$(curl -sS --max-time 20 --retry 3 --retry-delay 2 --retry-all-errors \
+                       --resolve "get.edulution.io:443:${ip}" \
+                       -o /dev/null -w '%{http_code}' "${url}") || code="curl-error"
+              if [ "${code}" != "200" ]; then
+                echo "::error::${file} via ${ip}: ${code}"
+                status=1
+              else
+                echo "ok  ${file} via ${ip}"
+              fi
+            done
+          done
+          exit $status
+
+      - name: Compare repo templates against the served ones
+        # A difference means the GitHub Pages deployment is behind. Only a
+        # notice, since the two legitimately differ while a change is in flight.
+        continue-on-error: true
+        run: |
+          for file in docker-compose.yml realm-edulution.json traefik.yml \
+                      edulution-default.yml edulution-default-le.yml; do
+            curl -fsSL "https://get.edulution.io/download/${file}.template" -o "/tmp/${file}.live"
+            if diff -q "apps/public-page/public/download/${file}.template" "/tmp/${file}.live" >/dev/null; then
+              echo "identical: ${file}"
+            else
+              echo "::notice::${file} differs between the repo and get.edulution.io"
+            fi
+          done
+
+      - name: Start installer
+        run: |
+          WS="${{ github.workspace }}"
+          nohup sudo bash -c "bash '${WS}/apps/public-page/public/installer' --branch '${INSTALLER_TAG}' > '${WS}/installer.log' 2>&1; echo \$? > '${WS}/installer.rc'" >/dev/null 2>&1 &
+          sleep 5
+          echo "Installer started in the background."
+
+      - name: Drive the web installer through its API
+        run: .github/e2e/drive-webinstaller.sh
+
+      - name: Wait for the installer to finish
+        run: |
+          WS="${{ github.workspace }}"
+          for attempt in $(seq 1 150); do
+            if [ -f "${WS}/installer.rc" ]; then
+              rc=$(cat "${WS}/installer.rc")
+              echo "Installer exited with code ${rc}."
+              exit "${rc}"
+            fi
+            if [ $((attempt % 6)) -eq 0 ]; then
+              echo "--- still running (${attempt}/150), last lines: ---"
+              sudo tail -5 "${WS}/installer.log" || true
+            fi
+            sleep 10
+          done
+          echo "::error::The installer did not finish within 25 minutes."
+          exit 1
+
+      - name: Assert the stack
+        run: sudo -E .github/e2e/assert-stack.sh
+
+      - name: Installer output
+        if: always()
+        run: sudo cat "${{ github.workspace }}/installer.log" || echo "(no log present)"
+
+      - name: Container logs on failure
+        if: failure()
+        run: |
+          docker ps -a
+          for c in $(docker ps -aq); do
+            echo "===== $(docker inspect --format '{{.Name}}' "$c") ====="
+            docker logs --tail 100 "$c" 2>&1 || true
+          done
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-e2e-logs
+          path: |
+            installer.log
+            installer.rc
+          if-no-files-found: warn
