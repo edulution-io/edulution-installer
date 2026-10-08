@@ -43,7 +43,7 @@
   "maxFailureWaitSeconds": 900,
   "minimumQuickLoginWaitSeconds": 60,
   "waitIncrementSeconds": 60,
-  "quickLoginCheckMilliSeconds": 1000,
+  "quickLoginCheckMilliSeconds": 0,
   "maxDeltaTimeSeconds": 43200,
   "failureFactor": 30,
   "roles": {
