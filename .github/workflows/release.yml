@@ -13,15 +13,55 @@ env:
   IMAGE: ghcr.io/edulution-io/edulution-installer
 
 jobs:
-  build:
+  # A release drafted by prepare-release.yml carries the SBOMs and is marked pre-release exactly
+  # when its tag has a suffix; anything else must not reach :latest or get.edulution.io.
+  verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 5
+
+    steps:
+      - name: Check the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          if [[ ! $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          then
+            echo "::error::$TAG is not a release tag (vX.Y.Z, or vX.Y.Z-suffix for a pre-release)"
+            exit 1
+          fi
+
+          expected=false
+          if [[ $TAG == *-* ]]
+          then
+            expected=true
+          fi
+          if [[ $PRERELEASE != "$expected" ]]
+          then
+            echo "::error::$TAG is published with pre-release=$PRERELEASE, but its tag means pre-release=$expected"
+            exit 1
+          fi
+
+          assets=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          for component in edulution-installer edulution-installer-api edulution-lmninstaller
+          do
+            if ! grep -qxF "$component-$TAG.cdx.json" <<< "$assets"
+            then
+              echo "::error::$TAG lacks $component-$TAG.cdx.json; draft releases with prepare-release.yml by pushing the tag"
+              exit 1
+            fi
+          done
+
+  # Separate from the push job so dependency install and build code never hold packages: write.
+  webinstaller:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: read
-      packages: write
-
-    outputs:
-      digest: ${{ steps.build.outputs.digest }}
+      packages: read
 
     steps:
       - name: Checkout
@@ -43,6 +83,36 @@ jobs:
 
       - name: Build the web installer
         run: npx nx build webinstaller
+
+      - name: Upload the web installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: webinstaller
+          path: dist/apps/webinstaller
+          if-no-files-found: error
+
+  build:
+    needs: webinstaller
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the web installer
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: webinstaller
+          path: dist/apps/webinstaller
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -112,9 +182,10 @@ jobs:
           fi
           cosign sign --yes "$IMAGE@$DIGEST"
 
+  # After sign, so get.edulution.io never points at an image without a signature.
   pages-build:
     if: ${{ !github.event.release.prerelease }}
-    needs: build
+    needs: [build, sign]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
