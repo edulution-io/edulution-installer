@@ -28,7 +28,7 @@ jobs:
 
     env:
       DIRECTORY: /srv/docker/edulution-ui/
-      # A tag that does not exist in the registry: the installer's `docker pull`
+      # `--version` names a tag that does not exist in the registry: the installer's `docker pull`
       # comes up empty and `docker run` picks the locally built image, so the
       # run exercises this branch.
       INSTALLER_TAG: ci-${{ github.run_id }}
@@ -102,7 +102,7 @@ jobs:
       - name: Start installer
         run: |
           WS="${{ github.workspace }}"
-          nohup sudo bash -c "bash '${WS}/apps/public-page/public/installer' --branch '${INSTALLER_TAG}' > '${WS}/installer.log' 2>&1; echo \$? > '${WS}/installer.rc'" >/dev/null 2>&1 &
+          nohup sudo bash -c "bash '${WS}/apps/public-page/public/installer' --version '${INSTALLER_TAG}' > '${WS}/installer.log' 2>&1; echo \$? > '${WS}/installer.rc'" >/dev/null 2>&1 &
           sleep 5
           echo "Installer started in the background."
 
