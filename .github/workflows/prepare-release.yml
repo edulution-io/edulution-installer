@@ -1,0 +1,139 @@
+name: Prepare Release
+
+# A pushed version tag gets a draft release with the CycloneDX SBOMs.
+# Publishing the draft builds the image and deploys the installer (release.yml).
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  sbom:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Require a release tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          then
+            echo "::error::$TAG is not a release tag (vX.Y.Z, or vX.Y.Z-suffix for a pre-release)"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          # A release job reads no cache that another run could have written.
+          package-manager-cache: false
+
+      - name: Use Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+
+      - name: Install the SBOM tool
+        run: pip install --require-hashes -r .github/sbom-requirements.txt
+
+      # Not `npm sbom --omit dev`: npm 10 drops production packages reached through a peerOptional edge.
+      # .npmrc expands GITHUB_TOKEN; the read-only job token satisfies it.
+      - name: Generate the CycloneDX SBOMs
+        env:
+          NPM_CONFIG_IGNORE_SCRIPTS: 'true'
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -o pipefail
+          mkdir sbom
+          stamp() {
+            jq --arg name "$1" --arg version "$2" \
+              '.metadata.supplier = {name: "Netzint GmbH", url: ["https://netzint.de"]}
+              | .metadata.component = ((.metadata.component // {type: "application"})
+                  + {name: $name, version: $version, supplier: .metadata.supplier})
+              | del(.metadata.component.purl)'
+          }
+          npx --yes @cyclonedx/cyclonedx-npm@6.0.1 --package-lock-only --omit dev --flatten-components \
+            --mc-type application --output-format JSON \
+            | stamp edulution-installer "${TAG#v}" > "sbom/edulution-installer-$TAG.cdx.json"
+          cyclonedx-py requirements --mc-type application --of JSON apps/webinstaller-api/requirements.txt \
+            | stamp edulution-installer-api "${TAG#v}" > "sbom/edulution-installer-api-$TAG.cdx.json"
+          cyclonedx-py requirements --mc-type application --of JSON edulution-lmninstaller/requirements.txt \
+            | stamp edulution-lmninstaller "${TAG#v}" > "sbom/edulution-lmninstaller-$TAG.cdx.json"
+          for file in sbom/*.cdx.json
+          do
+            jq -e '(.components | length) > 0' "$file" > /dev/null
+          done
+
+      - name: Upload the SBOMs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom
+          path: sbom/
+          if-no-files-found: error
+
+  # Separate from the sbom job, so no third-party tool runs while a contents: write token exists.
+  # The SBOMs go on the draft: an immutable release takes no assets once published.
+  draft-release:
+    needs: sbom
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+
+    concurrency:
+      group: prepare-release-${{ github.ref_name }}
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+
+    steps:
+      - name: Download the SBOMs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sbom
+          path: sbom
+
+      - name: Draft the release and attach the SBOMs
+        run: |
+          if state=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>&1)
+          then
+            :
+          elif [[ $state == *"release not found"* ]]
+          then
+            state=none
+          else
+            echo "::error::Could not look up release $TAG: $state"
+            exit 1
+          fi
+
+          case "$state" in
+            false)
+              echo "::error::$TAG is already published. Push the tag first and publish the draft it gets, since an immutable release takes no assets after publishing."
+              exit 1
+              ;;
+            none)
+              previous=$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // empty')
+              prerelease=()
+              if [[ $TAG == *-* ]]
+              then
+                prerelease=(--prerelease)
+              fi
+              gh release create "$TAG" --draft --verify-tag --title "$TAG" --generate-notes \
+                ${previous:+--notes-start-tag "$previous"} "${prerelease[@]}"
+              ;;
+          esac
+          gh release upload "$TAG" sbom/*.cdx.json --clobber
+          echo "Draft release $TAG carries the SBOMs. Publishing it builds the image." >> "$GITHUB_STEP_SUMMARY"
