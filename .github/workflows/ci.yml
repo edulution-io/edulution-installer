@@ -42,3 +42,43 @@ jobs:
           docker run --rm -v "$PWD:/repo:ro" -w /repo \
             ghcr.io/hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d \
             hadolint Dockerfile
+
+  # Dependabot only proposes lockfile and pin changes; this is what tells whether they still build.
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Build the web installer
+        run: npx nx build webinstaller
+
+      - name: Build the public page
+        run: npm run build:public
+
+      - name: Build the installer image
+        run: docker build --tag edulution-installer:ci .
+
+      # The bootstrap installs these on Ubuntu 24.04, whose python3 is the 3.12 they are locked for.
+      - name: Install the LMN installer dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/lmn-venv"
+          "$RUNNER_TEMP/lmn-venv/bin/pip" install --require-hashes -r edulution-lmninstaller/requirements.txt
