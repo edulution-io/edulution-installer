@@ -28,14 +28,16 @@ jobs:
 
     env:
       DIRECTORY: /srv/docker/edulution-ui/
-      # A tag that does not exist in the registry: the installer's `docker pull`
+      # `--version` names a tag that does not exist in the registry: the installer's `docker pull`
       # comes up empty and `docker run` picks the locally built image, so the
       # run exercises this branch.
       INSTALLER_TAG: ci-${{ github.run_id }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Free up disk space
         run: |
@@ -44,7 +46,7 @@ jobs:
           echo "after:"; df -h / | tail -1
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -102,7 +104,7 @@ jobs:
       - name: Start installer
         run: |
           WS="${{ github.workspace }}"
-          nohup sudo bash -c "bash '${WS}/apps/public-page/public/installer' --branch '${INSTALLER_TAG}' > '${WS}/installer.log' 2>&1; echo \$? > '${WS}/installer.rc'" >/dev/null 2>&1 &
+          nohup sudo bash -c "bash '${WS}/apps/public-page/public/installer' --version '${INSTALLER_TAG}' > '${WS}/installer.log' 2>&1; echo \$? > '${WS}/installer.rc'" >/dev/null 2>&1 &
           sleep 5
           echo "Installer started in the background."
 
@@ -145,7 +147,7 @@ jobs:
 
       - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: installer-e2e-logs
           path: |

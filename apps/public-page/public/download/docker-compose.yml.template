@@ -137,7 +137,8 @@ services:
     restart: always
     ports:
       - 80:80
-      - 443:443
+      - 443:443/tcp
+      - 443:443/udp
     env_file:
       - edulution.env
     volumes:
@@ -177,6 +178,9 @@ services:
     depends_on:
       edu-keycloak-db:
         condition: service_healthy
+    volumes:
+      # Holds the linuxmuster CA certificate, which Keycloak needs to change passwords over LDAPS.
+      - ./data/keycloak/truststores:/opt/keycloak/conf/truststores:ro
     healthcheck:
       test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/9000"]
       interval: 5s

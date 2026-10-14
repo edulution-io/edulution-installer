@@ -146,8 +146,7 @@ setup_virtual_environment() {
     python3 -m venv "${VENV_DIR}"
     source "${VENV_DIR}/bin/activate"
 
-    pip install --upgrade pip -q
-    pip install -r "${INSTALL_DIR}/requirements.txt" -q
+    pip install --require-hashes -r "${INSTALL_DIR}/requirements.txt" -q
 
     log_info "Virtual environment configured"
 }

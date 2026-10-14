@@ -1,0 +1,43 @@
+version: 2
+
+updates:
+  # Actions are pinned to commit SHAs; these PRs move the pins and their version comments.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - '*'
+
+  # The base image is pinned by digest. Python stays on the minor the lockfile is compiled for.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: python
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+
+  # Security updates only.
+  - package-ecosystem: pip
+    directories:
+      - /apps/webinstaller-api
+      - /edulution-lmninstaller
+      - /.github
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
