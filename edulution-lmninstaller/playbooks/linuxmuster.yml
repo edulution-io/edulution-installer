@@ -5,8 +5,7 @@
 # =============================================================================
 #
 # Verwendung:
-#   1. Variablen in vars/linuxmuster.yml anpassen
-#   2. ansible-playbook main.yml -e @vars/linuxmuster.yml
+#   ansible-playbook linuxmuster.yml -e lmn_schoolname="Meine Schule"
 #
 #   Oder via API mit extra_vars:
 #   POST /api/playbook/start
@@ -39,9 +38,8 @@
     NO_PROXY: "{{ lmn_no_proxy | default('') }}"
 
   # Variablen können überschrieben werden durch:
-  # 1. vars/linuxmuster.yml Datei
-  # 2. -e / --extra-vars auf der Kommandozeile
-  # 3. API extra_vars
+  # 1. -e / --extra-vars auf der Kommandozeile
+  # 2. API extra_vars
 
   vars:
     # -------------------------------------------------------------------------
