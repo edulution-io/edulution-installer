@@ -1,7 +1,9 @@
+# Dependabot does not read this template: bump the pins by hand, keycloak and keycloak-db
+# together with the BOOTSTRAP_* images in the installer.
 services:
   edu-ui:
     container_name: edulution-ui
-    image: ghcr.io/edulution-io/edulution-ui
+    image: ghcr.io/edulution-io/edulution-ui:latest
     restart: always
     depends_on:
       edu-api:
@@ -15,7 +17,7 @@ services:
 
   edu-api:
     container_name: edulution-api
-    image: ghcr.io/edulution-io/edulution-api
+    image: ghcr.io/edulution-io/edulution-api:latest
     restart: always
     env_file:
       - edulution.env
@@ -57,7 +59,7 @@ services:
 
   edu-db:
     container_name: edulution-db
-    image: mongo:7
+    image: mongo:7.0.45@sha256:9650758f83af117fc96699f030a44f9300bed839734e67012f56df05b2fd6290
     restart: always
     env_file:
       - edulution.env
@@ -113,7 +115,7 @@ services:
 
   edu-redis:
     container_name: edulution-redis
-    image: redis:8.6
+    image: redis:8.6.7@sha256:192fab3335680aa420049026a18dc6baa30a69406cd29af35145bca0523d781a
     restart: always
     healthcheck:
       test:
@@ -132,7 +134,7 @@ services:
         --io-threads-do-reads yes
 
   edu-traefik:
-    image: traefik:v3.1
+    image: traefik:v3.1.7@sha256:74d72c7a1345984f186bddbabcc462b2128d0d8054177dc84afaeac4db1f0f56
     container_name: edulution-traefik
     restart: always
     ports:
@@ -155,7 +157,7 @@ services:
       start_period: 10s
     
   edu-keycloak:
-    image: quay.io/keycloak/keycloak:26.4
+    image: quay.io/keycloak/keycloak:26.7.3@sha256:29be7252db0a106f1cd2ac17b9a56ff2668073da645638a38b9fc67deeb2d6c4
     container_name: edulution-keycloak
     restart: always
     command:
@@ -189,7 +191,7 @@ services:
       start_period: 20s
 
   edu-keycloak-db:
-    image: postgres:16
+    image: postgres:16.15@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
     container_name: edulution-keycloak-db
     restart: always
     env_file:

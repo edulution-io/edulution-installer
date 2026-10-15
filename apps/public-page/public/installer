@@ -352,7 +352,7 @@ docker network create edulution-prepare 2>&1 > /dev/zero
 
 # Dependabot erfasst diese Pins nicht; sie werden von Hand angehoben.
 BOOTSTRAP_POSTGRES_IMAGE="postgres:16.15@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d"
-BOOTSTRAP_KEYCLOAK_IMAGE="quay.io/keycloak/keycloak:25.0.6@sha256:82c5b7a110456dbd42b86ea572e728878549954cc8bd03cd65410d75328095d2"
+BOOTSTRAP_KEYCLOAK_IMAGE="quay.io/keycloak/keycloak:26.7.3@sha256:29be7252db0a106f1cd2ac17b9a56ff2668073da645638a38b9fc67deeb2d6c4"
 
 docker pull "${BOOTSTRAP_POSTGRES_IMAGE}" 2>&1 > /dev/zero
 docker pull "${BOOTSTRAP_KEYCLOAK_IMAGE}" 2>&1 > /dev/zero
