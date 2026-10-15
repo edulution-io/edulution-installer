@@ -12,12 +12,29 @@ http:
       entryPoints:
         - websecure
       tls: {}
+    # Admin console and admin REST API. Containers use http://edu-keycloak:8080/auth directly instead.
+    edulution-keycloak-admin:
+      rule: "PathPrefix(`/auth/admin`)"
+      service: edulution-keycloak
+      middlewares:
+        - private-networks-only
+      entryPoints:
+        - websecure
+      tls: {}
     edulution-ui:
       rule: "PathPrefix(`/`)"
       service: edulution-ui
       entryPoints:
         - websecure
       tls: {}
+
+  middlewares:
+    # Not 172.16.0.0/12: Docker uses it, also as the source of IPv6 and local clients.
+    private-networks-only:
+      ipAllowList:
+        sourceRange:
+          - "10.0.0.0/8"
+          - "192.168.0.0/16"
 
   services:
     edulution-api:
