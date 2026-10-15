@@ -706,27 +706,6 @@
         daemon_reload: true
 
     # =========================================================================
-    # SSH-ZUGRIFF FUER EDULUTION-INSTALLER
-    # =========================================================================
-    # Erlaubt Root-/Passwort-Login ausschliesslich von localhost und aus dem
-    # Docker-Bridge-Netz (docker0, 172.17.0.0/16). Wird immer angelegt, wirkt
-    # sich aber nur auf Verbindungen aus diesen Netzen aus. Bei einer
-    # "gleiche Maschine"-Installation erreicht der edulution-Container den
-    # Host darueber ueber die docker0-IP.
-
-    - name: SSH-Konfiguration fuer edulution-installer erstellen
-      ansible.builtin.copy:
-        content: |
-          Match Address 127.0.0.1,172.17.0.0/16
-              PermitRootLogin yes
-              PasswordAuthentication yes
-        dest: /etc/ssh/sshd_config.d/edulution_installer.conf
-        owner: root
-        group: root
-        mode: '0644'
-      notify: SSH-Dienst neustarten
-
-    # =========================================================================
     # AJENTI-PORT ANPASSEN (nur bei lokaler Installation)
     # =========================================================================
     # Auf derselben Maschine belegt der edulution-Traefik den Host-Port 443.
@@ -824,11 +803,6 @@
   # ===========================================================================
 
   handlers:
-    - name: SSH-Dienst neustarten
-      ansible.builtin.systemd:
-        name: ssh
-        state: restarted
-
     - name: Linuxmuster-WebUI neustarten
       ansible.builtin.systemd:
         name: linuxmuster-webui

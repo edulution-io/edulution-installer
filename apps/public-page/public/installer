@@ -167,17 +167,34 @@ fi
 # Muss bereits vor dem Start des Installer-Containers existieren: bei einer
 # "gleiche Maschine"-Installation greift der Container per SSH ueber die
 # docker0-IP auf den Host zu (der linuxmuster-Bootstrap laeuft dann lokal auf
-# diesem Host). Das Playbook legt die Datei spaeter zwar erneut an, das ist fuer
-# den initialen Bootstrap aber zu spaet.
+# diesem Host). Nach der Web-Installation wird die Freigabe wieder entfernt.
 echo "[*] Konfiguriere SSH-Zugriff fuer den edulution-Installer (localhost + Docker-Netz)..."
+SSH_INSTALLER_CONF=/etc/ssh/sshd_config.d/edulution_installer.conf
+
+restart_ssh() {
+    systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null || \
+        echo "[!] Der SSH-Dienst konnte nicht neu gestartet werden. Bitte 'systemctl restart ssh' ausfuehren."
+}
+
+# Auch bei einem Abbruch des Skripts darf die Freigabe nicht bestehen bleiben.
+remove_ssh_installer_access() {
+    if [ -f "${SSH_INSTALLER_CONF}" ]; then
+        rm -f "${SSH_INSTALLER_CONF}"
+        restart_ssh
+    fi
+}
+trap remove_ssh_installer_access EXIT
+# Bei SIGHUP (abgebrochene SSH-Sitzung) und SIGTERM laeuft die EXIT-Trap sonst nicht zuverlaessig.
+trap 'exit 1' HUP TERM
+
 mkdir -p /etc/ssh/sshd_config.d
-cat <<'SSHEOF' > /etc/ssh/sshd_config.d/edulution_installer.conf
+cat <<'SSHEOF' > "${SSH_INSTALLER_CONF}"
 Match Address 127.0.0.1,172.17.0.0/16
     PermitRootLogin yes
     PasswordAuthentication yes
 SSHEOF
-chmod 0644 /etc/ssh/sshd_config.d/edulution_installer.conf
-systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null || true
+chmod 0644 "${SSH_INSTALLER_CONF}"
+restart_ssh
 
 if ! command -v jq &> /dev/null; then
     echo "[*] JQ ist nicht installiert. Installation wird gestartet..."
@@ -278,7 +295,8 @@ mkdir -p ${DIRECTORY}data/public/downloads
 mkdir -p ${DIRECTORY}data/apps
 mkdir -p ${DIRECTORY}data/apps/desktopdeployment/edulution-guacamole/config
 
-chmod -R 777 ${DIRECTORY}data
+# Das Guacamole-Plugin bindet das Verzeichnis als Home seines Benutzers (UID 1001) ein; sonst schreibt nur root in data/.
+chown 1001:1001 ${DIRECTORY}data/apps/desktopdeployment/edulution-guacamole/config
 
 mv ${DIRECTORY}edulution-default.yml ${DIRECTORY}data/traefik/config
 
@@ -345,6 +363,7 @@ done
 
 echo "[*] Web-Installation abgeschlossen! Fahre mit der Konfiguration fort..."
 docker rm -f edulution-installer 2>&1 > /dev/zero
+remove_ssh_installer_access
 
 echo "[*] Starte den Authentifizierungserver um die Einstellungen festzulegen..."
 
@@ -379,7 +398,7 @@ docker run -d \
   -e KC_HOSTNAME_STRICT=false \
   -e KC_HOSTNAME_STRICT_HTTPS=false \
   -e KC_HTTP_RELATIVE_PATH=/auth \
-  -p 8080:8080 \
+  -p 127.0.0.1:8080:8080 \
   --network edulution-prepare \
   "${BOOTSTRAP_KEYCLOAK_IMAGE}" \
   start-dev \

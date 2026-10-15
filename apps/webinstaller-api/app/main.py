@@ -387,7 +387,7 @@ def createSSCertificate(ssdata: SSCertificate, data: Data = Depends(getData)):
             .sign(key, hashes.SHA256())
         )
 
-        with open(keyfile, "wb") as f:
+        with openPrivate(keyfile, "wb") as f:
             f.write(
                 key.private_bytes(
                     encoding=serialization.Encoding.PEM,
@@ -452,7 +452,7 @@ def uploadCertificate(cert: UploadFile = File(...), key: UploadFile = File(...))
         with open(certfile, "wb") as buffer:
             shutil.copyfileobj(cert.file, buffer)
 
-        with open(keyfile, "wb") as buffer:
+        with openPrivate(keyfile, "wb") as buffer:
             shutil.copyfileobj(key.file, buffer)
 
         return {"status": True, "message": "Successful"}
@@ -727,6 +727,14 @@ def generateRandom(length=5):
     return random_string
 
 
+def openPrivate(path, mode="w"):
+    """Oeffnet eine Datei mit Geheimnissen zum Schreiben, nur fuer root lesbar."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # Der Modus von os.open gilt nur fuer neue Dateien.
+    os.fchmod(fd, 0o600)
+    return os.fdopen(fd, mode)
+
+
 def createEdulutionEnvFile(data: Data):
     root_dn = re.search(r"(DC=.*$)", data.DATA_LMN_BINDUSER_DN).group(1)
 
@@ -875,7 +883,7 @@ EDULUTION_ONLYOFFICE_POSTGRES_PASSWORD={onlyoffice_postgres_secret}
         environment_file += "ACME_DNS_API_BASE=https://acme-dns.netzint.de\n"
         environment_file += "ACME_DNS_STORAGE_PATH=/etc/traefik/ssl/acmedns.json\n"
 
-    with open("/edulution-ui/edulution.env", "w") as f:
+    with openPrivate("/edulution-ui/edulution.env") as f:
         f.write(environment_file)
 
     lmn_api_traefik = f"""
@@ -985,9 +993,8 @@ certificatesResolvers:
 
         # acme.json für ACME-Zertifikatsspeicher erstellen
         acme_json_path = f"{EDULUTION_DIRECTORY}/data/traefik/ssl/acme.json"
-        with open(acme_json_path, "w") as f:
+        with openPrivate(acme_json_path) as f:
             f.write("{}")
-        os.chmod(acme_json_path, 0o600)
 
         # acmedns.json mit Registrierungsdaten für ACME-DNS-Provider schreiben
         if data.DATA_LE_ACME_DNS_REGISTRATION:
@@ -995,7 +1002,7 @@ certificatesResolvers:
                 data.DATA_EDULUTION_EXTERNAL_DOMAIN: data.DATA_LE_ACME_DNS_REGISTRATION
             }
             acmedns_json_path = f"{EDULUTION_DIRECTORY}/data/traefik/ssl/acmedns.json"
-            with open(acmedns_json_path, "w") as f:
+            with openPrivate(acmedns_json_path) as f:
                 json.dump(acmedns_data, f, indent=2)
 
     elif os.path.exists("/edulution-ui/data/traefik/ssl/cert.cert") and os.path.exists(
