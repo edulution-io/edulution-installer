@@ -1,7 +1,7 @@
 services:
   edu-ui:
     container_name: edulution-ui
-    image: ghcr.io/edulution-io/edulution-ui
+    image: ghcr.io/edulution-io/edulution-ui:latest
     restart: always
     depends_on:
       edu-api:
@@ -15,7 +15,7 @@ services:
 
   edu-api:
     container_name: edulution-api
-    image: ghcr.io/edulution-io/edulution-api
+    image: ghcr.io/edulution-io/edulution-api:latest
     restart: always
     env_file:
       - edulution.env
@@ -155,7 +155,7 @@ services:
       start_period: 10s
     
   edu-keycloak:
-    image: quay.io/keycloak/keycloak:26.4
+    image: quay.io/keycloak/keycloak:26.7.3
     container_name: edulution-keycloak
     restart: always
     command:
