@@ -706,13 +706,13 @@ if STATIC_PATH.exists():
     app.mount("/assets", StaticFiles(directory=str(STATIC_PATH / "assets")), name="assets")
     app.mount("/img", StaticFiles(directory=str(STATIC_PATH / "img")), name="img")
 
-    # StaticFiles prueft die Pfade; was es nicht findet, ist eine Route der SPA.
+    # StaticFiles prueft die Pfade; was es nicht findet, ist eine Route der SPA, ausser unter /api.
     class SPAStaticFiles(StaticFiles):
         async def get_response(self, path, scope):
             try:
                 return await super().get_response(path, scope)
             except StarletteHTTPException as e:
-                if e.status_code != 404:
+                if e.status_code != 404 or path.split("/")[0] == "api":
                     raise
                 return await super().get_response("index.html", scope)
 
