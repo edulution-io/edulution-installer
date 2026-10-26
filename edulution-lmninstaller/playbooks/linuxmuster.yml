@@ -138,7 +138,7 @@
       - curl
       - gnupg
       - lvm2
-      # Als manuell installiert markiert, damit ein spaeteres autoremove die Sicherheitsupdates nicht mitnimmt.
+      # Als manuell installiert markiert, damit ein spaeteres autoremove das Paket nicht mitnimmt.
       - unattended-upgrades
 
   tasks:
@@ -812,7 +812,7 @@
   # ===========================================================================
 
   handlers:
-    # Ubuntus 50unattended-upgrades laesst nur die Security-Quellen zu; linuxmuster-Pakete bleiben manuell.
+    # Ubuntus 50unattended-upgrades laesst nur Ubuntus eigene Release- und Security-Quellen zu; linuxmuster-Pakete bleiben manuell.
     - name: Automatische Sicherheitsupdates wieder einschalten
       ansible.builtin.lineinfile:
         path: /etc/apt/apt.conf.d/20auto-upgrades

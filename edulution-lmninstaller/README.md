@@ -244,13 +244,18 @@ All variables have default values and can be overridden via `extra_vars`.
 
 ### Updates on the linuxmuster Server
 
-While the playbook runs, automatic updates are paused if `lmn_disable_auto_updates` is set. At the end of the run, also when a task failed, the playbook switches them on: `unattended-upgrades` then installs Ubuntu security updates (for example Samba), as configured in Ubuntu's `50unattended-upgrades`. linuxmuster packages from deb.linuxmuster.net are not part of that and are updated by hand:
+While the playbook runs, automatic updates are paused if `lmn_disable_auto_updates` is set; with `false` they keep running during the installation. At the end of the run, also when a task failed, the playbook switches them on: `unattended-upgrades` then installs updates from Ubuntu's own release and security origins (security updates in practice, Samba among them), as configured in Ubuntu's `50unattended-upgrades`. A later run of the playbook switches them on again, even if they were switched off by hand in the meantime. linuxmuster packages from deb.linuxmuster.net are not part of that and are updated by hand:
 
 ```bash
 apt update && apt full-upgrade
 ```
 
-If a run is interrupted (for example by a reboot), run the playbook again or switch the updates on with `dpkg-reconfigure -plow unattended-upgrades`. Servers set up with an earlier installer version keep their updates paused until then.
+If an installation was interrupted (for example by a reboot), run the installation again. On servers set up with an earlier installer version, automatic updates stay paused; switch them on with:
+
+```bash
+sed -i 's/^APT::Periodic::Unattended-Upgrade.*/APT::Periodic::Unattended-Upgrade "1";/' /etc/apt/apt.conf.d/20auto-upgrades
+systemctl enable --now unattended-upgrades
+```
 
 ### Password Requirements
 
