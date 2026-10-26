@@ -13,7 +13,7 @@ import shutil
 import asyncio
 import threading
 import urllib3
-from urllib.parse import parse_qsl, quote, urlencode
+from urllib.parse import quote, unquote_plus
 
 # Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -209,17 +209,21 @@ def hasInstallerToken(value):
 
 
 def exchangeTokenForSession(scope):
-    # Das Ziel bleibt ein Pfad auf diesem Host, ohne den Token.
-    path = "/" + quote(scope.get("raw_path", scope["path"].encode()).decode("latin-1"), safe="/%").lstrip("/")
-    pairs = parse_qsl(scope["query_string"].decode("latin-1"), keep_blank_values=True)
-    query = urlencode([(k, v) for k, v in pairs if k != "token"])
+    # Das Ziel bleibt ein Pfad auf diesem Host, ohne den Token, sonst unveraendert.
+    raw_path = scope.get("raw_path", scope["path"].encode()).decode("latin-1")
+    path = "/" + quote(raw_path, safe="/%:@!$&'()*+,;=").lstrip("/")
+    query = "&".join(
+        part
+        for part in scope["query_string"].decode("latin-1").split("&")
+        if part and unquote_plus(part.split("=", 1)[0]) != "token"
+    )
     target = html.escape(path + (f"?{query}" if query else ""))
     # Eine Seite statt 303: Kommt der Link von einer anderen Website, sendet der Browser das
     # Strict-Cookie erst bei einer Navigation, die von dieser Seite ausgeht.
     response = HTMLResponse(
         f'<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url={target}">'
         f'<a href="{target}">edulution Web-Installer</a>',
-        headers={"Cache-Control": "no-store"},
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
     )
     response.set_cookie(SESSION_COOKIE, INSTALLER_TOKEN, httponly=True, secure=True, samesite="strict")
     return response
