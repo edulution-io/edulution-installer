@@ -115,7 +115,8 @@
     # linuxmuster-Version automatisch anhand der Ubuntu-Version:
     #   Ubuntu 24.04 -> lmn73 (7.3),  Ubuntu 26.04 -> lmn74 (7.4).
     # lmn_repo_distribution/lmn_prepare_version werden daraus per set_fact
-    # abgeleitet (per -e ueberschreibbar). Nur 7.3 nutzt eine separate Datenplatte
+    # abgeleitet (per -e ueberschreibbar; eine andere lmn-appliance-Version braucht
+    # zusaetzlich lmn_prepare_commit und lmn_appliance_sha256). Nur 7.3 nutzt eine separate Datenplatte
     # via LVM (lmn-appliance -l/--pvdevice); 7.4 hat das LVM-Setup abgeschafft und
     # installiert direkt auf die Systemplatte -> dort wird kein -l uebergeben.
     # lmn-appliance wird ueber den Commit des Tags geladen und gegen die Pruefsumme geprueft;
@@ -174,12 +175,23 @@
         lmn_version_label: "{{ lmn_version_map[ansible_distribution_major_version].label }}"
         lmn_appliance_supports_pvdevice: "{{ lmn_version_map[ansible_distribution_major_version].pvdevice }}"
 
+    # Per -e gesetzte Werte gehen dem set_fact vor; eine andere Version braucht ihren eigenen Commit und ihre Pruefsumme.
+    - name: lmn-appliance-Version und Commit pruefen
+      ansible.builtin.assert:
+        that:
+          - >-
+            lmn_prepare_version == lmn_version_map[ansible_distribution_major_version].prepare_version
+            or lmn_prepare_commit != lmn_version_map[ansible_distribution_major_version].prepare_commit
+        fail_msg: >-
+          Fuer lmn-appliance {{ lmn_prepare_version }} bitte auch lmn_prepare_commit und
+          lmn_appliance_sha256 setzen (-e).
+
     - name: Gewaehlte linuxmuster-Version anzeigen
       ansible.builtin.debug:
         msg: >-
           Ubuntu {{ ansible_distribution_version }} erkannt -> linuxmuster.net
           {{ lmn_version_label }} ({{ lmn_repo_distribution }}, lmn-appliance
-          {{ lmn_prepare_version }})
+          {{ lmn_prepare_version }}, Commit {{ lmn_prepare_commit[:7] }})
 
     # -------------------------------------------------------------------------
     # PROXY + UPSTREAM-DNS ERMITTELN (vor der Netz-Neukonfiguration)
