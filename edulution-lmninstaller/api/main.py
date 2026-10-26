@@ -56,15 +56,18 @@ async def lifespan(app: FastAPI):
         pass
 
 
+# Read at import, so uvicorn exits right away instead of starting without a usable token.
+API_TOKEN = settings.api_token_file.read_text().strip()
+if not API_TOKEN:
+    raise RuntimeError(f"{settings.api_token_file} is empty")
+
+
 class RequireApiToken:
     """Every HTTP and WebSocket request must carry the token bootstrap.sh stored, as a Bearer header."""
 
     def __init__(self, app):
         self.app = app
-        token = settings.api_token_file.read_text().strip()
-        if not token:
-            raise RuntimeError(f"{settings.api_token_file} is empty")
-        self.expected = f"Bearer {token}".encode()
+        self.expected = f"Bearer {API_TOKEN}".encode()
 
     async def __call__(self, scope, receive, send):
         if scope["type"] not in ("http", "websocket"):

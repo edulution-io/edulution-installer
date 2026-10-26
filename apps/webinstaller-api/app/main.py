@@ -602,9 +602,11 @@ def loadLmnApiAccess(host):
     try:
         with open(LMN_API_ACCESS_FILE) as f:
             stored = json.load(f)
-    except (OSError, ValueError):
+        if not host or stored.get("host") != host:
+            return None
+        return LmnApiAccess(**stored)
+    except (OSError, ValueError, TypeError, AttributeError):
         return None
-    return LmnApiAccess(**stored) if host and stored.get("host") == host else None
 
 
 def lmnApiSan(host):
@@ -637,6 +639,7 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
         )
 
     bootstrap_manager.reset()
+    data.DATA_LMN_API = None
 
     def run_bootstrap():
         client = paramiko.SSHClient()
@@ -690,12 +693,13 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
                 return
 
             with sftp.open(LMN_API_CERT_PATH) as f:
-                access = saveLmnApiAccess(ssh.host, token, f.read().decode())
+                cert = f.read().decode()
+            access = LmnApiAccess(ssh.host, token, cert)
 
             bootstrap_manager.add_event("Warte auf LMN-Installer API...")
             for attempt in range(30):
                 if access.healthy():
-                    data.DATA_LMN_API = access
+                    data.DATA_LMN_API = saveLmnApiAccess(ssh.host, token, cert)
                     bootstrap_manager.add_event("LMN-Installer API ist bereit!")
                     bootstrap_manager.add_event("Bootstrap erfolgreich", 'done')
                     bootstrap_manager.finish('completed')
@@ -717,12 +721,13 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
             bootstrap_manager.finish('failed')
         finally:
             # bootstrap.sh uebernimmt die Datei; nach einem Abbruch davor bleibt sie sonst liegen.
-            if token_file:
-                try:
+            try:
+                if token_file:
                     sftp.remove(token_file)
-                except OSError:
-                    pass
-            client.close()
+            except Exception:
+                pass
+            finally:
+                client.close()
 
     threading.Thread(target=run_bootstrap, daemon=True).start()
     return {"status": True, "message": "Bootstrap gestartet"}
