@@ -14,8 +14,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: security-scan-${{ github.event.pull_request.number || github.event_name }}
-  cancel-in-progress: true
+  group: security-scan-${{ github.event.pull_request.number || github.event.release.tag_name || github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   semgrep-pr:
@@ -103,12 +103,15 @@ jobs:
 
           pip_advisories() {
             local report
-            report=$(pip-audit --requirement "$1" --require-hashes --disable-pip --no-deps --format json --progress-spinner off) || true
+            # pip-audit prints a summary of all advisories to stderr, which would land in this public log.
+            report=$(pip-audit --requirement "$1" --require-hashes --disable-pip --no-deps --format json \
+              --progress-spinner off 2> "$WORK/pip-audit.err") || true
             if ! jq -e '.dependencies' <<< "$report" > /dev/null 2>&1; then
               echo "::error::pip-audit did not return a report for $1" >&2
+              cat "$WORK/pip-audit.err" >&2
               exit 1
             fi
-            jq -r '.dependencies[] | .name as $name | .vulns[] | "\($name) \(.id)"' <<< "$report"
+            jq -r '.dependencies[] | .name as $name | .vulns[]? | "\($name) \(.id)"' <<< "$report"
           }
 
           : > "$WORK/base.txt"
@@ -119,14 +122,17 @@ jobs:
             npm_advisories "$WORK/base" >> "$WORK/base.txt"
             npm_advisories . >> "$WORK/head.txt"
           fi
-          for requirements in apps/webinstaller-api/requirements.txt edulution-lmninstaller/requirements.txt
+          git diff --name-only HEAD^1 HEAD -- '*requirements.txt' > "$WORK/requirements.txt"
+          while IFS= read -r requirements
           do
-            git diff --quiet HEAD^1 HEAD -- "$requirements" && continue
             base_requirements="$WORK/base/${requirements//\//_}"
-            git show "HEAD^1:$requirements" > "$base_requirements"
-            pip_advisories "$base_requirements" >> "$WORK/base.txt"
-            pip_advisories "$requirements" >> "$WORK/head.txt"
-          done
+            if git show "HEAD^1:$requirements" > "$base_requirements" 2> /dev/null; then
+              pip_advisories "$base_requirements" >> "$WORK/base.txt"
+            fi
+            if [ -f "$requirements" ]; then
+              pip_advisories "$requirements" >> "$WORK/head.txt"
+            fi
+          done < "$WORK/requirements.txt"
 
           NEW=$(comm -13 <(sort -u "$WORK/base.txt") <(sort -u "$WORK/head.txt"))
           if [ -n "$NEW" ]; then
@@ -167,7 +173,7 @@ jobs:
   image-scan:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 60
     permissions:
       contents: read
       security-events: write
@@ -178,20 +184,37 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Wait for the release image
-        if: github.event_name == 'release'
+      # The Release workflow pushes the image of a published release a few minutes after this run starts.
+      - name: Find the image
+        id: image
         env:
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.event.release.tag_name || 'latest' }}
+          EVENT: ${{ github.event_name }}
         run: |
-          for _ in $(seq 90)
+          image="ghcr.io/edulution-io/edulution-installer:${TAG#v}"
+          tries=1
+          if [ "$EVENT" = release ]; then
+            tries=90
+          fi
+          for attempt in $(seq "$tries")
           do
-            docker buildx imagetools inspect "ghcr.io/edulution-io/edulution-installer:${TAG#v}" > /dev/null 2>&1 && exit 0
-            sleep 30
+            if docker buildx imagetools inspect "$image" > /dev/null 2>&1; then
+              echo "found=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "$attempt" -lt "$tries" ]; then
+              sleep 30
+            fi
           done
-          echo "::error::ghcr.io/edulution-io/edulution-installer:${TAG#v} did not appear within 45 minutes"
-          exit 1
+          if [ "$EVENT" = release ]; then
+            echo "::error::$image did not appear within 45 minutes"
+            exit 1
+          fi
+          echo "::notice::$image does not exist yet, so there is nothing to scan"
+          echo "found=false" >> "$GITHUB_OUTPUT"
 
       - name: Scan the installer image
+        if: steps.image.outputs.found == 'true'
         env:
           TAG: ${{ github.event.release.tag_name || 'latest' }}
         run: |
@@ -201,6 +224,7 @@ jobs:
             "ghcr.io/edulution-io/edulution-installer:${TAG#v}"
 
       - name: Upload the results to code scanning
+        if: steps.image.outputs.found == 'true'
         uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           sarif_file: trivy.sarif
