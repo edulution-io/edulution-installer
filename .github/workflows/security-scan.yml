@@ -122,7 +122,7 @@ jobs:
             npm_advisories "$WORK/base" >> "$WORK/base.txt"
             npm_advisories . >> "$WORK/head.txt"
           fi
-          git diff --name-only HEAD^1 HEAD -- '*requirements.txt' > "$WORK/requirements.txt"
+          git diff --no-renames --name-only HEAD^1 HEAD -- '*requirements.txt' > "$WORK/requirements.txt"
           while IFS= read -r requirements
           do
             base_requirements="$WORK/base/${requirements//\//_}"
@@ -198,7 +198,7 @@ jobs:
           fi
           for attempt in $(seq "$tries")
           do
-            if docker buildx imagetools inspect "$image" > /dev/null 2>&1; then
+            if error=$(docker buildx imagetools inspect "$image" 2>&1 > /dev/null); then
               echo "found=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -208,6 +208,11 @@ jobs:
           done
           if [ "$EVENT" = release ]; then
             echo "::error::$image did not appear within 45 minutes"
+            exit 1
+          fi
+          if ! grep -qiE 'not found|manifest unknown' <<< "$error"; then
+            echo "::error::Could not look up $image"
+            echo "$error"
             exit 1
           fi
           echo "::notice::$image does not exist yet, so there is nothing to scan"
