@@ -103,16 +103,8 @@ class AnsibleRunnerService:
             raise RuntimeError("A playbook is already running")
 
         playbook_path = settings.playbook_dir / playbook
-        if not playbook_path.exists():
+        if not playbook_path.is_file():
             raise FileNotFoundError(f"Playbook not found: {playbook_path}")
-
-        self._job_id = uuid4()
-        self._status = JobStatus.RUNNING
-        self._started_at = datetime.utcnow()
-        self._finished_at = None
-        self._return_code = None
-
-        streamer.set_job_id(self._job_id)
 
         private_data_dir = settings.private_data_dir
 
@@ -135,6 +127,14 @@ class AnsibleRunnerService:
         with os.fdopen(fd, "w") as f:
             json.dump(_unsafe(extra_vars), f)
 
+        # Counts as started only now, so a failure while preparing does not leave it running.
+        self._job_id = uuid4()
+        self._status = JobStatus.RUNNING
+        self._started_at = datetime.utcnow()
+        self._finished_at = None
+        self._return_code = None
+        streamer.set_job_id(self._job_id)
+
         loop = asyncio.get_event_loop()
 
         def run_ansible():
@@ -147,6 +147,8 @@ class AnsibleRunnerService:
                     status_handler=self._status_handler,
                     quiet=True,
                 )
+            except Exception as e:
+                streamer.queue_message(MessageType.STDERR, f"ansible-runner: {e}")
             finally:
                 extravars_path.unlink(missing_ok=True)
                 self._finish(result is not None and result.status == "successful")
