@@ -118,10 +118,24 @@
     # abgeleitet (per -e ueberschreibbar). Nur 7.3 nutzt eine separate Datenplatte
     # via LVM (lmn-appliance -l/--pvdevice); 7.4 hat das LVM-Setup abgeschafft und
     # installiert direkt auf die Systemplatte -> dort wird kein -l uebergeben.
+    # lmn-appliance wird ueber den Commit des Tags geladen und gegen die Pruefsumme geprueft;
+    # ein neuer Tag braucht beide Werte neu.
     lmn_version_map:
-      '24': { distribution: 'lmn73', prepare_version: 'v7.3.1', label: '7.3', pvdevice: true }
-      '26': { distribution: 'lmn74', prepare_version: 'v7.4.0', label: '7.4', pvdevice: false }
-    lmn_appliance_url: 'https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/{{ lmn_prepare_version }}/lmn-appliance'
+      '24':
+        distribution: 'lmn73'
+        prepare_version: 'v7.3.1'
+        prepare_commit: '6acff93a85e5c31834639f106be019b1fd13c4c0'
+        appliance_sha256: '89679563237b488fcbfc4da873a1df665b1775935b5a076d520117bff759a4a9'
+        label: '7.3'
+        pvdevice: true
+      '26':
+        distribution: 'lmn74'
+        prepare_version: 'v7.4.0'
+        prepare_commit: '659a9940c03efc5e0a4d6d4a096a9096f06d9a8c'
+        appliance_sha256: 'd08354cb5114070f9e6b2407821fd8903a296f779dba00dd573b9dc6ae3a7351'
+        label: '7.4'
+        pvdevice: false
+    lmn_appliance_url: 'https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/{{ lmn_prepare_commit }}/lmn-appliance'
 
     # Pakete
     lmn_additional_packages:
@@ -155,6 +169,8 @@
       ansible.builtin.set_fact:
         lmn_repo_distribution: "{{ lmn_version_map[ansible_distribution_major_version].distribution }}"
         lmn_prepare_version: "{{ lmn_version_map[ansible_distribution_major_version].prepare_version }}"
+        lmn_prepare_commit: "{{ lmn_version_map[ansible_distribution_major_version].prepare_commit }}"
+        lmn_appliance_sha256: "{{ lmn_version_map[ansible_distribution_major_version].appliance_sha256 }}"
         lmn_version_label: "{{ lmn_version_map[ansible_distribution_major_version].label }}"
         lmn_appliance_supports_pvdevice: "{{ lmn_version_map[ansible_distribution_major_version].pvdevice }}"
 
@@ -359,6 +375,7 @@
         url: '{{ lmn_appliance_url }}'
         dest: /root/lmn-appliance
         mode: '0755'
+        checksum: 'sha256:{{ lmn_appliance_sha256 }}'
 
     - name: Netzmaske in CIDR-Notation umrechnen
       ansible.builtin.set_fact:
