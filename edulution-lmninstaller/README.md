@@ -240,6 +240,29 @@ All variables have default values. Through the API, the settings in the tables b
 | `lmn_unattended` | `true` | No interactive prompts |
 | `lmn_disable_auto_updates` | `true` | Disable auto updates |
 
+### Data Disk
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `lmn_setup_data_disk` | `true` | Set up a separate data disk |
+| `lmn_data_disk` | `''` | Device such as `/dev/vdb`; empty means the first empty non-system disk |
+| `lmn_lvm_volumes` | `''` | Volume sizes such as `var:10,linbo:40,global:10,default-school:100%FREE`; empty means the lmn-prepare default |
+
+### Network Services
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `lmn_dns_forwarder` | `auto` | DNS forwarder for Samba; `auto` takes the host's resolver |
+
+### Installation next to edulution
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `lmn_local_install` | `false` | linuxmuster runs on the same machine as edulution |
+| `lmn_webui_port` | `8443` | Port of the linuxmuster web UI in that case |
+
+The API checks every value against the form its setting needs (addresses, names, disk, port, flags) and accepts text without control characters.
+
 ### Password Requirements
 
 - At least 7 characters
@@ -251,7 +274,7 @@ The password is set for: `root` (server), `global-admin`, `pgmadmin`, `linbo`.
 
 ## Adding Custom Playbooks
 
-Place a new YAML file in the `playbooks/` directory (on the target server at `/opt/edulution-installer/playbooks/`). It becomes automatically available via the API:
+Place a new YAML file in the `playbooks/` directory (on the target server at `/opt/edulution-installer/playbooks/`). It becomes automatically available via the API; through the API it receives only the settings listed under Playbook Variables (`ALLOWED_EXTRA_VARS` in `api/models.py`):
 
 ```bash
 curl -X POST http://10.0.0.1:8000/api/playbook/my-playbook.yml/start \

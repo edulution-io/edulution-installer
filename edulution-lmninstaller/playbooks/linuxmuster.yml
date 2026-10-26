@@ -39,7 +39,7 @@
 
   # Variablen können überschrieben werden durch:
   # 1. -e / --extra-vars auf der Kommandozeile
-  # 2. API extra_vars
+  # 2. API extra_vars (nur die Einstellungen in ALLOWED_EXTRA_VARS, api/models.py)
 
   vars:
     # -------------------------------------------------------------------------
