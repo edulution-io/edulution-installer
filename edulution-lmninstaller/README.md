@@ -238,9 +238,19 @@ All variables have default values and can be overridden via `extra_vars`.
 |----------|---------|-------------|
 | `lmn_skip_firewall` | `true` | Skip firewall setup (configure firewall separately) |
 | `lmn_unattended` | `true` | No interactive prompts |
-| `lmn_disable_auto_updates` | `true` | Disable auto updates |
+| `lmn_disable_auto_updates` | `true` | Pause automatic updates during the installation (see below) |
 | `lmn_repo_url` | `https://deb.linuxmuster.net/` | Repository URL |
 | `lmn_repo_distribution` | `lmn73` | Repository distribution |
+
+### Updates on the linuxmuster Server
+
+While the playbook runs, automatic updates are paused if `lmn_disable_auto_updates` is set. At the end of the run, also when a task failed, the playbook switches them on: `unattended-upgrades` then installs Ubuntu security updates (for example Samba), as configured in Ubuntu's `50unattended-upgrades`. linuxmuster packages from deb.linuxmuster.net are not part of that and are updated by hand:
+
+```bash
+apt update && apt full-upgrade
+```
+
+If a run is interrupted (for example by a reboot), run the playbook again or switch the updates on with `dpkg-reconfigure -plow unattended-upgrades`. Servers set up with an earlier installer version keep their updates paused until then.
 
 ### Password Requirements
 
