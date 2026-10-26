@@ -15,7 +15,6 @@ on:
 
 permissions:
   contents: read
-  packages: read
 
 concurrency:
   group: installer-e2e-${{ github.ref }}
@@ -53,8 +52,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build webinstaller
         run: npx nx build webinstaller

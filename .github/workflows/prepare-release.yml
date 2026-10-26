@@ -47,11 +47,9 @@ jobs:
         run: pip install --require-hashes -r .github/sbom-requirements.txt
 
       # Not `npm sbom --omit dev`: npm 10 drops production packages reached through a peerOptional edge.
-      # .npmrc expands GITHUB_TOKEN; the read-only job token satisfies it.
       - name: Generate the CycloneDX SBOMs
         env:
           NPM_CONFIG_IGNORE_SCRIPTS: 'true'
-          GITHUB_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           set -o pipefail

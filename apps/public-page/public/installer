@@ -304,12 +304,18 @@ echo "[*] Starte den edulution Web-Installer..."
 
 docker pull "${EDULUTION_INSTALLER_IMAGE}" 2>&1 > /dev/zero
 
-docker run -d --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ \
-    -e EDULUTION_DIRECTORY=${DIRECTORY} -e BOOTSTRAP_BRANCH=${EDULUTION_INSTALLER_REF} "${EDULUTION_INSTALLER_IMAGE}" 2>&1 > /dev/zero
+# Nur wer die URL mit diesem Token aus der Konsole kennt, erreicht den Web-Installer.
+# Uebergabe per Umgebung, damit der Token nicht in der Prozessliste steht.
+INSTALLER_TOKEN=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
+
+INSTALLER_TOKEN="${INSTALLER_TOKEN}" docker run -d --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ \
+    -e EDULUTION_DIRECTORY=${DIRECTORY} -e BOOTSTRAP_BRANCH=${EDULUTION_INSTALLER_REF} -e INSTALLER_TOKEN \
+    "${EDULUTION_INSTALLER_IMAGE}" 2>&1 > /dev/zero
 
 # Warte bis der Installer bereit ist
 attempt=0
-until curl --output /dev/null --silent --insecure --get --fail "https://localhost:443" 2>/dev/null; do
+# Ohne Token und ohne --fail: jede HTTP-Antwort genuegt, auch 401, und der Token bleibt aus der Prozessliste.
+until curl --output /dev/null --silent --insecure --get "https://localhost:443" 2>/dev/null; do
     attempt=$((attempt+1))
 
     if [ $attempt -ge 60 ]; then
@@ -331,8 +337,8 @@ cat <<EOF
     Sie erreichen die Oberfläche wie folgt:
 EOF
 
-echo "    https://$(hostname):443"
-echo "    https://$(hostname -I | awk '{print $1}'):443"
+echo "    https://$(hostname):443/?token=${INSTALLER_TOKEN}"
+echo "    https://$(hostname -I | awk '{print $1}'):443/?token=${INSTALLER_TOKEN}"
 
 cat <<EOF
 

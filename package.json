@@ -12,7 +12,7 @@
     "lint": "nx run-many --target=lint"
   },
   "dependencies": {
-    "@edulution-io/ui-kit": "^0.0.1",
+    "@edulution-io/ui-kit": "^2.3.0",
     "@fortawesome/fontawesome-svg-core": "^7.1.0",
     "@fortawesome/free-solid-svg-icons": "^7.1.0",
     "@fortawesome/react-fontawesome": "^3.2.0",
@@ -23,6 +23,7 @@
     "i18next-browser-languagedetector": "^8.2.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-hook-form": "^7.91.0",
     "react-i18next": "^16.5.4",
     "react-router-dom": "^7.13.0",
     "tailwind-merge": "^3.4.0",

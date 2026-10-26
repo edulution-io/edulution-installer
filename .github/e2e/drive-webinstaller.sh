@@ -23,10 +23,19 @@ ADMIN_GROUP="${ADMIN_GROUP:-role-admin}"
 
 log() { echo "[e2e] $*"; }
 
+SESSION_COOKIE="edulution_installer_session"
+TOKEN="${INSTALLER_TOKEN:-}"
+
+# The installer script prints the token only into its log; the container carries it in its environment.
+installer_token() {
+    { docker inspect edulution-installer --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null || true; } \
+        | sed -n 's/^INSTALLER_TOKEN=//p'
+}
+
 api() {
     local method="$1" path="$2"
     shift 2
-    curl -sS --insecure --fail-with-body --max-time 120 \
+    curl -sS --insecure --fail-with-body --max-time 120 -b "${SESSION_COOKIE}=${TOKEN}" \
         -X "${method}" "${BASE}${path}" "$@"
 }
 
@@ -42,7 +51,9 @@ expect_ok() {
 
 log "Waiting for the web installer at ${BASE} ..."
 for attempt in $(seq 1 120); do
-    if curl -sS --insecure --fail --max-time 10 -o /dev/null "${BASE}" 2>/dev/null; then
+    [ -n "${TOKEN}" ] || TOKEN=$(installer_token)
+    if [ -n "${TOKEN}" ] && curl -sS --insecure --fail --max-time 10 -o /dev/null \
+        -b "${SESSION_COOKIE}=${TOKEN}" "${BASE}" 2>/dev/null; then
         log "Web installer reachable (after ${attempt} attempts)"
         break
     fi
@@ -52,6 +63,13 @@ for attempt in $(seq 1 120); do
     fi
     sleep 3
 done
+
+status=$(curl -sS --insecure --max-time 10 -o /dev/null -w '%{http_code}' "${BASE}/api/check-api-status")
+if [ "${status}" != "401" ]; then
+    echo "[e2e] The API answered ${status} without a session, expected 401." >&2
+    exit 1
+fi
+log "API without a session: 401"
 
 log "Submitting configuration (deploymentTarget=generic) ..."
 response=$(api POST /api/configure -H 'Content-Type: application/json' -d @- <<JSON

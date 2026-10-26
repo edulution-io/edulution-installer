@@ -41,7 +41,7 @@ npm run build:webinstaller    # Build frontend first
 docker compose up --build     # Build & run container
 ```
 
-The web installer runs on `https://localhost:443`.
+The web installer runs on `https://localhost:443/?token=<token>`. The token is taken from `INSTALLER_TOKEN`; without it, the API generates one and prints the link at startup (`docker compose logs`).
 
 ## Deployment
 
