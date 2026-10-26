@@ -276,12 +276,12 @@ The API can be configured via environment variables:
 | `EDULUTION_PORT` | `8000` | Port |
 | `EDULUTION_PLAYBOOK_DIR` | `/opt/edulution-installer/playbooks` | Playbook directory |
 | `EDULUTION_PRIVATE_DATA_DIR` | `/opt/edulution-installer/ansible` | Ansible working directory |
-| `EDULUTION_IDLE_SHUTDOWN` | `1800` | Seconds without requests after a run, or before one starts, after which the API stops; `0` keeps it running |
+| `EDULUTION_IDLE_SHUTDOWN` | `1800` | Seconds without requests (a running playbook counts as activity) after which the API stops; `0` keeps it running |
 | `EDULUTION_API_TOKEN_FILE` | `/opt/edulution-installer/api-token` | File with the token every request has to carry |
 
 ## Auto-Shutdown
 
-The API is only needed for the installation. It stops when the web installer has fetched the configuration (`POST /api/shutdown`), or after `EDULUTION_IDLE_SHUTDOWN` seconds without requests outside a playbook run, for example after a failed run or when the wizard was left. When it stops, it removes the run logs (`ansible/artifacts`), the run parameters (`ansible/env`) and the binduser handover file; `api.log` stays for troubleshooting.
+The API is only needed for the installation. It stops when the web installer has fetched the configuration (`POST /api/shutdown`), or after `EDULUTION_IDLE_SHUTDOWN` seconds without requests outside a playbook run, for example after a failed run or when the wizard was left. Whenever it stops while no playbook runs, it removes the run logs (`ansible/artifacts`), the run parameters (`ansible/env`) and the binduser handover file; `api.log` stays for troubleshooting. After a stop, the web installer has to run the bootstrap again.
 
 ## Troubleshooting
 

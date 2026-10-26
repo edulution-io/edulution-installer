@@ -4,10 +4,11 @@ import shutil
 import signal
 import time
 
-from api.config import settings
+from api.config import EDULUTION_CONFIG_PATH, settings
 from api.models import JobStatus
 
 _last_activity = time.monotonic()
+_was_running = False
 
 
 def touch() -> None:
@@ -16,8 +17,12 @@ def touch() -> None:
 
 
 def should_stop(runner) -> bool:
-    # A run counts as activity, so the full time is left after it ends to fetch the result.
-    if runner.status == JobStatus.RUNNING:
+    # A run counts as activity up to the first check after it ended, so the full time is left
+    # from there to fetch the result.
+    global _was_running
+    running = runner.status == JobStatus.RUNNING
+    if running or _was_running:
+        _was_running = running
         touch()
         return False
     return time.monotonic() - _last_activity >= settings.idle_shutdown
@@ -40,4 +45,4 @@ def remove_install_leftovers() -> None:
     the next playbook run creates them again."""
     for directory in ("artifacts", "env"):
         shutil.rmtree(settings.private_data_dir / directory, ignore_errors=True)
-    settings.edulution_config_path.unlink(missing_ok=True)
+    EDULUTION_CONFIG_PATH.unlink(missing_ok=True)

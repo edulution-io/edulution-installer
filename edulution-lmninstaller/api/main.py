@@ -24,11 +24,11 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    if runner_service.status != JobStatus.RUNNING:
-        remove_install_leftovers()
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
+    if runner_service.status != JobStatus.RUNNING:
+        remove_install_leftovers()
 
 
 # Read at import, so uvicorn exits right away instead of starting without a usable token.

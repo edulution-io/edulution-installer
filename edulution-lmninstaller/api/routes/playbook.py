@@ -12,7 +12,7 @@ from api.models import (
     RequirementsResponse,
     StatusResponse,
 )
-from api.config import settings
+from api.config import EDULUTION_CONFIG_PATH
 from api.services.ansible_runner import runner_service
 from api.services.lifecycle import touch
 from api.services.system_checker import system_checker
@@ -117,13 +117,13 @@ async def get_network_info() -> dict:
 
 @router.get("/edulution-config")
 async def get_edulution_config() -> dict:
-    if not settings.edulution_config_path.exists():
+    if not EDULUTION_CONFIG_PATH.exists():
         raise HTTPException(
             status_code=404,
             detail="Edulution config not found. Playbook may not have completed successfully.",
         )
     try:
-        return json.loads(settings.edulution_config_path.read_text())
+        return json.loads(EDULUTION_CONFIG_PATH.read_text())
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read config: {e}")
 
