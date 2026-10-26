@@ -220,6 +220,15 @@ export const checkLmnConnection = (host: string): Promise<StatusResponse> =>
 export const checkLmnRequirements = (playbook: string): Promise<RequirementsResponse> =>
   apiFetch<RequirementsResponse>(`/api/lmn/playbook/${playbook}/requirements`);
 
+// Validation errors (FastAPI detail) and the proxy's own errors (message), without pydantic's prefix.
+export const refusalMessage = (body: unknown, status: number): string => {
+  const { detail, message } = (body ?? {}) as { detail?: unknown; message?: unknown };
+  const text = Array.isArray(detail)
+    ? detail.map((entry: { msg?: string }) => (entry.msg ?? '').replace(/^Value error, /, '')).join('; ')
+    : (detail ?? message);
+  return typeof text === 'string' && text ? text : `API error: ${status}`;
+};
+
 // The LMN installer API names the settings it refuses; the wizard shows that instead of a bare status code.
 export const startLmnPlaybook = async (
   playbook: string,
@@ -231,11 +240,7 @@ export const startLmnPlaybook = async (
     body: JSON.stringify({ variables: { extra_vars: extraVars } }),
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { detail?: unknown } | null;
-    const detail = Array.isArray(body?.detail)
-      ? body.detail.map((entry: { msg?: string }) => entry.msg).join('; ')
-      : body?.detail;
-    throw new Error(typeof detail === 'string' && detail ? detail : `API error: ${response.status}`);
+    throw new Error(refusalMessage(await response.json().catch(() => null), response.status));
   }
   return response.json() as Promise<PlaybookStartResponse>;
 };
