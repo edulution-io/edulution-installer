@@ -114,10 +114,12 @@
     lmn_repo_gpg_url: 'https://deb.linuxmuster.net/pub.gpg'
     # Fingerprint des linuxmuster.net Archiv Key; lmn-appliance laedt den Schluessel selbst noch einmal.
     lmn_repo_key_fingerprint: '21A91AEC28D1BE943FCF2AA94E8B8B667D752C32'
-    lmn_repo_key_download: /tmp/linuxmuster.gpg
+    lmn_repo_key_download: /root/linuxmuster.gpg
     lmn_repo_keyring: /usr/share/keyrings/linuxmuster.net.gpg
     lmn_appliance_global_key: /etc/apt/trusted.gpg.d/linuxmuster.net.gpg
     lmn_repo_list: /etc/apt/sources.list.d/lmn.list
+    lmn_repo_sources: /etc/apt/sources.list.d/lmn.sources
+    lmn_appliance_script: /root/lmn-appliance
     # linuxmuster-Version automatisch anhand der Ubuntu-Version:
     #   Ubuntu 24.04 -> lmn73 (7.3),  Ubuntu 26.04 -> lmn74 (7.4).
     # lmn_repo_distribution/lmn_prepare_version werden daraus per set_fact
@@ -339,6 +341,7 @@
         url: '{{ lmn_repo_gpg_url }}'
         dest: '{{ lmn_repo_key_download }}'
         mode: '0644'
+        force: true
 
     - name: Fingerprint des linuxmuster-Schlüssels lesen
       ansible.builtin.command:
@@ -379,6 +382,40 @@
         url: '{{ lmn_appliance_url }}'
         dest: /root/lmn-appliance
         mode: '0755'
+
+    # lmn-appliance laedt pub.gpg sonst selbst und nutzt ihn sofort fuer apt;
+    # es bekommt den oben geprueften Schluessel, unter 7.3 nur fuer sein Repository.
+    - name: lmn-appliance auf den geprüften Schlüssel umstellen
+      ansible.builtin.replace:
+        path: '{{ lmn_appliance_script }}'
+        regexp: '{{ item.regexp }}'
+        replace: '{{ item.line }}'
+      loop:
+        - regexp: '^lmnkey_remote = .*$'
+          line: "lmnkey_remote = 'file://{{ lmn_repo_key_download }}'"
+        - regexp: '^lmnkey_local = .*$'
+          line: "lmnkey_local = '{{ lmn_repo_keyring }}'"
+        - regexp: '^lmn73_deb = .*$'
+          line: "lmn73_deb = 'deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} lmn73 main'"
+      loop_control:
+        label: '{{ item.line }}'
+
+    - name: lmn-appliance-Script lesen
+      ansible.builtin.slurp:
+        src: '{{ lmn_appliance_script }}'
+      register: lmn_appliance_source
+
+    - name: Prüfen dass lmn-appliance den geprüften Schlüssel nutzt
+      ansible.builtin.assert:
+        that:
+          - (lmn_appliance_lines | select('match', '^lmnkey_remote ') | list) == ["lmnkey_remote = 'file://" ~ lmn_repo_key_download ~ "'"]
+          - (lmn_appliance_lines | select('match', '^lmnkey_local ') | list) == ["lmnkey_local = '" ~ lmn_repo_keyring ~ "'"]
+        fail_msg: >-
+          lmn-appliance laesst sich nicht auf den geprueften Schluessel umstellen
+          (lmnkey_remote/lmnkey_local nicht gefunden). Installation abgebrochen.
+        quiet: true
+      vars:
+        lmn_appliance_lines: "{{ (lmn_appliance_source.content | b64decode).splitlines() }}"
 
     - name: Netzmaske in CIDR-Notation umrechnen
       ansible.builtin.set_fact:
@@ -455,49 +492,75 @@
     # =========================================================================
     # REPOSITORY-SCHLUESSEL NACH LMN-APPLIANCE
     # =========================================================================
-    # lmn-appliance laedt pub.gpg selbst; unter 7.3 legt es ihn global nach
-    # trusted.gpg.d und schreibt lmn.list ohne signed-by.
+    # Nachpruefung: lmn-appliance darf nur den geprueften Schluessel hinterlassen,
+    # und das Repository nutzt ihn ausschliesslich ueber signed-by.
 
-    - name: Von lmn-appliance geschriebene Schlüssel finden
-      ansible.builtin.stat:
-        path: '{{ item }}'
-      loop:
-        - '{{ lmn_repo_keyring }}'
-        - '{{ lmn_appliance_global_key }}'
-      register: lmn_written_keys
+    - name: Repository-Schlüssel nach lmn-appliance prüfen
+      block:
+        - name: Von lmn-appliance geschriebene Schlüssel finden
+          ansible.builtin.stat:
+            path: '{{ item }}'
+          loop:
+            - '{{ lmn_repo_keyring }}'
+            - '{{ lmn_appliance_global_key }}'
+          register: lmn_written_keys
 
-    - name: Fingerprint der von lmn-appliance geschriebenen Schlüssel lesen
-      ansible.builtin.command:
-        argv: [gpg, --batch, --show-keys, --with-colons, '{{ item.stat.path }}']
-      loop: "{{ lmn_written_keys.results | selectattr('stat.exists') | list }}"
-      loop_control:
-        label: '{{ item.stat.path }}'
-      register: lmn_written_key_info
-      changed_when: false
+        - name: Fingerprint der von lmn-appliance geschriebenen Schlüssel lesen
+          ansible.builtin.command:
+            argv: [gpg, --batch, --show-keys, --with-colons, '{{ item.stat.path }}']
+          loop: "{{ lmn_written_keys.results | selectattr('stat.exists') | list }}"
+          loop_control:
+            label: '{{ item.stat.path }}'
+          register: lmn_written_key_info
+          changed_when: false
 
-    - name: Fingerprint der von lmn-appliance geschriebenen Schlüssel prüfen
-      ansible.builtin.assert:
-        that:
-          - item.stdout_lines | select('match', '^pub:') | list | length == 1
-          - (item.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == lmn_repo_key_fingerprint
-        fail_msg: >-
-          {{ item.item.stat.path }} enthaelt nicht den erwarteten Schluessel
-          ({{ lmn_repo_key_fingerprint }}). Installation abgebrochen.
-        quiet: true
-      loop: '{{ lmn_written_key_info.results }}'
-      loop_control:
-        label: '{{ item.item.stat.path }}'
+        - name: Fingerprint der von lmn-appliance geschriebenen Schlüssel prüfen
+          ansible.builtin.assert:
+            that:
+              - item.stdout_lines | select('match', '^pub:') | list | length == 1
+              - (item.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == lmn_repo_key_fingerprint
+            fail_msg: >-
+              {{ item.item.stat.path }} enthaelt nicht den erwarteten Schluessel
+              ({{ lmn_repo_key_fingerprint }}). Installation abgebrochen.
+            quiet: true
+          loop: '{{ lmn_written_key_info.results }}'
+          loop_control:
+            label: '{{ item.item.stat.path }}'
+      rescue:
+        - name: Unerwarteten linuxmuster-Schlüssel entfernen
+          ansible.builtin.file:
+            path: '{{ item }}'
+            state: absent
+          loop:
+            - '{{ lmn_repo_keyring }}'
+            - '{{ lmn_appliance_global_key }}'
+
+        - name: Nach unerwartetem linuxmuster-Schlüssel abbrechen
+          ansible.builtin.fail:
+            msg: "{{ ansible_failed_result.msg | default('Repository-Schluessel nicht pruefbar') }}"
 
     - name: Global vertrauten linuxmuster-Schlüssel entfernen
       ansible.builtin.file:
         path: '{{ lmn_appliance_global_key }}'
         state: absent
 
+    - name: Vorhandene deb822-Quelle von lmn-appliance finden
+      ansible.builtin.stat:
+        path: '{{ lmn_repo_sources }}'
+      register: lmn_repo_sources_file
+
     - name: linuxmuster-Repository auf seinen Schlüssel beschränken
       ansible.builtin.copy:
         dest: '{{ lmn_repo_list }}'
         content: "deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} {{ lmn_repo_distribution }} main\n"
         mode: '0644'
+      when: not lmn_repo_sources_file.stat.exists
+
+    - name: Doppelte linuxmuster-Quelle entfernen
+      ansible.builtin.file:
+        path: '{{ lmn_repo_list }}'
+        state: absent
+      when: lmn_repo_sources_file.stat.exists
 
     # =========================================================================
     # LINUXMUSTER-SERVER-PAKETE SICHERSTELLEN
