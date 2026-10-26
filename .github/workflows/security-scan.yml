@@ -119,20 +119,27 @@ jobs:
           if ! git diff --quiet HEAD^1 HEAD -- package.json package-lock.json; then
             git show HEAD^1:package.json > "$WORK/base/package.json"
             git show HEAD^1:package-lock.json > "$WORK/base/package-lock.json"
-            npm_advisories "$WORK/base" >> "$WORK/base.txt"
-            npm_advisories . >> "$WORK/head.txt"
+            npm_advisories "$WORK/base" | sed 's|^|npm |' >> "$WORK/base.txt"
+            npm_advisories . | sed 's|^|npm |' >> "$WORK/head.txt"
           fi
-          git diff --no-renames --name-only HEAD^1 HEAD -- '*requirements.txt' > "$WORK/requirements.txt"
-          while IFS= read -r requirements
+          # Each advisory is keyed by its file, so one moving into another file still counts as new;
+          # a renamed file is compared with its old path.
+          git diff -z -M --name-status HEAD^1 HEAD -- '*requirements.txt' > "$WORK/requirements"
+          while IFS= read -r -d '' status
           do
-            base_requirements="$WORK/base/${requirements//\//_}"
-            if git show "HEAD^1:$requirements" > "$base_requirements" 2> /dev/null; then
-              pip_advisories "$base_requirements" >> "$WORK/base.txt"
+            IFS= read -r -d '' base_path
+            head_path=$base_path
+            if [[ $status == R* ]]; then
+              IFS= read -r -d '' head_path
             fi
-            if [ -f "$requirements" ]; then
-              pip_advisories "$requirements" >> "$WORK/head.txt"
+            base_requirements="$WORK/base/${base_path//\//_}"
+            if git show "HEAD^1:$base_path" > "$base_requirements" 2> /dev/null; then
+              pip_advisories "$base_requirements" | sed "s|^|$head_path |" >> "$WORK/base.txt"
             fi
-          done < "$WORK/requirements.txt"
+            if [ -f "$head_path" ]; then
+              pip_advisories "$head_path" | sed "s|^|$head_path |" >> "$WORK/head.txt"
+            fi
+          done < "$WORK/requirements"
 
           NEW=$(comm -13 <(sort -u "$WORK/base.txt") <(sort -u "$WORK/head.txt"))
           if [ -n "$NEW" ]; then
