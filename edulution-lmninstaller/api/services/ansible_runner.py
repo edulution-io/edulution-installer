@@ -91,10 +91,11 @@ class AnsibleRunnerService:
         return True
 
     def _finish(self, successful: bool) -> None:
+        # Streamed first: once the status changes, a new run may set its own job id.
+        streamer.queue_message(MessageType.STATUS, "completed" if successful else "failed")
         self._finished_at = datetime.utcnow()
         self._return_code = 0 if successful else 1
         self._status = JobStatus.COMPLETED if successful else JobStatus.FAILED
-        streamer.queue_message(MessageType.STATUS, "completed" if successful else "failed")
 
     async def run_playbook(
         self, playbook: str, extra_vars: dict[str, Any]
@@ -150,8 +151,10 @@ class AnsibleRunnerService:
             except Exception as e:
                 streamer.queue_message(MessageType.STDERR, f"ansible-runner: {e}")
             finally:
-                extravars_path.unlink(missing_ok=True)
-                self._finish(result is not None and result.status == "successful")
+                try:
+                    extravars_path.unlink(missing_ok=True)
+                finally:
+                    self._finish(result is not None and result.status == "successful")
 
         loop.run_in_executor(None, run_ansible)
 
