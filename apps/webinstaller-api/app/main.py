@@ -1,4 +1,5 @@
 import base64
+import html
 import json
 import requests
 import os
@@ -12,13 +13,14 @@ import shutil
 import asyncio
 import threading
 import urllib3
+from urllib.parse import parse_qsl, quote, urlencode
 
 # Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from fastapi import FastAPI, Depends, Request, File, UploadFile, APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, PlainTextResponse, HTMLResponse
 from starlette.requests import HTTPConnection
 from starlette.websockets import WebSocketClose
 from fastapi.middleware.cors import CORSMiddleware
@@ -206,6 +208,23 @@ def hasInstallerToken(value):
     return value is not None and secrets.compare_digest(value.encode(), INSTALLER_TOKEN.encode())
 
 
+def exchangeTokenForSession(scope):
+    # Das Ziel bleibt ein Pfad auf diesem Host, ohne den Token.
+    path = "/" + quote(scope.get("raw_path", scope["path"].encode()).decode("latin-1"), safe="/%").lstrip("/")
+    pairs = parse_qsl(scope["query_string"].decode("latin-1"), keep_blank_values=True)
+    query = urlencode([(k, v) for k, v in pairs if k != "token"])
+    target = html.escape(path + (f"?{query}" if query else ""))
+    # Eine Seite statt 303: Kommt der Link von einer anderen Website, sendet der Browser das
+    # Strict-Cookie erst bei einer Navigation, die von dieser Seite ausgeht.
+    response = HTMLResponse(
+        f'<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url={target}">'
+        f'<a href="{target}">edulution Web-Installer</a>',
+        headers={"Cache-Control": "no-store"},
+    )
+    response.set_cookie(SESSION_COOKIE, INSTALLER_TOKEN, httponly=True, secure=True, samesite="strict")
+    return response
+
+
 # Reine ASGI-Middleware, damit dieselbe Pruefung auch WebSockets erfasst.
 class RequireInstallerToken:
     def __init__(self, app):
@@ -216,18 +235,12 @@ class RequireInstallerToken:
             return await self.app(scope, receive, send)
 
         connection = HTTPConnection(scope)
-        if hasInstallerToken(connection.cookies.get(SESSION_COOKIE)):
+        if scope["type"] == "http" and hasInstallerToken(connection.query_params.get("token")):
+            response = exchangeTokenForSession(scope)
+        elif hasInstallerToken(connection.cookies.get(SESSION_COOKIE)):
             return await self.app(scope, receive, send)
-
-        if scope["type"] == "websocket":
+        elif scope["type"] == "websocket":
             response = WebSocketClose(code=1008)
-        elif hasInstallerToken(connection.query_params.get("token")):
-            # Den Token gegen ein Cookie tauschen, damit er nicht in der Adresszeile stehen bleibt.
-            target = connection.url.remove_query_params("token")
-            # Ein Pfad mit "//" am Anfang waere im Location-Header eine fremde Domain.
-            path = "/" + target.path.lstrip("/")
-            response = RedirectResponse(path + (f"?{target.query}" if target.query else ""), status_code=303)
-            response.set_cookie(SESSION_COOKIE, INSTALLER_TOKEN, httponly=True, secure=True, samesite="strict")
         elif connection.url.path.startswith("/api/"):
             response = JSONResponse(status_code=401, content={"status": False, "message": "Nicht angemeldet"})
         else:
