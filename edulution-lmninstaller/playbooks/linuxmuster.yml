@@ -112,7 +112,7 @@
     # Repository (normalerweise nicht ändern)
     lmn_repo_url: 'https://deb.linuxmuster.net/'
     lmn_repo_gpg_url: 'https://deb.linuxmuster.net/pub.gpg'
-    # Fingerprint des linuxmuster.net Archiv Key; lmn-appliance laedt den Schluessel selbst noch einmal.
+    # Fingerprint des linuxmuster.net Archiv Key; auch lmn-appliance bekommt diesen Schluessel.
     lmn_repo_key_fingerprint: '21A91AEC28D1BE943FCF2AA94E8B8B667D752C32'
     lmn_repo_key_download: /root/linuxmuster.gpg
     lmn_repo_keyring: /usr/share/keyrings/linuxmuster.net.gpg
@@ -383,8 +383,8 @@
         dest: /root/lmn-appliance
         mode: '0755'
 
-    # lmn-appliance laedt pub.gpg sonst selbst und nutzt ihn sofort fuer apt;
-    # es bekommt den oben geprueften Schluessel, unter 7.3 nur fuer sein Repository.
+    # lmn-appliance bekommt den oben geprueften Schluessel als Quelle und Keyring,
+    # unter 7.3 auch die Paketquelle mit signed-by.
     - name: lmn-appliance auf den geprüften Schlüssel umstellen
       ansible.builtin.replace:
         path: '{{ lmn_appliance_script }}'
@@ -410,12 +410,14 @@
         that:
           - (lmn_appliance_lines | select('match', '^lmnkey_remote ') | list) == ["lmnkey_remote = 'file://" ~ lmn_repo_key_download ~ "'"]
           - (lmn_appliance_lines | select('match', '^lmnkey_local ') | list) == ["lmnkey_local = '" ~ lmn_repo_keyring ~ "'"]
+          - (lmn_appliance_lines | select('match', '^lmn73_deb ') | list) in [[], [lmn_appliance_lmn73_line]]
         fail_msg: >-
           lmn-appliance laesst sich nicht auf den geprueften Schluessel umstellen
           (lmnkey_remote/lmnkey_local nicht gefunden). Installation abgebrochen.
         quiet: true
       vars:
         lmn_appliance_lines: "{{ (lmn_appliance_source.content | b64decode).splitlines() }}"
+        lmn_appliance_lmn73_line: "lmn73_deb = 'deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} lmn73 main'"
 
     - name: Netzmaske in CIDR-Notation umrechnen
       ansible.builtin.set_fact:
@@ -527,17 +529,21 @@
           loop_control:
             label: '{{ item.item.stat.path }}'
       rescue:
-        - name: Unerwarteten linuxmuster-Schlüssel entfernen
+        - name: Unerwarteten linuxmuster-Schlüssel und seine Paketquellen entfernen
           ansible.builtin.file:
             path: '{{ item }}'
             state: absent
           loop:
             - '{{ lmn_repo_keyring }}'
             - '{{ lmn_appliance_global_key }}'
+            - '{{ lmn_repo_list }}'
+            - '{{ lmn_repo_sources }}'
 
         - name: Nach unerwartetem linuxmuster-Schlüssel abbrechen
           ansible.builtin.fail:
-            msg: "{{ ansible_failed_result.msg | default('Repository-Schluessel nicht pruefbar') }}"
+            msg: >-
+              Nach lmn-appliance liegt ein anderer linuxmuster-Schluessel vor; Schluessel und
+              Paketquelle wurden entfernt. Erwartet: {{ lmn_repo_key_fingerprint }}
 
     - name: Global vertrauten linuxmuster-Schlüssel entfernen
       ansible.builtin.file:

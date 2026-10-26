@@ -241,7 +241,6 @@ All variables have default values and can be overridden via `extra_vars`.
 | `lmn_disable_auto_updates` | `true` | Disable auto updates |
 | `lmn_repo_url` | `https://deb.linuxmuster.net/` | Repository URL |
 | `lmn_repo_distribution` | `lmn73` | Repository distribution |
-| `lmn_repo_key_fingerprint` | `21A91AEC28D1BE943FCF2AA94E8B8B667D752C32` | Expected fingerprint of the repository key; the installation stops if the downloaded key, or the one lmn-appliance installs, has another |
 
 ### Password Requirements
 
