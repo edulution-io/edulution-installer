@@ -228,7 +228,7 @@ All variables have default values and can be overridden via `extra_vars`.
 | `lmn_country` | `de` | Country code |
 | `lmn_state` | `BW` | State/province |
 | `lmn_dhcprange` | `10.0.100.1 10.0.100.254` | DHCP range |
-| `lmn_adminpw` | `Muster!` | Admin password |
+| `lmn_adminpw` | `Muster!` | Admin password; has to be set, the default is refused |
 | `lmn_timezone` | `Europe/Berlin` | Timezone |
 | `lmn_locale` | `de_DE.UTF-8` | System locale |
 

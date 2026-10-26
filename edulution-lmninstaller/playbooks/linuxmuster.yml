@@ -141,6 +141,18 @@
     # GRUNDLEGENDE SYSTEMKONFIGURATION
     # =========================================================================
 
+    # setup.ini nimmt Werte zeilenweise; ein Zeilenumbruch wuerde eine weitere Einstellung ergeben.
+    - name: Einstellungen pruefen
+      ansible.builtin.assert:
+        that:
+          - lmn_adminpw is defined and lmn_adminpw | length > 0
+          - lmn_adminpw != 'Muster!'
+          - (lmn_schoolname ~ lmn_location ~ lmn_state ~ lmn_adminpw) is not search('[\r\n]')
+        fail_msg: >-
+          Bitte ein eigenes Admin-Passwort setzen (-e lmn_adminpw=...). Schulname, Ort,
+          Bundesland und Passwort duerfen keinen Zeilenumbruch enthalten.
+      no_log: true
+
     - name: Betriebssystem pruefen (Ubuntu 24.04 -> 7.3, 26.04 -> 7.4)
       ansible.builtin.assert:
         that:
@@ -277,7 +289,7 @@
 
     - name: Locale als Standard setzen
       ansible.builtin.command:
-        cmd: localectl set-locale LANG={{ lmn_locale }}
+        argv: [localectl, set-locale, "LANG={{ lmn_locale }}"]
       changed_when: true
 
     # =========================================================================
@@ -415,12 +427,12 @@
       ansible.builtin.shell: |
         set -o pipefail
         /root/lmn-appliance -p server -u \
-          -n {{ lmn_server_ip }}/{{ lmn_cidr }} \
-          -f {{ lmn_gateway }} \
-          -d {{ lmn_domainname }} \
-          -t {{ lmn_servername }} \
-          {{ ('-l ' + lmn_data_disk_final) if ((lmn_data_disk_final | default('')) != '' and (lmn_appliance_supports_pvdevice | default(false) | bool)) else '' }} \
-          {{ ('-v ' + lmn_lvm_volumes) if ((lmn_lvm_volumes | default('')) != '' and (lmn_appliance_supports_pvdevice | default(false) | bool)) else '' }} \
+          -n {{ (lmn_server_ip ~ '/' ~ lmn_cidr) | quote }} \
+          -f {{ lmn_gateway | quote }} \
+          -d {{ lmn_domainname | quote }} \
+          -t {{ lmn_servername | quote }} \
+          {{ ('-l ' ~ (lmn_data_disk_final | quote)) if ((lmn_data_disk_final | default('')) != '' and (lmn_appliance_supports_pvdevice | default(false) | bool)) else '' }} \
+          {{ ('-v ' ~ (lmn_lvm_volumes | quote)) if ((lmn_lvm_volumes | default('')) != '' and (lmn_appliance_supports_pvdevice | default(false) | bool)) else '' }} \
           2>&1 | while IFS= read -r line; do
           echo "$line"
         done
