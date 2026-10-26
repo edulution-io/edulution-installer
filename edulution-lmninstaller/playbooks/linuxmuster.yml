@@ -627,6 +627,8 @@
           --create-global-binduser edulutionui-binduser
           --random-passwd-save
       register: binduser_create_result
+      # sophomorix-admin prints the generated password.
+      no_log: true
       when: binduser_exists.rc != 0
       until: binduser_create_result.rc == 0
       retries: 12

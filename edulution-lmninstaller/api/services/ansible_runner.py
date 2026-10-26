@@ -14,7 +14,7 @@ from api.services.output_streamer import streamer
 
 
 def _unsafe(value: Any) -> Any:
-    """Marks every string so Ansible takes it as entered instead of as a template, keeping its type."""
+    """Marks every string so Ansible takes it as entered instead of as a template."""
     if isinstance(value, str):
         return {"__ansible_unsafe": value}
     if isinstance(value, list):
@@ -83,27 +83,28 @@ class AnsibleRunnerService:
     def _status_handler(self, status: dict[str, Any], runner_config: Any) -> bool:
         status_value = status.get("status", "")
 
+        # The end of a run is recorded in _finish, once its settings file is gone.
         if status_value == "running":
             self._status = JobStatus.RUNNING
             streamer.queue_message(MessageType.STATUS, "running")
-        elif status_value == "successful":
-            self._status = JobStatus.COMPLETED
-            self._finished_at = datetime.utcnow()
-            self._return_code = 0
-            streamer.queue_message(MessageType.STATUS, "completed")
-        elif status_value == "failed":
-            self._status = JobStatus.FAILED
-            self._finished_at = datetime.utcnow()
-            self._return_code = 1
-            streamer.queue_message(MessageType.STATUS, "failed")
 
         return True
+
+    def _finish(self, successful: bool) -> None:
+        self._finished_at = datetime.utcnow()
+        self._return_code = 0 if successful else 1
+        self._status = JobStatus.COMPLETED if successful else JobStatus.FAILED
+        streamer.queue_message(MessageType.STATUS, "completed" if successful else "failed")
 
     async def run_playbook(
         self, playbook: str, extra_vars: dict[str, Any]
     ) -> UUID:
         if self._status == JobStatus.RUNNING:
             raise RuntimeError("A playbook is already running")
+
+        playbook_path = settings.playbook_dir / playbook
+        if not playbook_path.exists():
+            raise FileNotFoundError(f"Playbook not found: {playbook_path}")
 
         self._job_id = uuid4()
         self._status = JobStatus.RUNNING
@@ -113,7 +114,6 @@ class AnsibleRunnerService:
 
         streamer.set_job_id(self._job_id)
 
-        playbook_path = settings.playbook_dir / playbook
         private_data_dir = settings.private_data_dir
 
         private_data_dir.mkdir(parents=True, exist_ok=True)
@@ -123,14 +123,10 @@ class AnsibleRunnerService:
         inventory_path = private_data_dir / "inventory" / "hosts"
         inventory_path.write_text("localhost ansible_connection=local\n")
 
-        project_playbook = private_data_dir / "project" / playbook
-        if playbook_path.exists():
-            project_playbook.write_text(playbook_path.read_text())
-        else:
-            raise FileNotFoundError(f"Playbook not found: {playbook_path}")
+        (private_data_dir / "project" / playbook).write_text(playbook_path.read_text())
 
-        # ansible-runner reads env/extravars as a file (-e @...); passed as a dict they would end up
-        # inline on the ansible-playbook command line, passwords included.
+        # Written here and removed after the run: given a dict, ansible-runner writes env/extravars only
+        # if there is none yet (otherwise passes it inline) and never removes it.
         env_dir = private_data_dir / "env"
         env_dir.mkdir(mode=0o700, exist_ok=True)
         extravars_path = env_dir / "extravars"
@@ -138,14 +134,13 @@ class AnsibleRunnerService:
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w") as f:
             json.dump(_unsafe(extra_vars), f)
-        extravars_inode = extravars_path.stat().st_ino
-
 
         loop = asyncio.get_event_loop()
 
         def run_ansible():
+            result = None
             try:
-                ansible_runner.run(
+                result = ansible_runner.run(
                     private_data_dir=str(private_data_dir),
                     playbook=playbook,
                     event_handler=self._event_handler,
@@ -153,9 +148,8 @@ class AnsibleRunnerService:
                     quiet=True,
                 )
             finally:
-                # Only this run's file: a run started right after the status change has written its own.
-                if extravars_path.exists() and extravars_path.stat().st_ino == extravars_inode:
-                    extravars_path.unlink()
+                extravars_path.unlink(missing_ok=True)
+                self._finish(result is not None and result.status == "successful")
 
         loop.run_in_executor(None, run_ansible)
 
