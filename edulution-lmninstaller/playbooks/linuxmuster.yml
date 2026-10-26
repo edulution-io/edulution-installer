@@ -5,7 +5,7 @@
 # =============================================================================
 #
 # Verwendung:
-#   ansible-playbook linuxmuster.yml -e lmn_schoolname="Meine Schule"
+#   ansible-playbook linuxmuster.yml -e lmn_schoolname="Meine Schule" -e lmn_adminpw="..."
 #
 #   Oder via API mit extra_vars:
 #   POST /api/playbook/start
@@ -145,13 +145,15 @@
     - name: Einstellungen pruefen
       ansible.builtin.assert:
         that:
-          - lmn_adminpw is defined and lmn_adminpw | length > 0
+          - lmn_adminpw | string | trim | length > 0
           - lmn_adminpw != 'Muster!'
-          - (lmn_schoolname ~ lmn_location ~ lmn_state ~ lmn_adminpw) is not search('[\r\n]')
+          - >-
+            (lmn_server_ip ~ lmn_netmask ~ lmn_gateway ~ lmn_servername ~ lmn_domainname
+            ~ lmn_dhcprange ~ lmn_schoolname ~ lmn_location ~ lmn_country ~ lmn_state ~ lmn_adminpw)
+            is not search('[\r\n]')
         fail_msg: >-
-          Bitte ein eigenes Admin-Passwort setzen (-e lmn_adminpw=...). Schulname, Ort,
-          Bundesland und Passwort duerfen keinen Zeilenumbruch enthalten.
-      no_log: true
+          Bitte ein eigenes Admin-Passwort setzen (-e lmn_adminpw=...). Die Werte fuer
+          setup.ini duerfen keinen Zeilenumbruch enthalten.
 
     - name: Betriebssystem pruefen (Ubuntu 24.04 -> 7.3, 26.04 -> 7.4)
       ansible.builtin.assert:
