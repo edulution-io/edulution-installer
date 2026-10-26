@@ -1,4 +1,5 @@
 import base64
+import io
 import html
 import json
 import requests
@@ -8,6 +9,7 @@ import time
 import re
 import secrets
 import string
+import tarfile
 import ipaddress
 import shlex
 import ssl
@@ -560,8 +562,29 @@ def shutdown():
 
 # --- LMN Bootstrap & Proxy ---
 
-BOOTSTRAP_BRANCH = os.environ.get("BOOTSTRAP_BRANCH", "main")
-BOOTSTRAP_URL = f"https://raw.githubusercontent.com/edulution-io/edulution-installer/{BOOTSTRAP_BRANCH}/edulution-lmninstaller/bootstrap.sh"
+# Der LMN-Installer liegt im Image, damit auf dem LMN-Server dieselbe Version laeuft wie dieser Web-Installer.
+LMN_INSTALLER_DIR = next(
+    (path for path in (BASE_PATH / "lmninstaller", BASE_PATH.parent.parent.parent / "edulution-lmninstaller") if path.is_dir()),
+    BASE_PATH / "lmninstaller",
+)
+LMN_INSTALLER_ARCHIVE_NAME = ".edulution-lmninstaller.tar.gz"
+
+
+def _lmnArchiveEntry(info):
+    if "__pycache__" in info.name:
+        return None
+    info.uid = info.gid = 0
+    info.uname = info.gname = "root"
+    info.mode &= ~0o022
+    return info
+
+
+def lmnInstallerArchive():
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+        for name in ("bootstrap.sh", "requirements.txt", "api", "playbooks"):
+            tar.add(LMN_INSTALLER_DIR / name, arcname=name, filter=_lmnArchiveEntry)
+    return buffer.getvalue()
 
 # Token und Zertifikat der LMN-Installer-API; bleiben gespeichert, damit check-connection nach einem Neustart greift.
 LMN_API_ACCESS_FILE = "/edulution-ui/lmn-installer-api.json"
@@ -620,14 +643,17 @@ def lmnApiSan(host):
         return f"DNS:{host}"
 
 
-def lmnBootstrapCommand(ssh, token_file):
+def lmnBootstrapCommand(ssh, token_file, archive_file):
+    archive = shlex.quote(archive_file)
     script = (
-        f"export GITHUB_BRANCH={shlex.quote(BOOTSTRAP_BRANCH)}"
-        f" EDULUTION_API_TOKEN_HANDOVER={shlex.quote(token_file)}"
+        f"export EDULUTION_API_TOKEN_HANDOVER={shlex.quote(token_file)}"
         f" EDULUTION_API_SAN={shlex.quote(lmnApiSan(ssh.host))}"
-        # Der Exit-Code von bootstrap.sh muss durchkommen, nicht der von rm.
-        f" && tmpfile=$(mktemp) && curl -fsSL {shlex.quote(BOOTSTRAP_URL)} -o $tmpfile"
-        " && bash $tmpfile; rc=$?; rm -f $tmpfile; exit $rc"
+        f" && archive={archive}"
+        f" && EDULUTION_INSTALLER_SOURCE_DIR=$(mktemp -d) && export EDULUTION_INSTALLER_SOURCE_DIR"
+        # Raeumt auch auf, wenn die SSH-Verbindung abreisst; der Exit-Code bleibt der von bootstrap.sh.
+        """ && trap 'rm -rf "$EDULUTION_INSTALLER_SOURCE_DIR" "$archive"' EXIT HUP TERM"""
+        ' && tar -xzf "$archive" --no-same-owner -C "$EDULUTION_INSTALLER_SOURCE_DIR"'
+        ' && bash "$EDULUTION_INSTALLER_SOURCE_DIR/bootstrap.sh"'
     )
     command = f"bash -c {shlex.quote(script)}"
     return command if ssh.user == "root" else f"sudo -S {command}"
@@ -646,7 +672,7 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
 
     def run_bootstrap():
         client = paramiko.SSHClient()
-        sftp = token_file = None
+        sftp = token_file = archive_file = None
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
             bootstrap_manager.add_event(f"Verbinde mit {ssh.host}:{ssh.port}...")
@@ -666,8 +692,10 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
             with sftp.open(token_file, "w") as f:
                 f.chmod(0o600)
                 f.write(token)
+            archive_file = f"{sftp.normalize('.')}/{LMN_INSTALLER_ARCHIVE_NAME}"
+            sftp.putfo(io.BytesIO(lmnInstallerArchive()), archive_file)
 
-            command = lmnBootstrapCommand(ssh, token_file)
+            command = lmnBootstrapCommand(ssh, token_file, archive_file)
             if ssh.user != "root":
                 bootstrap_manager.add_event("Nicht als root verbunden, verwende sudo...")
 
@@ -723,12 +751,14 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
             bootstrap_manager.add_event(f"Fehler: {e}", 'failed')
             bootstrap_manager.finish('failed')
         finally:
-            # bootstrap.sh uebernimmt die Datei; nach einem Abbruch davor bleibt sie sonst liegen.
+            # Token und Archiv raeumt das Bootstrap-Kommando weg; nach einem Abbruch davor blieben sie sonst liegen.
             try:
-                if token_file:
-                    sftp.remove(token_file)
-            except Exception:
-                pass
+                for leftover in (token_file, archive_file):
+                    if leftover:
+                        try:
+                            sftp.remove(leftover)
+                        except Exception:
+                            pass
             finally:
                 client.close()
 

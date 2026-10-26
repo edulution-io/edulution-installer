@@ -31,6 +31,8 @@ Installation of [linuxmuster.net 7.3](https://docs.linuxmuster.net/de/latest/) w
 
 - **Target server**: Ubuntu 24.04 LTS, root access
 
+The web installer sends the LMN installer of its own version over SSH and runs it from there. Run by hand, `bootstrap.sh` downloads the files from GitHub as described below.
+
 ### 1. Run bootstrap on the target server
 
 ```bash

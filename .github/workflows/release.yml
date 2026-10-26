@@ -139,8 +139,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            INSTALLER_REF=${{ github.ref_name }}
           platforms: linux/amd64
           sbom: true
           provenance: mode=max
@@ -284,8 +282,7 @@ jobs:
       - name: Stamp the released image into the installer
         env:
           DIGEST: ${{ needs.build.outputs.digest }}
-          REF: ${{ github.ref_name }}
-        run: .github/scripts/stamp-installer.sh dist/apps/public-page/installer "$IMAGE@$DIGEST" "$REF"
+        run: .github/scripts/stamp-installer.sh dist/apps/public-page/installer "$IMAGE@$DIGEST"
 
       - name: Upload the page
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
