@@ -2,9 +2,8 @@ import json
 import os
 import signal
 import threading
-from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from api.models import (
     JobStatus,
@@ -13,12 +12,12 @@ from api.models import (
     RequirementsResponse,
     StatusResponse,
 )
+from api.config import settings
 from api.services.ansible_runner import runner_service
+from api.services.lifecycle import touch
 from api.services.system_checker import system_checker
 
-EDULUTION_CONFIG_PATH = Path("/var/lib/edulution/binduser-config.json")
-
-router = APIRouter(prefix="/api", tags=["playbook"])
+router = APIRouter(prefix="/api", tags=["playbook"], dependencies=[Depends(touch)])
 
 
 @router.get("/health")
@@ -118,13 +117,13 @@ async def get_network_info() -> dict:
 
 @router.get("/edulution-config")
 async def get_edulution_config() -> dict:
-    if not EDULUTION_CONFIG_PATH.exists():
+    if not settings.edulution_config_path.exists():
         raise HTTPException(
             status_code=404,
             detail="Edulution config not found. Playbook may not have completed successfully.",
         )
     try:
-        return json.loads(EDULUTION_CONFIG_PATH.read_text())
+        return json.loads(settings.edulution_config_path.read_text())
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read config: {e}")
 

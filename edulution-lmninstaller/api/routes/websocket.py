@@ -1,8 +1,9 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
+from api.services.lifecycle import touch
 from api.services.output_streamer import streamer
 
-router = APIRouter(tags=["websocket"])
+router = APIRouter(tags=["websocket"], dependencies=[Depends(touch)])
 
 
 @router.websocket("/ws/output")
