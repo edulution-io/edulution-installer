@@ -261,7 +261,7 @@ All variables have default values. Through the API, the settings in the tables b
 | `lmn_local_install` | `false` | linuxmuster runs on the same machine as edulution |
 | `lmn_webui_port` | `8443` | Port of the linuxmuster web UI in that case |
 
-The API checks every value against the form its setting needs (addresses, names, disk, port, flags) and accepts text without control characters.
+The API checks every value against the form its setting needs (addresses, names, disk, port, flags). Server name, domain name and country are taken in lower case. School name, location and state may contain any text except line breaks, control characters, `%` and `$`; the admin password uses the characters the web installer allows.
 
 ### Password Requirements
 

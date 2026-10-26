@@ -220,15 +220,25 @@ export const checkLmnConnection = (host: string): Promise<StatusResponse> =>
 export const checkLmnRequirements = (playbook: string): Promise<RequirementsResponse> =>
   apiFetch<RequirementsResponse>(`/api/lmn/playbook/${playbook}/requirements`);
 
-export const startLmnPlaybook = (
+// The LMN installer API names the settings it refuses; the wizard shows that instead of a bare status code.
+export const startLmnPlaybook = async (
   playbook: string,
   extraVars: Record<string, unknown> = {},
-): Promise<PlaybookStartResponse> =>
-  apiFetch<PlaybookStartResponse>(`/api/lmn/playbook/${playbook}/start`, {
+): Promise<PlaybookStartResponse> => {
+  const response = await fetch(`/api/lmn/playbook/${playbook}/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ variables: { extra_vars: extraVars } }),
   });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { detail?: unknown } | null;
+    const detail = Array.isArray(body?.detail)
+      ? body.detail.map((entry: { msg?: string }) => entry.msg).join('; ')
+      : body?.detail;
+    throw new Error(typeof detail === 'string' && detail ? detail : `API error: ${response.status}`);
+  }
+  return response.json() as Promise<PlaybookStartResponse>;
+};
 
 export const createLmnWebSocket = (): WebSocket => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
