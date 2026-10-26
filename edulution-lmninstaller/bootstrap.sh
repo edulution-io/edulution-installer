@@ -17,6 +17,8 @@ GITHUB_RAW="https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/ed
 
 INSTALL_DIR="/opt/edulution-installer"
 VENV_DIR="${INSTALL_DIR}/venv"
+API_TOKEN_FILE="${INSTALL_DIR}/api-token"
+TLS_DIR="${INSTALL_DIR}/tls"
 API_HOST="0.0.0.0"
 API_PORT="8000"
 
@@ -49,11 +51,11 @@ install_system_packages() {
 
     if command -v apt-get &> /dev/null; then
         apt-get update -qq
-        apt-get install -y -qq python3 python3-pip python3-venv ansible curl
+        apt-get install -y -qq python3 python3-pip python3-venv ansible curl openssl
     elif command -v dnf &> /dev/null; then
-        dnf install -y -q python3 python3-pip ansible curl
+        dnf install -y -q python3 python3-pip ansible curl openssl
     elif command -v yum &> /dev/null; then
-        yum install -y -q python3 python3-pip ansible curl
+        yum install -y -q python3 python3-pip ansible curl openssl
     else
         log_error "No supported package manager found (apt, dnf, yum)"
         exit 1
@@ -71,6 +73,43 @@ setup_directory_structure() {
     mkdir -p "${INSTALL_DIR}/ansible/inventory"
 
     log_info "Directory structure created"
+}
+
+# The API answers only over TLS and only to requests carrying this token.
+setup_api_credentials() {
+    log_info "Setting up API token and TLS certificate..."
+
+    # The web installer hands its token over as a file, so it never appears on a command line.
+    if [[ -n "${EDULUTION_API_TOKEN_FILE:-}" && -s "${EDULUTION_API_TOKEN_FILE}" ]]; then
+        install -m 600 "${EDULUTION_API_TOKEN_FILE}" "${API_TOKEN_FILE}"
+        rm -f "${EDULUTION_API_TOKEN_FILE}"
+    else
+        (umask 077 && head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' > "${API_TOKEN_FILE}")
+        log_info "API token: $(cat "${API_TOKEN_FILE}")"
+    fi
+
+    local san ip
+    san="DNS:$(hostname),DNS:localhost,IP:127.0.0.1"
+    for ip in $(hostname -I); do
+        san="${san},IP:${ip}"
+    done
+    # The address the web installer connects to, which may be a name only it knows.
+    if [[ -n "${EDULUTION_API_HOST:-}" ]]; then
+        if [[ "${EDULUTION_API_HOST}" =~ ^[0-9.]+$ || "${EDULUTION_API_HOST}" == *:* ]]; then
+            san="${san},IP:${EDULUTION_API_HOST}"
+        else
+            san="${san},DNS:${EDULUTION_API_HOST}"
+        fi
+    fi
+
+    mkdir -p "${TLS_DIR}"
+    (umask 077 && openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 30 \
+        -subj "/CN=edulution-lmninstaller" -addext "subjectAltName=${san}" \
+        -keyout "${TLS_DIR}/key.pem" -out "${TLS_DIR}/cert.pem" 2>/dev/null)
+    # The web installer reads the certificate over SFTP, also as a non-root user, and pins it.
+    chmod 644 "${TLS_DIR}/cert.pem"
+
+    log_info "API token and TLS certificate ready"
 }
 
 download_file() {
@@ -172,10 +211,13 @@ start_api_server() {
     export EDULUTION_PORT="${API_PORT}"
     export EDULUTION_PLAYBOOK_DIR="${INSTALL_DIR}/playbooks"
     export EDULUTION_PRIVATE_DATA_DIR="${INSTALL_DIR}/ansible"
+    export EDULUTION_API_TOKEN_FILE="${API_TOKEN_FILE}"
 
     nohup "${VENV_DIR}/bin/uvicorn" api.main:app \
         --host "${API_HOST}" \
         --port "${API_PORT}" \
+        --ssl-keyfile "${TLS_DIR}/key.pem" \
+        --ssl-certfile "${TLS_DIR}/cert.pem" \
         > "${INSTALL_DIR}/api.log" 2>&1 &
 
     API_PID=$!
@@ -185,9 +227,10 @@ start_api_server() {
 
     if kill -0 "${API_PID}" 2>/dev/null; then
         log_info "API server started (PID: ${API_PID})"
-        log_info "API:       http://$(hostname -I | awk '{print $1}'):${API_PORT}"
-        log_info "Health:    http://$(hostname -I | awk '{print $1}'):${API_PORT}/api/health"
-        log_info "WebSocket: ws://$(hostname -I | awk '{print $1}'):${API_PORT}/ws/output"
+        log_info "API:       https://$(hostname -I | awk '{print $1}'):${API_PORT}"
+        log_info "Health:    https://$(hostname -I | awk '{print $1}'):${API_PORT}/api/health"
+        log_info "WebSocket: wss://$(hostname -I | awk '{print $1}'):${API_PORT}/ws/output"
+        log_info "Certificate: ${TLS_DIR}/cert.pem"
     else
         log_error "Failed to start API server. Check ${INSTALL_DIR}/api.log"
         exit 1
@@ -203,6 +246,7 @@ main() {
     download_api_files
     download_playbooks
     setup_virtual_environment
+    setup_api_credentials
     start_api_server
 
     log_info "=== Bootstrap completed ==="

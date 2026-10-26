@@ -1,8 +1,12 @@
 import asyncio
+import secrets
 import signal
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from starlette.requests import HTTPConnection
+from starlette.websockets import WebSocketClose
 
 from api.config import settings
 from api.routes import playbook, websocket
@@ -52,12 +56,38 @@ async def lifespan(app: FastAPI):
         pass
 
 
+class RequireApiToken:
+    """Every HTTP and WebSocket request carries the token bootstrap.sh stored, as a Bearer header."""
+
+    def __init__(self, app):
+        self.app = app
+        self.expected = f"Bearer {settings.api_token_file.read_text().strip()}".encode()
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] not in ("http", "websocket"):
+            return await self.app(scope, receive, send)
+
+        given = HTTPConnection(scope).headers.get("authorization", "").encode()
+        if secrets.compare_digest(given, self.expected):
+            return await self.app(scope, receive, send)
+
+        if scope["type"] == "websocket":
+            response = WebSocketClose(code=1008)
+        else:
+            response = JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        await response(scope, receive, send)
+
+
 app = FastAPI(
     title="Edulution LMN Installer API",
     description="Mini-API for Ansible playbook execution with real-time output streaming",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
+app.add_middleware(RequireApiToken)
 
 app.include_router(playbook.router)
 app.include_router(websocket.router)

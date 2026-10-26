@@ -13,7 +13,7 @@ Installation of [linuxmuster.net 7.3](https://docs.linuxmuster.net/de/latest/) w
 |     - Installs Python/pip/Ansible      |
 |     - Starts API                       |
 |                                        |
-|   FastAPI Server (0.0.0.0:8000)        |
+|   FastAPI Server (0.0.0.0:8000, TLS)   |
 |     - POST /api/playbook/{p}/start     |
 |     - GET  /api/playbook/{p}/requirements |
 |     - GET  /api/status                 |
@@ -41,18 +41,21 @@ The script:
 1. Installs dependencies (Python, Ansible, etc.)
 2. Downloads all files from GitHub
 3. Sets up a Python virtual environment
-4. Starts the API on port 8000
+4. Creates the API token and a TLS certificate
+5. Starts the API on port 8000 (HTTPS)
+
+Every request needs the token as `Authorization: Bearer <token>`. The web installer hands its own token over; run by hand, `bootstrap.sh` generates one and prints it. The certificate is `/opt/edulution-installer/tls/cert.pem`; copy it to the calling machine as `cert.pem`.
 
 ### 2. Check requirements
 
 ```bash
-curl http://10.0.0.1:8000/api/playbook/linuxmuster.yml/requirements
+curl --cacert cert.pem -H "Authorization: Bearer $TOKEN" https://10.0.0.1:8000/api/playbook/linuxmuster.yml/requirements
 ```
 
 ### 3. Start playbook
 
 ```bash
-curl -X POST http://10.0.0.1:8000/api/playbook/linuxmuster.yml/start \
+curl --cacert cert.pem -H "Authorization: Bearer $TOKEN" -X POST https://10.0.0.1:8000/api/playbook/linuxmuster.yml/start \
   -H "Content-Type: application/json" \
   -d '{
     "variables": {
@@ -70,10 +73,10 @@ curl -X POST http://10.0.0.1:8000/api/playbook/linuxmuster.yml/start \
 
 ```bash
 # With websocat
-websocat ws://10.0.0.1:8000/ws/output
+SSL_CERT_FILE=cert.pem websocat -H "Authorization: Bearer $TOKEN" wss://10.0.0.1:8000/ws/output
 
 # Or query status via REST
-curl http://10.0.0.1:8000/api/status
+curl --cacert cert.pem -H "Authorization: Bearer $TOKEN" https://10.0.0.1:8000/api/status
 ```
 
 ## API Reference
@@ -94,7 +97,7 @@ Checks system requirements for a playbook. Requirements are read from `playbooks
 **Example:**
 
 ```bash
-curl http://localhost:8000/api/playbook/linuxmuster.yml/requirements
+curl --cacert /opt/edulution-installer/tls/cert.pem -H "Authorization: Bearer $(cat /opt/edulution-installer/api-token)" https://localhost:8000/api/playbook/linuxmuster.yml/requirements
 ```
 
 **Response (200):**
@@ -157,7 +160,7 @@ Starts a playbook. The playbook name is passed as a path parameter.
 **Example:**
 
 ```bash
-curl -X POST http://localhost:8000/api/playbook/linuxmuster.yml/start \
+curl -X POST --cacert /opt/edulution-installer/tls/cert.pem -H "Authorization: Bearer $(cat /opt/edulution-installer/api-token)" https://localhost:8000/api/playbook/linuxmuster.yml/start \
   -H "Content-Type: application/json" \
   -d '{"variables": {"extra_vars": {"lmn_adminpw": "MyPassword1!"}}}'
 ```
@@ -195,7 +198,7 @@ curl -X POST http://localhost:8000/api/playbook/linuxmuster.yml/start \
 
 ### WebSocket /ws/output
 
-Connection: `ws://<server-ip>:8000/ws/output`
+Connection: `wss://<server-ip>:8000/ws/output` with `Authorization: Bearer <token>`
 
 Message format:
 
@@ -256,7 +259,7 @@ The password is set for: `root` (server), `global-admin`, `pgmadmin`, `linbo`.
 Place a new YAML file in the `playbooks/` directory (on the target server at `/opt/edulution-installer/playbooks/`). It becomes automatically available via the API:
 
 ```bash
-curl -X POST http://10.0.0.1:8000/api/playbook/my-playbook.yml/start \
+curl --cacert cert.pem -H "Authorization: Bearer $TOKEN" -X POST https://10.0.0.1:8000/api/playbook/my-playbook.yml/start \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -274,6 +277,7 @@ The API can be configured via environment variables:
 | `EDULUTION_PLAYBOOK_DIR` | `/opt/edulution-installer/playbooks` | Playbook directory |
 | `EDULUTION_PRIVATE_DATA_DIR` | `/opt/edulution-installer/ansible` | Ansible working directory |
 | `EDULUTION_SHUTDOWN_DELAY` | `5` | Seconds until auto-shutdown after success |
+| `EDULUTION_API_TOKEN_FILE` | `/opt/edulution-installer/api-token` | File with the token every request has to carry |
 
 ## Auto-Shutdown
 
@@ -288,7 +292,7 @@ cat /opt/edulution-installer/api.log
 
 **Playbook already running (409):**
 ```bash
-curl http://localhost:8000/api/status
+curl --cacert /opt/edulution-installer/tls/cert.pem -H "Authorization: Bearer $(cat /opt/edulution-installer/api-token)" https://localhost:8000/api/status
 ```
 
 **Restart the API:**

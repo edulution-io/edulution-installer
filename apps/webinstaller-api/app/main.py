@@ -8,6 +8,7 @@ import time
 import re
 import secrets
 import string
+import shlex
 import ssl
 import shutil
 import asyncio
@@ -561,6 +562,57 @@ def shutdown():
 BOOTSTRAP_BRANCH = os.environ.get("BOOTSTRAP_BRANCH", "main")
 BOOTSTRAP_URL = f"https://raw.githubusercontent.com/edulution-io/edulution-installer/{BOOTSTRAP_BRANCH}/edulution-lmninstaller/bootstrap.sh"
 
+# Token und Zertifikat der LMN-Installer-API; bleiben gespeichert, damit check-connection nach einem Neustart greift.
+LMN_API_ACCESS_FILE = "/edulution-ui/lmn-installer-api.json"
+LMN_API_CERT_PATH = "/opt/edulution-installer/tls/cert.pem"
+LMN_API_TOKEN_NAME = ".edulution-lmninstaller-token"
+
+
+def saveLmnApiAccess(host, token, cert):
+    with openPrivate(LMN_API_ACCESS_FILE) as f:
+        json.dump({"host": host, "token": token, "cert": cert}, f)
+
+
+def loadLmnApiAccess(host):
+    try:
+        with open(LMN_API_ACCESS_FILE) as f:
+            access = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return access if host and access.get("host") == host else None
+
+
+def lmnApiClientOptions(access):
+    return {
+        "verify": ssl.create_default_context(cadata=access["cert"]),
+        "headers": {"Authorization": f"Bearer {access['token']}"},
+    }
+
+
+def lmnApiHealthy(access):
+    try:
+        response = httpx.get(f"https://{access['host']}:8000/api/health", timeout=3, **lmnApiClientOptions(access))
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
+def lmnBootstrapCommand(ssh, token_file):
+    exports = " ".join(
+        f"{name}={shlex.quote(value)}"
+        for name, value in (
+            ("GITHUB_BRANCH", BOOTSTRAP_BRANCH),
+            ("EDULUTION_API_TOKEN_FILE", token_file),
+            ("EDULUTION_API_HOST", ssh.host),
+        )
+    )
+    script = (
+        f"export {exports} && tmpfile=$(mktemp) && "
+        f"curl -fsSL {shlex.quote(BOOTSTRAP_URL)} -o $tmpfile && bash $tmpfile; rm -f $tmpfile"
+    )
+    command = f"bash -c {shlex.quote(script)}"
+    return command if ssh.user == "root" else f"sudo -S {command}"
+
 
 @api.post("/lmn/bootstrap")
 async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
@@ -586,17 +638,17 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
             )
             bootstrap_manager.add_event("Verbindung hergestellt. Starte Bootstrap...")
 
-            bootstrap_cmd = (
-                f"tmpfile=$(mktemp) && "
-                f"curl -fsSL {BOOTSTRAP_URL} -o $tmpfile && "
-                f"GITHUB_BRANCH={BOOTSTRAP_BRANCH} bash $tmpfile; "
-                f"rm -f $tmpfile"
-            )
+            # Per SFTP als Datei, damit der Token weder auf einer Kommandozeile noch in der Ausgabe steht.
+            token = secrets.token_urlsafe(32)
+            sftp = client.open_sftp()
+            token_file = f"{sftp.normalize('.')}/{LMN_API_TOKEN_NAME}"
+            with sftp.open(token_file, "w") as f:
+                f.chmod(0o600)
+                f.write(token)
+
+            command = lmnBootstrapCommand(ssh, token_file)
             if ssh.user != "root":
-                command = f"sudo -S bash -c 'export GITHUB_BRANCH={BOOTSTRAP_BRANCH} && tmpfile=$(mktemp) && curl -fsSL {BOOTSTRAP_URL} -o $tmpfile && bash $tmpfile; rm -f $tmpfile'"
                 bootstrap_manager.add_event("Nicht als root verbunden, verwende sudo...")
-            else:
-                command = bootstrap_cmd
 
             stdin, stdout, stderr = client.exec_command(command, get_pty=True)
 
@@ -612,6 +664,11 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
                 bootstrap_manager.add_event(line_stripped)
 
             exit_status = stdout.channel.recv_exit_status()
+            # bootstrap.sh uebernimmt die Datei; liegen bleibt sie nur, wenn es vorher abbricht.
+            try:
+                sftp.remove(token_file)
+            except OSError:
+                pass
 
             if exit_status != 0:
                 for line in stderr:
@@ -622,18 +679,18 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
                 bootstrap_manager.finish('failed')
                 return
 
+            with client.open_sftp().open(LMN_API_CERT_PATH) as f:
+                saveLmnApiAccess(ssh.host, token, f.read().decode())
+            access = loadLmnApiAccess(ssh.host)
+
             bootstrap_manager.add_event("Warte auf LMN-Installer API...")
             for attempt in range(30):
-                try:
-                    resp = requests.get(f"http://{ssh.host}:8000/api/health", timeout=3)
-                    if resp.status_code == 200:
-                        data.DATA_LMN_TARGET_HOST = ssh.host
-                        bootstrap_manager.add_event("LMN-Installer API ist bereit!")
-                        bootstrap_manager.add_event("Bootstrap erfolgreich", 'done')
-                        bootstrap_manager.finish('completed')
-                        return
-                except Exception:
-                    pass
+                if lmnApiHealthy(access):
+                    data.DATA_LMN_TARGET_HOST = ssh.host
+                    bootstrap_manager.add_event("LMN-Installer API ist bereit!")
+                    bootstrap_manager.add_event("Bootstrap erfolgreich", 'done')
+                    bootstrap_manager.finish('completed')
+                    return
                 time.sleep(2)
                 bootstrap_manager.add_event(f"Warte auf API... (Versuch {attempt + 1}/30)")
 
@@ -676,13 +733,10 @@ async def lmn_bootstrap_stream(request: Request):
 
 @api.post("/lmn/check-connection")
 def check_lmn_connection(req: LmnConnectionCheck, data: Data = Depends(getData)):
-    try:
-        resp = requests.get(f"http://{req.host}:8000/api/health", timeout=5)
-        if resp.status_code == 200:
-            data.DATA_LMN_TARGET_HOST = req.host
-            return {"status": True, "message": "LMN-Server erreichbar"}
-    except Exception:
-        pass
+    access = loadLmnApiAccess(req.host)
+    if access and lmnApiHealthy(access):
+        data.DATA_LMN_TARGET_HOST = req.host
+        return {"status": True, "message": "LMN-Server erreichbar"}
     return {"status": False, "message": "LMN-Server nicht erreichbar"}
 
 
@@ -691,18 +745,19 @@ LMN_PROXY_HEADERS = {"accept", "content-type"}
 
 @api.api_route("/lmn/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def lmn_proxy(path: str, request: Request, data: Data = Depends(getData)):
-    if not data.DATA_LMN_TARGET_HOST:
+    access = loadLmnApiAccess(data.DATA_LMN_TARGET_HOST)
+    if not access:
         return JSONResponse(
             status_code=503,
             content={"status": False, "message": "LMN-Server nicht verbunden. Bootstrap zuerst ausfuehren."},
         )
 
-    target_url = f"http://{data.DATA_LMN_TARGET_HOST}:8000/api/{path}"
+    target_url = f"https://{access['host']}:8000/api/{path}"
     body = await request.body()
     # Nur was die LMN-API braucht; Cookie und Co. gelten nur fuer den Web-Installer.
     headers = {k: v for k, v in request.headers.items() if k in LMN_PROXY_HEADERS}
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=60.0, **lmnApiClientOptions(access)) as client:
         try:
             response = await client.request(
                 method=request.method,
@@ -736,16 +791,18 @@ app.include_router(api)
 
 @app.websocket("/ws/lmn/{path:path}")
 async def lmn_ws_proxy(websocket: WebSocket, path: str):
-    if not data.DATA_LMN_TARGET_HOST:
+    access = loadLmnApiAccess(data.DATA_LMN_TARGET_HOST)
+    if not access:
         await websocket.close(code=1008, reason="LMN-Server nicht verbunden")
         return
 
     await websocket.accept()
-    target_url = f"ws://{data.DATA_LMN_TARGET_HOST}:8000/ws/{path}"
+    target_url = f"wss://{access['host']}:8000/ws/{path}"
+    options = lmnApiClientOptions(access)
 
     try:
         import websockets
-        async with websockets.connect(target_url) as target_ws:
+        async with websockets.connect(target_url, ssl=options["verify"], additional_headers=options["headers"]) as target_ws:
             async def forward_to_target():
                 try:
                     while True:
