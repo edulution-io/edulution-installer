@@ -571,7 +571,8 @@ LMN_INSTALLER_ARCHIVE_NAME = ".edulution-lmninstaller.tar.gz"
 
 
 def _lmnArchiveEntry(info):
-    if "__pycache__" in info.name:
+    name = Path(info.name).name
+    if name == "__pycache__" or name.startswith(".") or name.endswith((".pyc", ".retry")):
         return None
     info.uid = info.gid = 0
     info.uname = info.gname = "root"
@@ -651,7 +652,7 @@ def lmnBootstrapCommand(ssh, token_file, archive_file):
         f" && archive={archive}"
         f" && EDULUTION_INSTALLER_SOURCE_DIR=$(mktemp -d) && export EDULUTION_INSTALLER_SOURCE_DIR"
         # Raeumt auch auf, wenn die SSH-Verbindung abreisst; der Exit-Code bleibt der von bootstrap.sh.
-        """ && trap 'rm -rf "$EDULUTION_INSTALLER_SOURCE_DIR" "$archive"' EXIT HUP TERM"""
+        """ && trap 'rm -rf "$EDULUTION_INSTALLER_SOURCE_DIR" "$archive" "$EDULUTION_API_TOKEN_HANDOVER"' EXIT HUP TERM"""
         ' && tar -xzf "$archive" --no-same-owner -C "$EDULUTION_INSTALLER_SOURCE_DIR"'
         ' && bash "$EDULUTION_INSTALLER_SOURCE_DIR/bootstrap.sh"'
     )
