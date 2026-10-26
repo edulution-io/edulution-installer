@@ -223,10 +223,15 @@ export const checkLmnRequirements = (playbook: string): Promise<RequirementsResp
 // Validation errors (FastAPI detail) and the proxy's own errors (message), without pydantic's prefix.
 export const refusalMessage = (body: unknown, status: number): string => {
   const { detail, message } = (body ?? {}) as { detail?: unknown; message?: unknown };
-  const text = Array.isArray(detail)
-    ? detail.map((entry: { msg?: string }) => (entry.msg ?? '').replace(/^Value error, /, '')).join('; ')
-    : (detail ?? message);
-  return typeof text === 'string' && text ? text : `API error: ${status}`;
+  const fromList = Array.isArray(detail)
+    ? detail
+        .map((entry: unknown) => (entry as { msg?: unknown } | null)?.msg)
+        .filter((msg): msg is string => typeof msg === 'string' && msg !== '')
+        .map((msg) => msg.replace(/^Value error, /, ''))
+        .join('; ')
+    : '';
+  const text = [fromList, detail, message].find((candidate) => typeof candidate === 'string' && candidate !== '');
+  return typeof text === 'string' ? text : `API error: ${status}`;
 };
 
 // The LMN installer API names the settings it refuses; the wizard shows that instead of a bare status code.
