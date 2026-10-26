@@ -212,7 +212,7 @@ Message format:
 
 ## Playbook Variables (linuxmuster.yml)
 
-All variables have default values and can be overridden via `extra_vars`.
+All variables have default values. Through the API, the settings in the tables below can be passed as `extra_vars`; repository and download settings always come from the playbook.
 
 ### Basic Configuration
 
@@ -239,8 +239,6 @@ All variables have default values and can be overridden via `extra_vars`.
 | `lmn_skip_firewall` | `true` | Skip firewall setup (configure firewall separately) |
 | `lmn_unattended` | `true` | No interactive prompts |
 | `lmn_disable_auto_updates` | `true` | Disable auto updates |
-| `lmn_repo_url` | `https://deb.linuxmuster.net/` | Repository URL |
-| `lmn_repo_distribution` | `lmn73` | Repository distribution |
 
 ### Password Requirements
 

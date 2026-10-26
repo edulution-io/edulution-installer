@@ -1,9 +1,8 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class JobStatus(str, Enum):
@@ -46,8 +45,28 @@ class RequirementsResponse(BaseModel):
     system_info: SystemInfo
 
 
+# Extra vars override everything in the playbook, so only the settings an admin chooses get through:
+# no download sources, proxies, package lists or Ansible connection variables.
+ALLOWED_EXTRA_VARS = frozenset({
+    "lmn_server_ip", "lmn_netmask", "lmn_gateway", "lmn_dns_forwarder",
+    "lmn_servername", "lmn_domainname", "lmn_schoolname", "lmn_location", "lmn_country", "lmn_state",
+    "lmn_dhcprange", "lmn_adminpw", "lmn_timezone", "lmn_locale",
+    "lmn_skip_firewall", "lmn_unattended", "lmn_disable_auto_updates",
+    "lmn_local_install", "lmn_webui_port",
+    "lmn_setup_data_disk", "lmn_data_disk", "lmn_lvm_volumes",
+})
+
+
 class PlaybookVariables(BaseModel):
-    extra_vars: dict[str, Any] = Field(default_factory=dict)
+    extra_vars: dict[str, str | bool | int | float] = Field(default_factory=dict)
+
+    @field_validator("extra_vars")
+    @classmethod
+    def only_allowed_names(cls, extra_vars: dict) -> dict:
+        unknown = sorted(set(extra_vars) - ALLOWED_EXTRA_VARS)
+        if unknown:
+            raise ValueError(f"Not allowed: {', '.join(unknown)}")
+        return extra_vars
 
 
 class PlaybookStartRequest(BaseModel):
