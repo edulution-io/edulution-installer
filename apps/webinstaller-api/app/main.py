@@ -606,9 +606,10 @@ def lmnBootstrapCommand(ssh, token_file):
             ("EDULUTION_API_HOST", ssh.host),
         )
     )
+    # Der Exit-Code von bootstrap.sh muss durchkommen, nicht der von rm.
     script = (
         f"export {exports} && tmpfile=$(mktemp) && "
-        f"curl -fsSL {shlex.quote(BOOTSTRAP_URL)} -o $tmpfile && bash $tmpfile; rm -f $tmpfile"
+        f"curl -fsSL {shlex.quote(BOOTSTRAP_URL)} -o $tmpfile && bash $tmpfile; rc=$?; rm -f $tmpfile; exit $rc"
     )
     command = f"bash -c {shlex.quote(script)}"
     return command if ssh.user == "root" else f"sudo -S {command}"
