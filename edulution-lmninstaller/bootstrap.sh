@@ -101,13 +101,9 @@ setup_api_credentials() {
     for ip in $(hostname -I); do
         san="${san},IP:${ip}"
     done
-    # The address the web installer connects to, which may be a name only it knows.
-    if [[ -n "${EDULUTION_API_HOST:-}" ]]; then
-        if [[ "${EDULUTION_API_HOST}" =~ ^[0-9.]+$ || "${EDULUTION_API_HOST}" == *:* ]]; then
-            san="${san},IP:${EDULUTION_API_HOST}"
-        else
-            san="${san},DNS:${EDULUTION_API_HOST}"
-        fi
+    # The address the web installer connects to (IP:… or DNS:…), which may be a name only it knows.
+    if [[ -n "${EDULUTION_API_SAN:-}" ]]; then
+        san="${san},${EDULUTION_API_SAN}"
     fi
 
     (umask 077 && openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 30 \
