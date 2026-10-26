@@ -566,6 +566,7 @@ BOOTSTRAP_URL = f"https://raw.githubusercontent.com/edulution-io/edulution-insta
 LMN_API_ACCESS_FILE = "/edulution-ui/lmn-installer-api.json"
 LMN_API_CERT_PATH = "/opt/edulution-installer/tls/cert.pem"
 LMN_API_TOKEN_NAME = ".edulution-lmninstaller-token"
+X509_V_FLAG_NO_CHECK_TIME = 0x200000
 
 
 def saveLmnApiAccess(host, token, cert):
@@ -583,15 +584,22 @@ def loadLmnApiAccess(host):
 
 
 def lmnApiClientOptions(access):
-    return {
-        "verify": ssl.create_default_context(cadata=access["cert"]),
-        "headers": {"Authorization": f"Bearer {access['token']}"},
-    }
+    context = ssl.create_default_context(cadata=access["cert"])
+    # Das gepinnte Zertifikat ist der einzige Vertrauensanker; eine falsch gehende Uhr soll die Verbindung nicht kosten.
+    context.verify_flags |= X509_V_FLAG_NO_CHECK_TIME
+    return {"verify": context, "headers": {"Authorization": f"Bearer {access['token']}"}}
+
+
+def lmnApiUrl(access, scheme, path):
+    host = access["host"]
+    if ":" in host:
+        host = f"[{host}]"
+    return f"{scheme}://{host}:8000/{path}"
 
 
 def lmnApiHealthy(access):
     try:
-        response = httpx.get(f"https://{access['host']}:8000/api/health", timeout=3, **lmnApiClientOptions(access))
+        response = httpx.get(lmnApiUrl(access, "https", "api/health"), timeout=3, **lmnApiClientOptions(access))
         return response.status_code == 200
     except Exception:
         return False
@@ -602,7 +610,7 @@ def lmnBootstrapCommand(ssh, token_file):
         f"{name}={shlex.quote(value)}"
         for name, value in (
             ("GITHUB_BRANCH", BOOTSTRAP_BRANCH),
-            ("EDULUTION_API_TOKEN_FILE", token_file),
+            ("EDULUTION_API_TOKEN_HANDOVER", token_file),
             ("EDULUTION_API_HOST", ssh.host),
         )
     )
@@ -680,7 +688,7 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
                 bootstrap_manager.finish('failed')
                 return
 
-            with client.open_sftp().open(LMN_API_CERT_PATH) as f:
+            with sftp.open(LMN_API_CERT_PATH) as f:
                 saveLmnApiAccess(ssh.host, token, f.read().decode())
             access = loadLmnApiAccess(ssh.host)
 
@@ -753,7 +761,7 @@ async def lmn_proxy(path: str, request: Request, data: Data = Depends(getData)):
             content={"status": False, "message": "LMN-Server nicht verbunden. Bootstrap zuerst ausfuehren."},
         )
 
-    target_url = f"https://{access['host']}:8000/api/{path}"
+    target_url = lmnApiUrl(access, "https", f"api/{path}")
     body = await request.body()
     # Nur was die LMN-API braucht; Cookie und Co. gelten nur fuer den Web-Installer.
     headers = {k: v for k, v in request.headers.items() if k in LMN_PROXY_HEADERS}
@@ -798,7 +806,7 @@ async def lmn_ws_proxy(websocket: WebSocket, path: str):
         return
 
     await websocket.accept()
-    target_url = f"wss://{access['host']}:8000/ws/{path}"
+    target_url = lmnApiUrl(access, "wss", f"ws/{path}")
     options = lmnApiClientOptions(access)
 
     try:

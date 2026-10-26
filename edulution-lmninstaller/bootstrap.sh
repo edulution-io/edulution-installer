@@ -79,10 +79,18 @@ setup_directory_structure() {
 setup_api_credentials() {
     log_info "Setting up API token and TLS certificate..."
 
+    # The web installer reads the certificate over SFTP, also as a non-root user, and pins it,
+    # so the path stays readable whatever umask sudo hands down.
+    install -d -m 755 "${INSTALL_DIR}" "${TLS_DIR}"
+
     # The web installer hands its token over as a file, so it never appears on a command line.
-    if [[ -n "${EDULUTION_API_TOKEN_FILE:-}" && -s "${EDULUTION_API_TOKEN_FILE}" ]]; then
-        install -m 600 "${EDULUTION_API_TOKEN_FILE}" "${API_TOKEN_FILE}"
-        rm -f "${EDULUTION_API_TOKEN_FILE}"
+    if [[ -n "${EDULUTION_API_TOKEN_HANDOVER:-}" ]]; then
+        if [[ ! -s "${EDULUTION_API_TOKEN_HANDOVER}" ]]; then
+            log_error "Token file ${EDULUTION_API_TOKEN_HANDOVER} is missing or empty"
+            exit 1
+        fi
+        install -m 600 "${EDULUTION_API_TOKEN_HANDOVER}" "${API_TOKEN_FILE}"
+        rm -f "${EDULUTION_API_TOKEN_HANDOVER}"
     else
         (umask 077 && head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' > "${API_TOKEN_FILE}")
         log_info "API token: $(cat "${API_TOKEN_FILE}")"
@@ -102,11 +110,9 @@ setup_api_credentials() {
         fi
     fi
 
-    mkdir -p "${TLS_DIR}"
     (umask 077 && openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 30 \
         -subj "/CN=edulution-lmninstaller" -addext "subjectAltName=${san}" \
-        -keyout "${TLS_DIR}/key.pem" -out "${TLS_DIR}/cert.pem" 2>/dev/null)
-    # The web installer reads the certificate over SFTP, also as a non-root user, and pins it.
+        -keyout "${TLS_DIR}/key.pem" -out "${TLS_DIR}/cert.pem")
     chmod 644 "${TLS_DIR}/cert.pem"
 
     log_info "API token and TLS certificate ready"

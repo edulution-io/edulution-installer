@@ -301,6 +301,8 @@ kill $(cat /opt/edulution-installer/api.pid)
 curl -sSL https://raw.githubusercontent.com/edulution-io/edulution-installer/main/edulution-lmninstaller/bootstrap.sh | bash
 ```
 
+Every run of `bootstrap.sh` creates a new token and certificate. The web installer then has to run the bootstrap again before it can reach the API; "check connection" only works for a server it bootstrapped itself.
+
 ## Project Structure
 
 ```

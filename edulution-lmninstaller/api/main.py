@@ -57,11 +57,14 @@ async def lifespan(app: FastAPI):
 
 
 class RequireApiToken:
-    """Every HTTP and WebSocket request carries the token bootstrap.sh stored, as a Bearer header."""
+    """Every HTTP and WebSocket request must carry the token bootstrap.sh stored, as a Bearer header."""
 
     def __init__(self, app):
         self.app = app
-        self.expected = f"Bearer {settings.api_token_file.read_text().strip()}".encode()
+        token = settings.api_token_file.read_text().strip()
+        if not token:
+            raise RuntimeError(f"{settings.api_token_file} is empty")
+        self.expected = f"Bearer {token}".encode()
 
     async def __call__(self, scope, receive, send):
         if scope["type"] not in ("http", "websocket"):
