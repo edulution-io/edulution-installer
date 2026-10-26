@@ -572,6 +572,9 @@ X509_V_FLAG_NO_CHECK_TIME = 0x200000
 
 class LmnApiAccess:
     def __init__(self, host, token, cert):
+        # Leer liesse create_default_context die System-CAs laden statt nur das gepinnte Zertifikat.
+        if not cert:
+            raise ValueError("Kein Zertifikat")
         self.host = host
         self.token = token
         self.cert = cert
@@ -753,6 +756,8 @@ async def lmn_bootstrap_stream(request: Request):
 
 @api.post("/lmn/check-connection")
 def check_lmn_connection(req: LmnConnectionCheck, data: Data = Depends(getData)):
+    if bootstrap_manager.status == 'running':
+        return JSONResponse(status_code=409, content={"status": False, "message": "Bootstrap läuft bereits"})
     access = loadLmnApiAccess(req.host)
     if access and access.healthy():
         data.DATA_LMN_API = access
