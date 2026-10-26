@@ -759,7 +759,8 @@ def check_lmn_connection(req: LmnConnectionCheck, data: Data = Depends(getData))
     if bootstrap_manager.status == 'running':
         return JSONResponse(status_code=409, content={"status": False, "message": "Bootstrap läuft bereits"})
     access = loadLmnApiAccess(req.host)
-    if access and access.healthy():
+    # Der Health-Check dauert; ein inzwischen gestarteter Bootstrap hat dann Vorrang.
+    if access and access.healthy() and bootstrap_manager.status != 'running':
         data.DATA_LMN_API = access
         return {"status": True, "message": "LMN-Server erreichbar"}
     return {"status": False, "message": "LMN-Server nicht erreichbar"}
