@@ -1,0 +1,207 @@
+name: Security scan
+
+# Workflow logs and artifacts of this public repository are readable by everyone, so the scheduled and release scans
+# write their results only to code scanning; pull request checks report what the change itself introduces.
+on:
+  pull_request:
+  schedule:
+    - cron: '0 4 * * 1'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-scan-${{ github.event.pull_request.number || github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  semgrep-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: semgrep/semgrep:1.177.0@sha256:acaac22ffc7b7cc5926de0751b223bce0b2491c33d18422fa72f632c78d81198
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The pull_request checkout is the merge commit: HEAD^1 is the base it was merged onto.
+      - name: Scan the changes of this pull request
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          semgrep scan --config p/default --config p/typescript --config p/python --config p/dockerfile \
+            --metrics=off --error --baseline-commit HEAD^1
+
+  gitleaks:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan the commits of this pull request for secrets
+        run: |
+          docker run --rm -v "$PWD:/repo" \
+            ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            git /repo --log-opts="HEAD^1..HEAD^2" --redact --no-banner --verbose
+
+  dependency-audit:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Use Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Use Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+
+      - name: Install pip-audit
+        run: pip install --require-hashes -r .github/audit-requirements.txt
+
+      # Compares the advisories of the base and the head, so a change fails only for advisories it brings in.
+      - name: Block newly introduced advisories
+        env:
+          WORK: ${{ runner.temp }}/audit
+        run: |
+          set -o pipefail
+          mkdir -p "$WORK/base"
+
+          npm_advisories() {
+            local report
+            report=$(cd "$1" && npm audit --omit=dev --package-lock-only --json) || true
+            if ! jq -e '.vulnerabilities' <<< "$report" > /dev/null 2>&1; then
+              echo "::error::npm audit did not return a report for $1" >&2
+              exit 1
+            fi
+            jq -r '[.vulnerabilities[] | .via[] | objects | select(.severity == "high" or .severity == "critical") | .url] | unique | .[]' <<< "$report"
+          }
+
+          pip_advisories() {
+            local report
+            report=$(pip-audit --requirement "$1" --require-hashes --disable-pip --no-deps --format json --progress-spinner off) || true
+            if ! jq -e '.dependencies' <<< "$report" > /dev/null 2>&1; then
+              echo "::error::pip-audit did not return a report for $1" >&2
+              exit 1
+            fi
+            jq -r '.dependencies[] | .name as $name | .vulns[] | "\($name) \(.id)"' <<< "$report"
+          }
+
+          : > "$WORK/base.txt"
+          : > "$WORK/head.txt"
+          if ! git diff --quiet HEAD^1 HEAD -- package.json package-lock.json; then
+            git show HEAD^1:package.json > "$WORK/base/package.json"
+            git show HEAD^1:package-lock.json > "$WORK/base/package-lock.json"
+            npm_advisories "$WORK/base" >> "$WORK/base.txt"
+            npm_advisories . >> "$WORK/head.txt"
+          fi
+          for requirements in apps/webinstaller-api/requirements.txt edulution-lmninstaller/requirements.txt
+          do
+            git diff --quiet HEAD^1 HEAD -- "$requirements" && continue
+            base_requirements="$WORK/base/${requirements//\//_}"
+            git show "HEAD^1:$requirements" > "$base_requirements"
+            pip_advisories "$base_requirements" >> "$WORK/base.txt"
+            pip_advisories "$requirements" >> "$WORK/head.txt"
+          done
+
+          NEW=$(comm -13 <(sort -u "$WORK/base.txt") <(sort -u "$WORK/head.txt"))
+          if [ -n "$NEW" ]; then
+            echo "::error::This change introduces advisories"
+            echo "$NEW"
+            exit 1
+          fi
+          echo "No new advisories"
+
+  semgrep-full:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Scan the repository
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src \
+            semgrep/semgrep:1.177.0@sha256:acaac22ffc7b7cc5926de0751b223bce0b2491c33d18422fa72f632c78d81198 \
+            semgrep scan --config p/default --config p/typescript --config p/python --config p/dockerfile \
+            --metrics=off --quiet --sarif --output semgrep.sarif
+
+      - name: Upload the results to code scanning
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  # A published release is scanned once the Release workflow has pushed its image; weekly runs scan the newest.
+  image-scan:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Wait for the release image
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          for _ in $(seq 90)
+          do
+            docker buildx imagetools inspect "ghcr.io/edulution-io/edulution-installer:${TAG#v}" > /dev/null 2>&1 && exit 0
+            sleep 30
+          done
+          echo "::error::ghcr.io/edulution-io/edulution-installer:${TAG#v} did not appear within 45 minutes"
+          exit 1
+
+      - name: Scan the installer image
+        env:
+          TAG: ${{ github.event.release.tag_name || 'latest' }}
+        run: |
+          docker run --rm -v "$PWD:/out" \
+            aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa \
+            image --quiet --format sarif --output /out/trivy.sarif \
+            "ghcr.io/edulution-io/edulution-installer:${TAG#v}"
+
+      - name: Upload the results to code scanning
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-image
