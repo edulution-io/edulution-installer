@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,17 @@ import ansible_runner
 from api.config import settings
 from api.models import JobStatus, MessageType
 from api.services.output_streamer import streamer
+
+
+def _unsafe(value: Any) -> Any:
+    """Marks every string so Ansible takes it as entered instead of as a template, keeping its type."""
+    if isinstance(value, str):
+        return {"__ansible_unsafe": value}
+    if isinstance(value, list):
+        return [_unsafe(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _unsafe(item) for key, item in value.items()}
+    return value
 
 
 class AnsibleRunnerService:
@@ -117,17 +129,33 @@ class AnsibleRunnerService:
         else:
             raise FileNotFoundError(f"Playbook not found: {playbook_path}")
 
+        # ansible-runner reads env/extravars as a file (-e @...); passed as a dict they would end up
+        # inline on the ansible-playbook command line, passwords included.
+        env_dir = private_data_dir / "env"
+        env_dir.mkdir(mode=0o700, exist_ok=True)
+        extravars_path = env_dir / "extravars"
+        fd = os.open(extravars_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(_unsafe(extra_vars), f)
+        extravars_inode = extravars_path.stat().st_ino
+
+
         loop = asyncio.get_event_loop()
 
         def run_ansible():
-            ansible_runner.run(
-                private_data_dir=str(private_data_dir),
-                playbook=playbook,
-                extravars=extra_vars,
-                event_handler=self._event_handler,
-                status_handler=self._status_handler,
-                quiet=True,
-            )
+            try:
+                ansible_runner.run(
+                    private_data_dir=str(private_data_dir),
+                    playbook=playbook,
+                    event_handler=self._event_handler,
+                    status_handler=self._status_handler,
+                    quiet=True,
+                )
+            finally:
+                # Only this run's file: a run started right after the status change has written its own.
+                if extravars_path.exists() and extravars_path.stat().st_ino == extravars_inode:
+                    extravars_path.unlink()
 
         loop.run_in_executor(None, run_ansible)
 

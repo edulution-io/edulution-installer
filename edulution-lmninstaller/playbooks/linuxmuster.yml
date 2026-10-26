@@ -509,6 +509,7 @@
           skipfw = {{ lmn_skip_firewall | ternary('True', 'False') }}
         dest: /root/.linuxmuster/setup.ini
         mode: '0600'
+      no_log: true
 
     # =========================================================================
     # LINUXMUSTER-SETUP AUSFÜHREN
@@ -519,7 +520,6 @@
         set -o pipefail
         /usr/sbin/linuxmuster-setup \
           --config=/root/.linuxmuster/setup.ini \
-          --adminpw='{{ lmn_adminpw }}' \
           {% if lmn_unattended %}--unattended{% endif %} \
           {% if lmn_skip_firewall %}--skip-fw{% endif %} \
           2>&1 | while IFS= read -r line; do
@@ -636,18 +636,18 @@
       ansible.builtin.debug:
         msg: |
           rc: {{ binduser_create_result.rc | default('skipped') }}
-          stdout: {{ binduser_create_result.stdout | default('skipped') }}
-          stderr: {{ binduser_create_result.stderr | default('skipped') }}
 
     - name: Binduser-Passwort aus linuxmuster secret lesen
       ansible.builtin.command:
         cmd: cat /etc/linuxmuster/.secret/edulutionui-binduser
       register: binduser_pw_result
       changed_when: false
+      no_log: true
 
     - name: Binduser-Passwort als Fakt setzen
       ansible.builtin.set_fact:
         edulution_binduser_password: '{{ binduser_pw_result.stdout | trim }}'
+      no_log: true
 
     - name: Edulution-Konfigurationsverzeichnis erstellen
       ansible.builtin.file:
@@ -664,6 +664,7 @@
           }
         dest: /var/lib/edulution/binduser-config.json
         mode: '0600'
+      no_log: true
 
     # =========================================================================
     # LINUXMUSTER-API INSTALLIEREN
@@ -787,7 +788,7 @@
           IP:     {{ lmn_server_ip }}
 
           Web-UI: https://{{ lmn_server_ip }}{{ (':' + lmn_webui_port | string) if (lmn_local_install | bool) else '' }}
-          Login:  global-admin / {{ lmn_adminpw }}
+          Login:  global-admin (Passwort aus der Einrichtung)
 
           edulution Binduser: CN=edulutionui-binduser,OU=Management,OU=GLOBAL,{{ edulution_dc_parts }}
 
