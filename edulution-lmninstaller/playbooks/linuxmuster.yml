@@ -353,7 +353,7 @@
       ansible.builtin.assert:
         that:
           - lmn_repo_key_info.stdout_lines | select('match', '^pub:') | list | length == 1
-          - (lmn_repo_key_info.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == lmn_repo_key_fingerprint
+          - (lmn_repo_key_info.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == (lmn_repo_key_fingerprint | replace(' ', '') | upper)
         fail_msg: >-
           {{ lmn_repo_gpg_url }} liefert nicht den erwarteten Schluessel
           ({{ lmn_repo_key_fingerprint }}). Installation abgebrochen.
@@ -363,11 +363,30 @@
       ansible.builtin.command:
         argv: [gpg, --batch, --yes, --dearmor, -o, '{{ lmn_repo_keyring }}', '{{ lmn_repo_key_download }}']
 
+    # Feste Inhalte statt apt_repository: eine aeltere Einrichtung hinterlaesst
+    # lmn.list ohne signed-by, die sonst neben der neuen Zeile stehen bliebe.
+    - name: Global vertrauten linuxmuster-Schlüssel vor dem Repository entfernen
+      ansible.builtin.file:
+        path: '{{ lmn_appliance_global_key }}'
+        state: absent
+
+    - name: Vorhandene deb822-Quelle vor dem Repository finden
+      ansible.builtin.stat:
+        path: '{{ lmn_repo_sources }}'
+      register: lmn_repo_sources_before
+
     - name: linuxmuster Repository hinzufügen
-      ansible.builtin.apt_repository:
-        repo: 'deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} {{ lmn_repo_distribution }} main'
-        filename: lmn
-        state: present
+      ansible.builtin.copy:
+        dest: '{{ lmn_repo_list }}'
+        content: "deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} {{ lmn_repo_distribution }} main\n"
+        mode: '0644'
+      when: not lmn_repo_sources_before.stat.exists
+
+    - name: Doppelte linuxmuster-Quelle vor dem Repository entfernen
+      ansible.builtin.file:
+        path: '{{ lmn_repo_list }}'
+        state: absent
+      when: lmn_repo_sources_before.stat.exists
 
     - name: Paketlisten aktualisieren
       ansible.builtin.apt:
@@ -413,7 +432,7 @@
           - (lmn_appliance_lines | select('match', '^lmn73_deb ') | list) in [[], [lmn_appliance_lmn73_line]]
         fail_msg: >-
           lmn-appliance laesst sich nicht auf den geprueften Schluessel umstellen
-          (lmnkey_remote/lmnkey_local nicht gefunden). Installation abgebrochen.
+          (lmnkey_remote, lmnkey_local oder lmn73_deb). Installation abgebrochen.
         quiet: true
       vars:
         lmn_appliance_lines: "{{ (lmn_appliance_source.content | b64decode).splitlines() }}"
@@ -507,6 +526,12 @@
             - '{{ lmn_appliance_global_key }}'
           register: lmn_written_keys
 
+        - name: Repository-Schlüssel nach lmn-appliance vorhanden
+          ansible.builtin.assert:
+            that: lmn_written_keys.results[0].stat.exists
+            fail_msg: '{{ lmn_repo_keyring }} fehlt nach lmn-appliance.'
+            quiet: true
+
         - name: Fingerprint der von lmn-appliance geschriebenen Schlüssel lesen
           ansible.builtin.command:
             argv: [gpg, --batch, --show-keys, --with-colons, '{{ item.stat.path }}']
@@ -520,7 +545,7 @@
           ansible.builtin.assert:
             that:
               - item.stdout_lines | select('match', '^pub:') | list | length == 1
-              - (item.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == lmn_repo_key_fingerprint
+              - (item.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == (lmn_repo_key_fingerprint | replace(' ', '') | upper)
             fail_msg: >-
               {{ item.item.stat.path }} enthaelt nicht den erwarteten Schluessel
               ({{ lmn_repo_key_fingerprint }}). Installation abgebrochen.
@@ -542,8 +567,8 @@
         - name: Nach unerwartetem linuxmuster-Schlüssel abbrechen
           ansible.builtin.fail:
             msg: >-
-              Nach lmn-appliance liegt ein anderer linuxmuster-Schluessel vor; Schluessel und
-              Paketquelle wurden entfernt. Erwartet: {{ lmn_repo_key_fingerprint }}
+              Nach lmn-appliance fehlt der linuxmuster-Schluessel oder es liegt ein anderer vor;
+              Schluessel und Paketquelle wurden entfernt. Erwartet: {{ lmn_repo_key_fingerprint }}
 
     - name: Global vertrauten linuxmuster-Schlüssel entfernen
       ansible.builtin.file:
