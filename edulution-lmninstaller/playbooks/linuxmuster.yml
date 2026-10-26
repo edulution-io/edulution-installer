@@ -112,6 +112,12 @@
     # Repository (normalerweise nicht ändern)
     lmn_repo_url: 'https://deb.linuxmuster.net/'
     lmn_repo_gpg_url: 'https://deb.linuxmuster.net/pub.gpg'
+    # Fingerprint des linuxmuster.net Archiv Key; lmn-appliance laedt den Schluessel selbst noch einmal.
+    lmn_repo_key_fingerprint: '21A91AEC28D1BE943FCF2AA94E8B8B667D752C32'
+    lmn_repo_key_download: /tmp/linuxmuster.gpg
+    lmn_repo_keyring: /usr/share/keyrings/linuxmuster.net.gpg
+    lmn_appliance_global_key: /etc/apt/trusted.gpg.d/linuxmuster.net.gpg
+    lmn_repo_list: /etc/apt/sources.list.d/lmn.list
     # linuxmuster-Version automatisch anhand der Ubuntu-Version:
     #   Ubuntu 24.04 -> lmn73 (7.3),  Ubuntu 26.04 -> lmn74 (7.4).
     # lmn_repo_distribution/lmn_prepare_version werden daraus per set_fact
@@ -331,18 +337,32 @@
     - name: GPG-Schlüssel herunterladen
       ansible.builtin.get_url:
         url: '{{ lmn_repo_gpg_url }}'
-        dest: /tmp/linuxmuster.gpg
+        dest: '{{ lmn_repo_key_download }}'
         mode: '0644'
 
+    - name: Fingerprint des linuxmuster-Schlüssels lesen
+      ansible.builtin.command:
+        argv: [gpg, --batch, --show-keys, --with-colons, '{{ lmn_repo_key_download }}']
+      register: lmn_repo_key_info
+      changed_when: false
+
+    - name: Fingerprint des linuxmuster-Schlüssels prüfen
+      ansible.builtin.assert:
+        that:
+          - lmn_repo_key_info.stdout_lines | select('match', '^pub:') | list | length == 1
+          - (lmn_repo_key_info.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == lmn_repo_key_fingerprint
+        fail_msg: >-
+          {{ lmn_repo_gpg_url }} liefert nicht den erwarteten Schluessel
+          ({{ lmn_repo_key_fingerprint }}). Installation abgebrochen.
+        quiet: true
+
     - name: GPG-Schlüssel konvertieren und installieren
-      ansible.builtin.shell: |
-        cat /tmp/linuxmuster.gpg | gpg --dearmor -o /usr/share/keyrings/linuxmuster.net.gpg
-      args:
-        creates: /usr/share/keyrings/linuxmuster.net.gpg
+      ansible.builtin.command:
+        argv: [gpg, --batch, --yes, --dearmor, -o, '{{ lmn_repo_keyring }}', '{{ lmn_repo_key_download }}']
 
     - name: linuxmuster Repository hinzufügen
       ansible.builtin.apt_repository:
-        repo: 'deb [arch=amd64 signed-by=/usr/share/keyrings/linuxmuster.net.gpg] {{ lmn_repo_url }} {{ lmn_repo_distribution }} main'
+        repo: 'deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} {{ lmn_repo_distribution }} main'
         filename: lmn
         state: present
 
@@ -431,6 +451,53 @@
       changed_when: lmn_appliance_result.rc == 0
       async: 1800
       poll: 30
+
+    # =========================================================================
+    # REPOSITORY-SCHLUESSEL NACH LMN-APPLIANCE
+    # =========================================================================
+    # lmn-appliance laedt pub.gpg selbst; unter 7.3 legt es ihn global nach
+    # trusted.gpg.d und schreibt lmn.list ohne signed-by.
+
+    - name: Von lmn-appliance geschriebene Schlüssel finden
+      ansible.builtin.stat:
+        path: '{{ item }}'
+      loop:
+        - '{{ lmn_repo_keyring }}'
+        - '{{ lmn_appliance_global_key }}'
+      register: lmn_written_keys
+
+    - name: Fingerprint der von lmn-appliance geschriebenen Schlüssel lesen
+      ansible.builtin.command:
+        argv: [gpg, --batch, --show-keys, --with-colons, '{{ item.stat.path }}']
+      loop: "{{ lmn_written_keys.results | selectattr('stat.exists') | list }}"
+      loop_control:
+        label: '{{ item.stat.path }}'
+      register: lmn_written_key_info
+      changed_when: false
+
+    - name: Fingerprint der von lmn-appliance geschriebenen Schlüssel prüfen
+      ansible.builtin.assert:
+        that:
+          - item.stdout_lines | select('match', '^pub:') | list | length == 1
+          - (item.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == lmn_repo_key_fingerprint
+        fail_msg: >-
+          {{ item.item.stat.path }} enthaelt nicht den erwarteten Schluessel
+          ({{ lmn_repo_key_fingerprint }}). Installation abgebrochen.
+        quiet: true
+      loop: '{{ lmn_written_key_info.results }}'
+      loop_control:
+        label: '{{ item.item.stat.path }}'
+
+    - name: Global vertrauten linuxmuster-Schlüssel entfernen
+      ansible.builtin.file:
+        path: '{{ lmn_appliance_global_key }}'
+        state: absent
+
+    - name: linuxmuster-Repository auf seinen Schlüssel beschränken
+      ansible.builtin.copy:
+        dest: '{{ lmn_repo_list }}'
+        content: "deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} {{ lmn_repo_distribution }} main\n"
+        mode: '0644'
 
     # =========================================================================
     # LINUXMUSTER-SERVER-PAKETE SICHERSTELLEN
