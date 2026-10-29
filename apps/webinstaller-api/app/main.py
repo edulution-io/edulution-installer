@@ -753,15 +753,13 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
             bootstrap_manager.finish('failed')
         finally:
             # Token und Archiv raeumt das Bootstrap-Kommando weg; nach einem Abbruch davor blieben sie sonst liegen.
-            try:
-                for leftover in (token_file, archive_file):
-                    if leftover:
-                        try:
-                            sftp.remove(leftover)
-                        except Exception:
-                            pass
-            finally:
-                client.close()
+            for leftover in (token_file, archive_file):
+                if leftover:
+                    try:
+                        sftp.remove(leftover)
+                    except Exception:
+                        pass
+            client.close()
 
     threading.Thread(target=run_bootstrap, daemon=True).start()
     return {"status": True, "message": "Bootstrap gestartet"}
