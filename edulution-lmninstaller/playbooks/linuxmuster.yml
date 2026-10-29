@@ -5,7 +5,7 @@
 # =============================================================================
 #
 # Verwendung:
-#   ansible-playbook linuxmuster.yml -e lmn_schoolname="Meine Schule"
+#   ansible-playbook linuxmuster.yml -e lmn_schoolname="Meine Schule" -e lmn_adminpw="..."
 #
 #   Oder via API mit extra_vars:
 #   POST /api/playbook/start
@@ -41,7 +41,7 @@
 
   # Variablen können überschrieben werden durch:
   # 1. -e / --extra-vars auf der Kommandozeile
-  # 2. API extra_vars
+  # 2. API extra_vars (nur die Einstellungen in ALLOWED_EXTRA_VARS, api/models.py)
 
   vars:
     # -------------------------------------------------------------------------
@@ -145,6 +145,20 @@
     # =========================================================================
     # GRUNDLEGENDE SYSTEMKONFIGURATION
     # =========================================================================
+
+    # setup.ini nimmt Werte zeilenweise; ein Zeilenumbruch wuerde eine weitere Einstellung ergeben.
+    - name: Einstellungen pruefen
+      ansible.builtin.assert:
+        that:
+          - lmn_adminpw | string | trim | length > 0
+          - lmn_adminpw != 'Muster!'
+          - >-
+            (lmn_server_ip ~ lmn_netmask ~ lmn_gateway ~ lmn_servername ~ lmn_domainname
+            ~ lmn_dhcprange ~ lmn_schoolname ~ lmn_location ~ lmn_country ~ lmn_state ~ lmn_adminpw)
+            is not search('[\r\n]')
+        fail_msg: >-
+          Bitte ein eigenes Admin-Passwort setzen (-e lmn_adminpw=...). Die Werte fuer
+          setup.ini duerfen keinen Zeilenumbruch enthalten.
 
     - name: Betriebssystem pruefen (Ubuntu 24.04 -> 7.3, 26.04 -> 7.4)
       ansible.builtin.assert:
@@ -284,7 +298,7 @@
 
     - name: Locale als Standard setzen
       ansible.builtin.command:
-        cmd: localectl set-locale LANG={{ lmn_locale }}
+        argv: [localectl, set-locale, "LANG={{ lmn_locale }}"]
       changed_when: true
 
     # =========================================================================
@@ -423,12 +437,12 @@
       ansible.builtin.shell: |
         set -o pipefail
         /root/lmn-appliance -p server -u \
-          -n {{ lmn_server_ip }}/{{ lmn_cidr }} \
-          -f {{ lmn_gateway }} \
-          -d {{ lmn_domainname }} \
-          -t {{ lmn_servername }} \
-          {{ ('-l ' + lmn_data_disk_final) if ((lmn_data_disk_final | default('')) != '' and (lmn_appliance_supports_pvdevice | default(false) | bool)) else '' }} \
-          {{ ('-v ' + lmn_lvm_volumes) if ((lmn_lvm_volumes | default('')) != '' and (lmn_appliance_supports_pvdevice | default(false) | bool)) else '' }} \
+          -n {{ (lmn_server_ip ~ '/' ~ lmn_cidr) | quote }} \
+          -f {{ lmn_gateway | quote }} \
+          -d {{ lmn_domainname | quote }} \
+          -t {{ lmn_servername | quote }} \
+          {{ ('-l ' ~ (lmn_data_disk_final | quote)) if ((lmn_data_disk_final | default('')) != '' and (lmn_appliance_supports_pvdevice | default(false) | bool)) else '' }} \
+          {{ ('-v ' ~ (lmn_lvm_volumes | quote)) if ((lmn_lvm_volumes | default('')) != '' and (lmn_appliance_supports_pvdevice | default(false) | bool)) else '' }} \
           2>&1 | while IFS= read -r line; do
           echo "$line"
         done
@@ -517,6 +531,7 @@
           skipfw = {{ lmn_skip_firewall | ternary('True', 'False') }}
         dest: /root/.linuxmuster/setup.ini
         mode: '0600'
+      no_log: true
 
     # =========================================================================
     # LINUXMUSTER-SETUP AUSFÜHREN
@@ -527,7 +542,6 @@
         set -o pipefail
         /usr/sbin/linuxmuster-setup \
           --config=/root/.linuxmuster/setup.ini \
-          --adminpw='{{ lmn_adminpw }}' \
           {% if lmn_unattended %}--unattended{% endif %} \
           {% if lmn_skip_firewall %}--skip-fw{% endif %} \
           2>&1 | while IFS= read -r line; do
@@ -635,6 +649,8 @@
           --create-global-binduser edulutionui-binduser
           --random-passwd-save
       register: binduser_create_result
+      # sophomorix-admin prints the generated password.
+      no_log: true
       when: binduser_exists.rc != 0
       until: binduser_create_result.rc == 0
       retries: 12
@@ -644,18 +660,18 @@
       ansible.builtin.debug:
         msg: |
           rc: {{ binduser_create_result.rc | default('skipped') }}
-          stdout: {{ binduser_create_result.stdout | default('skipped') }}
-          stderr: {{ binduser_create_result.stderr | default('skipped') }}
 
     - name: Binduser-Passwort aus linuxmuster secret lesen
       ansible.builtin.command:
         cmd: cat /etc/linuxmuster/.secret/edulutionui-binduser
       register: binduser_pw_result
       changed_when: false
+      no_log: true
 
     - name: Binduser-Passwort als Fakt setzen
       ansible.builtin.set_fact:
         edulution_binduser_password: '{{ binduser_pw_result.stdout | trim }}'
+      no_log: true
 
     - name: Edulution-Konfigurationsverzeichnis erstellen
       ansible.builtin.file:
@@ -672,6 +688,7 @@
           }
         dest: /var/lib/edulution/binduser-config.json
         mode: '0600'
+      no_log: true
 
     # =========================================================================
     # LINUXMUSTER-API INSTALLIEREN
@@ -795,7 +812,7 @@
           IP:     {{ lmn_server_ip }}
 
           Web-UI: https://{{ lmn_server_ip }}{{ (':' + lmn_webui_port | string) if (lmn_local_install | bool) else '' }}
-          Login:  global-admin / {{ lmn_adminpw }}
+          Login:  global-admin (Passwort aus der Einrichtung)
 
           edulution Binduser: CN=edulutionui-binduser,OU=Management,OU=GLOBAL,{{ edulution_dc_parts }}
 
