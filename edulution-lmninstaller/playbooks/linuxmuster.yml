@@ -113,7 +113,7 @@
     lmn_repo_url: 'https://deb.linuxmuster.net/'
     lmn_repo_gpg_url: 'https://deb.linuxmuster.net/pub.gpg'
     # Fingerprint des linuxmuster.net Archiv Key; auch lmn-appliance bekommt diesen Schluessel.
-    lmn_repo_key_fingerprint: '21A91AEC28D1BE943FCF2AA94E8B8B667D752C32'
+    lmn_repo_key_fingerprint: '21A91AEC28D1BE943FCF2AA94E8B8B667D752C32'  # gitleaks:allow
     lmn_repo_key_download: /root/linuxmuster.gpg
     lmn_repo_keyring: /usr/share/keyrings/linuxmuster.net.gpg
     lmn_appliance_global_key: /etc/apt/trusted.gpg.d/linuxmuster.net.gpg
