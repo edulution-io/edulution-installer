@@ -180,11 +180,14 @@
       ansible.builtin.assert:
         that:
           - >-
-            lmn_prepare_version == lmn_version_map[ansible_distribution_major_version].prepare_version
-            or lmn_prepare_commit != lmn_version_map[ansible_distribution_major_version].prepare_commit
+            (lmn_prepare_version == lmn_defaults.prepare_version and lmn_prepare_commit == lmn_defaults.prepare_commit
+            and lmn_appliance_sha256 == lmn_defaults.appliance_sha256)
+            or (lmn_prepare_commit != lmn_defaults.prepare_commit and lmn_appliance_sha256 != lmn_defaults.appliance_sha256)
         fail_msg: >-
           Fuer lmn-appliance {{ lmn_prepare_version }} bitte auch lmn_prepare_commit und
           lmn_appliance_sha256 setzen (-e).
+      vars:
+        lmn_defaults: '{{ lmn_version_map[ansible_distribution_major_version] }}'
 
     - name: Gewaehlte linuxmuster-Version anzeigen
       ansible.builtin.debug:
