@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,17 @@ import ansible_runner
 from api.config import settings
 from api.models import JobStatus, MessageType
 from api.services.output_streamer import streamer
+
+
+def _unsafe(value: Any) -> Any:
+    """Marks every string so Ansible takes it as entered instead of as a template."""
+    if isinstance(value, str):
+        return {"__ansible_unsafe": value}
+    if isinstance(value, list):
+        return [_unsafe(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _unsafe(item) for key, item in value.items()}
+    return value
 
 
 class AnsibleRunnerService:
@@ -69,23 +81,18 @@ class AnsibleRunnerService:
         return True
 
     def _status_handler(self, status: dict[str, Any], runner_config: Any) -> bool:
-        status_value = status.get("status", "")
-
-        if status_value == "running":
-            self._status = JobStatus.RUNNING
+        # The end of a run is recorded in _finish, once its settings file is gone.
+        if status.get("status") == "running":
             streamer.queue_message(MessageType.STATUS, "running")
-        elif status_value == "successful":
-            self._status = JobStatus.COMPLETED
-            self._finished_at = datetime.utcnow()
-            self._return_code = 0
-            streamer.queue_message(MessageType.STATUS, "completed")
-        elif status_value == "failed":
-            self._status = JobStatus.FAILED
-            self._finished_at = datetime.utcnow()
-            self._return_code = 1
-            streamer.queue_message(MessageType.STATUS, "failed")
 
         return True
+
+    def _finish(self, successful: bool) -> None:
+        # Streamed first: once the status changes, a new run may set its own job id.
+        streamer.queue_message(MessageType.STATUS, "completed" if successful else "failed")
+        self._finished_at = datetime.utcnow()
+        self._return_code = 0 if successful else 1
+        self._status = JobStatus.COMPLETED if successful else JobStatus.FAILED
 
     async def run_playbook(
         self, playbook: str, extra_vars: dict[str, Any]
@@ -93,15 +100,10 @@ class AnsibleRunnerService:
         if self._status == JobStatus.RUNNING:
             raise RuntimeError("A playbook is already running")
 
-        self._job_id = uuid4()
-        self._status = JobStatus.RUNNING
-        self._started_at = datetime.utcnow()
-        self._finished_at = None
-        self._return_code = None
-
-        streamer.set_job_id(self._job_id)
-
         playbook_path = settings.playbook_dir / playbook
+        if not playbook_path.is_file():
+            raise FileNotFoundError(f"Playbook not found: {playbook_path}")
+
         private_data_dir = settings.private_data_dir
 
         private_data_dir.mkdir(parents=True, exist_ok=True)
@@ -111,23 +113,45 @@ class AnsibleRunnerService:
         inventory_path = private_data_dir / "inventory" / "hosts"
         inventory_path.write_text("localhost ansible_connection=local\n")
 
-        project_playbook = private_data_dir / "project" / playbook
-        if playbook_path.exists():
-            project_playbook.write_text(playbook_path.read_text())
-        else:
-            raise FileNotFoundError(f"Playbook not found: {playbook_path}")
+        (private_data_dir / "project" / playbook).write_text(playbook_path.read_text())
+
+        # Written here and removed after the run: given a dict, ansible-runner writes env/extravars only
+        # if there is none yet (otherwise passes it inline) and never removes it.
+        env_dir = private_data_dir / "env"
+        env_dir.mkdir(mode=0o700, exist_ok=True)
+        extravars_path = env_dir / "extravars"
+        fd = os.open(extravars_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(_unsafe(extra_vars), f)
+
+        # Counts as started only now, so a failure while preparing does not leave it running.
+        self._job_id = uuid4()
+        self._status = JobStatus.RUNNING
+        self._started_at = datetime.utcnow()
+        self._finished_at = None
+        self._return_code = None
+        streamer.set_job_id(self._job_id)
 
         loop = asyncio.get_event_loop()
 
         def run_ansible():
-            ansible_runner.run(
-                private_data_dir=str(private_data_dir),
-                playbook=playbook,
-                extravars=extra_vars,
-                event_handler=self._event_handler,
-                status_handler=self._status_handler,
-                quiet=True,
-            )
+            successful = False
+            try:
+                successful = ansible_runner.run(
+                    private_data_dir=str(private_data_dir),
+                    playbook=playbook,
+                    event_handler=self._event_handler,
+                    status_handler=self._status_handler,
+                    quiet=True,
+                ).status == "successful"
+            except Exception as e:
+                streamer.queue_message(MessageType.STDERR, f"ansible-runner: {e}")
+            finally:
+                try:
+                    extravars_path.unlink(missing_ok=True)
+                finally:
+                    self._finish(successful)
 
         loop.run_in_executor(None, run_ansible)
 
