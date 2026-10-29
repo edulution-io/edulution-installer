@@ -120,6 +120,13 @@
     lmn_repo_list: /etc/apt/sources.list.d/lmn.list
     lmn_repo_sources: /etc/apt/sources.list.d/lmn.sources
     lmn_appliance_script: /root/lmn-appliance
+    lmn_repo_key_fpr: "{{ lmn_repo_key_fingerprint | replace(' ', '') | upper }}"
+    lmn_repo_deb_line: 'deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} {{ lmn_repo_distribution }} main'
+    # Zeilen in lmn-appliance, die auf den geprueften Schluessel umgestellt werden (lmn73_deb gibt es nur unter 7.3).
+    lmn_appliance_key_lines:
+      lmnkey_remote: "lmnkey_remote = 'file://{{ lmn_repo_key_download }}'"
+      lmnkey_local: "lmnkey_local = '{{ lmn_repo_keyring }}'"
+      lmn73_deb: "lmn73_deb = 'deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} lmn73 main'"
     # linuxmuster-Version automatisch anhand der Ubuntu-Version:
     #   Ubuntu 24.04 -> lmn73 (7.3),  Ubuntu 26.04 -> lmn74 (7.4).
     # lmn_repo_distribution/lmn_prepare_version werden daraus per set_fact
@@ -353,7 +360,7 @@
       ansible.builtin.assert:
         that:
           - lmn_repo_key_info.stdout_lines | select('match', '^pub:') | list | length == 1
-          - (lmn_repo_key_info.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == (lmn_repo_key_fingerprint | replace(' ', '') | upper)
+          - (lmn_repo_key_info.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == lmn_repo_key_fpr
         fail_msg: >-
           {{ lmn_repo_gpg_url }} liefert nicht den erwarteten Schluessel
           ({{ lmn_repo_key_fingerprint }}). Installation abgebrochen.
@@ -378,7 +385,7 @@
     - name: linuxmuster Repository hinzufügen
       ansible.builtin.copy:
         dest: '{{ lmn_repo_list }}'
-        content: "deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} {{ lmn_repo_distribution }} main\n"
+        content: "{{ lmn_repo_deb_line }}\n"
         mode: '0644'
       when: not lmn_repo_sources_before.stat.exists
 
@@ -399,7 +406,7 @@
     - name: lmn-appliance Script herunterladen
       ansible.builtin.get_url:
         url: '{{ lmn_appliance_url }}'
-        dest: /root/lmn-appliance
+        dest: '{{ lmn_appliance_script }}'
         mode: '0755'
 
     # lmn-appliance bekommt den oben geprueften Schluessel als Quelle und Keyring,
@@ -407,17 +414,11 @@
     - name: lmn-appliance auf den geprüften Schlüssel umstellen
       ansible.builtin.replace:
         path: '{{ lmn_appliance_script }}'
-        regexp: '{{ item.regexp }}'
-        replace: '{{ item.line }}'
-      loop:
-        - regexp: '^lmnkey_remote = .*$'
-          line: "lmnkey_remote = 'file://{{ lmn_repo_key_download }}'"
-        - regexp: '^lmnkey_local = .*$'
-          line: "lmnkey_local = '{{ lmn_repo_keyring }}'"
-        - regexp: '^lmn73_deb = .*$'
-          line: "lmn73_deb = 'deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} lmn73 main'"
+        regexp: '^{{ item.key }} = .*$'
+        replace: '{{ item.value }}'
+      loop: '{{ lmn_appliance_key_lines | dict2items }}'
       loop_control:
-        label: '{{ item.line }}'
+        label: '{{ item.value }}'
 
     - name: lmn-appliance-Script lesen
       ansible.builtin.slurp:
@@ -427,16 +428,15 @@
     - name: Prüfen dass lmn-appliance den geprüften Schlüssel nutzt
       ansible.builtin.assert:
         that:
-          - (lmn_appliance_lines | select('match', '^lmnkey_remote ') | list) == ["lmnkey_remote = 'file://" ~ lmn_repo_key_download ~ "'"]
-          - (lmn_appliance_lines | select('match', '^lmnkey_local ') | list) == ["lmnkey_local = '" ~ lmn_repo_keyring ~ "'"]
-          - (lmn_appliance_lines | select('match', '^lmn73_deb ') | list) in [[], [lmn_appliance_lmn73_line]]
+          - (lmn_appliance_lines | select('match', '^lmnkey_remote ') | list) == [lmn_appliance_key_lines.lmnkey_remote]
+          - (lmn_appliance_lines | select('match', '^lmnkey_local ') | list) == [lmn_appliance_key_lines.lmnkey_local]
+          - (lmn_appliance_lines | select('match', '^lmn73_deb ') | list) in [[], [lmn_appliance_key_lines.lmn73_deb]]
         fail_msg: >-
           lmn-appliance laesst sich nicht auf den geprueften Schluessel umstellen
           (lmnkey_remote, lmnkey_local oder lmn73_deb). Installation abgebrochen.
         quiet: true
       vars:
         lmn_appliance_lines: "{{ (lmn_appliance_source.content | b64decode).splitlines() }}"
-        lmn_appliance_lmn73_line: "lmn73_deb = 'deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} lmn73 main'"
 
     - name: Netzmaske in CIDR-Notation umrechnen
       ansible.builtin.set_fact:
@@ -492,7 +492,7 @@
     - name: lmn-appliance ausführen (Server-Profil, LVM auf Datenplatte falls vorhanden)
       ansible.builtin.shell: |
         set -o pipefail
-        /root/lmn-appliance -p server -u \
+        {{ lmn_appliance_script }} -p server -u \
           -n {{ lmn_server_ip }}/{{ lmn_cidr }} \
           -f {{ lmn_gateway }} \
           -d {{ lmn_domainname }} \
@@ -545,7 +545,7 @@
           ansible.builtin.assert:
             that:
               - item.stdout_lines | select('match', '^pub:') | list | length == 1
-              - (item.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == (lmn_repo_key_fingerprint | replace(' ', '') | upper)
+              - (item.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == lmn_repo_key_fpr
             fail_msg: >-
               {{ item.item.stat.path }} enthaelt nicht den erwarteten Schluessel
               ({{ lmn_repo_key_fingerprint }}). Installation abgebrochen.
@@ -583,7 +583,7 @@
     - name: linuxmuster-Repository auf seinen Schlüssel beschränken
       ansible.builtin.copy:
         dest: '{{ lmn_repo_list }}'
-        content: "deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} {{ lmn_repo_distribution }} main\n"
+        content: "{{ lmn_repo_deb_line }}\n"
         mode: '0644'
       when: not lmn_repo_sources_file.stat.exists
 
