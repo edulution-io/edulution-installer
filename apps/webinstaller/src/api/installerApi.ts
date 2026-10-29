@@ -43,10 +43,16 @@ interface LeCertificateResponse extends StatusResponse {
   registration?: AcmeDnsRegistration;
 }
 
-const apiFetch = async <T>(url: string, options?: RequestInit): Promise<T> => {
+const apiFetch = async <T>(
+  url: string,
+  options?: RequestInit,
+  toMessage?: (body: unknown, status: number) => string,
+): Promise<T> => {
   const response = await fetch(url, options);
   if (!response.ok) {
-    throw new Error(`API error: ${response.status}`);
+    throw new Error(
+      toMessage ? toMessage(await response.json().catch(() => null), response.status) : `API error: ${response.status}`,
+    );
   }
   return response.json() as Promise<T>;
 };
@@ -221,7 +227,7 @@ export const checkLmnRequirements = (playbook: string): Promise<RequirementsResp
   apiFetch<RequirementsResponse>(`/api/lmn/playbook/${playbook}/requirements`);
 
 // Validation errors (FastAPI detail) and the proxy's own errors (message), without pydantic's prefix.
-export const refusalMessage = (body: unknown, status: number): string => {
+const refusalMessage = (body: unknown, status: number): string => {
   const { detail, message } = (body ?? {}) as { detail?: unknown; message?: unknown };
   const fromList = Array.isArray(detail)
     ? detail
@@ -230,25 +236,26 @@ export const refusalMessage = (body: unknown, status: number): string => {
         .map((msg) => msg.replace(/^Value error, /, ''))
         .join('; ')
     : '';
-  const text = [fromList, detail, message].find((candidate) => typeof candidate === 'string' && candidate !== '');
-  return typeof text === 'string' ? text : `API error: ${status}`;
+  const text = [fromList, detail, message].find(
+    (candidate): candidate is string => typeof candidate === 'string' && candidate !== '',
+  );
+  return text ?? `API error: ${status}`;
 };
 
 // The LMN installer API names the settings it refuses; the wizard shows that instead of a bare status code.
-export const startLmnPlaybook = async (
+export const startLmnPlaybook = (
   playbook: string,
   extraVars: Record<string, unknown> = {},
-): Promise<PlaybookStartResponse> => {
-  const response = await fetch(`/api/lmn/playbook/${playbook}/start`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ variables: { extra_vars: extraVars } }),
-  });
-  if (!response.ok) {
-    throw new Error(refusalMessage(await response.json().catch(() => null), response.status));
-  }
-  return response.json() as Promise<PlaybookStartResponse>;
-};
+): Promise<PlaybookStartResponse> =>
+  apiFetch<PlaybookStartResponse>(
+    `/api/lmn/playbook/${playbook}/start`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variables: { extra_vars: extraVars } }),
+    },
+    refusalMessage,
+  );
 
 export const createLmnWebSocket = (): WebSocket => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
