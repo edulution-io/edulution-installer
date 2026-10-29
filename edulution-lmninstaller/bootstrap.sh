@@ -4,8 +4,9 @@ set -e
 # =============================================================================
 # Edulution LMN Installer - Bootstrap
 # =============================================================================
-# Downloads all files from GitHub, installs dependencies
-# and starts the API.
+# Installs dependencies, takes the API and playbooks either from the
+# directory the web installer unpacked (EDULUTION_INSTALLER_SOURCE_DIR)
+# or from GitHub, and starts the API.
 #
 # Usage on the target server:
 #   curl -sSL https://raw.githubusercontent.com/edulution-io/edulution-installer/main/edulution-lmninstaller/bootstrap.sh | bash
@@ -112,6 +113,15 @@ setup_api_credentials() {
     chmod 644 "${TLS_DIR}/cert.pem"
 
     log_info "API token and TLS certificate ready"
+}
+
+# The web installer sends the files of its own version along and unpacks them next to this script.
+copy_installer_files() {
+    log_info "Copying installer files from ${EDULUTION_INSTALLER_SOURCE_DIR}..."
+    rm -rf "${INSTALL_DIR}/api" "${INSTALL_DIR}/playbooks"
+    cp -r "${EDULUTION_INSTALLER_SOURCE_DIR}/api" "${EDULUTION_INSTALLER_SOURCE_DIR}/playbooks" \
+        "${EDULUTION_INSTALLER_SOURCE_DIR}/requirements.txt" "${INSTALL_DIR}/"
+    log_info "Installer files copied"
 }
 
 download_file() {
@@ -246,8 +256,12 @@ main() {
     check_root
     install_system_packages
     setup_directory_structure
-    download_api_files
-    download_playbooks
+    if [[ -n "${EDULUTION_INSTALLER_SOURCE_DIR:-}" ]]; then
+        copy_installer_files
+    else
+        download_api_files
+        download_playbooks
+    fi
     setup_virtual_environment
     setup_api_credentials
     start_api_server

@@ -9,7 +9,7 @@ Installation of [linuxmuster.net 7.3](https://docs.linuxmuster.net/de/latest/) w
 |         Target Server                  |
 |                                        |
 |   curl | bash                          |
-|     - Downloads files from GitHub      |
+|     - Uses the shipped files or GitHub |
 |     - Installs Python/pip/Ansible      |
 |     - Starts API                       |
 |                                        |
@@ -30,6 +30,8 @@ Installation of [linuxmuster.net 7.3](https://docs.linuxmuster.net/de/latest/) w
 ### Prerequisites
 
 - **Target server**: Ubuntu 24.04 LTS, root access
+
+The web installer copies the LMN installer of its own version to the target server over SSH and runs it there. Run by hand, `bootstrap.sh` downloads the files from GitHub as described below.
 
 ### 1. Run bootstrap on the target server
 
@@ -295,19 +297,19 @@ cat /opt/edulution-installer/api.log
 curl --cacert /opt/edulution-installer/tls/cert.pem -H "Authorization: Bearer $(cat /opt/edulution-installer/api-token)" https://localhost:8000/api/status
 ```
 
-**Restart the API:**
+**Restart the API:** run the bootstrap from the web installer again. For a manual setup:
 ```bash
 kill $(cat /opt/edulution-installer/api.pid)
 curl -sSL https://raw.githubusercontent.com/edulution-io/edulution-installer/main/edulution-lmninstaller/bootstrap.sh | bash
 ```
 
-Every run of `bootstrap.sh` creates a new token and certificate. The web installer then has to run the bootstrap again before it can reach the API; "check connection" only works for a server it bootstrapped itself.
+Every run of `bootstrap.sh` creates a new token and certificate. The web installer then has to run the bootstrap again before it can reach the API; "check connection" only works for a server it bootstrapped itself. Run by hand, `bootstrap.sh` takes the files from `main`, not from the web installer's release.
 
 ## Project Structure
 
 ```
 edulution-lmninstaller/
-|-- bootstrap.sh                 # Bootstrap (downloads from GitHub on target server)
+|-- bootstrap.sh                 # Bootstrap (shipped files or GitHub download)
 |-- requirements.txt             # Python dependencies
 |-- api/
 |   |-- main.py                  # FastAPI app with lifespan management
