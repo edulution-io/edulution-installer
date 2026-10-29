@@ -81,11 +81,8 @@ class AnsibleRunnerService:
         return True
 
     def _status_handler(self, status: dict[str, Any], runner_config: Any) -> bool:
-        status_value = status.get("status", "")
-
         # The end of a run is recorded in _finish, once its settings file is gone.
-        if status_value == "running":
-            self._status = JobStatus.RUNNING
+        if status.get("status") == "running":
             streamer.queue_message(MessageType.STATUS, "running")
 
         return True
@@ -139,22 +136,22 @@ class AnsibleRunnerService:
         loop = asyncio.get_event_loop()
 
         def run_ansible():
-            result = None
+            successful = False
             try:
-                result = ansible_runner.run(
+                successful = ansible_runner.run(
                     private_data_dir=str(private_data_dir),
                     playbook=playbook,
                     event_handler=self._event_handler,
                     status_handler=self._status_handler,
                     quiet=True,
-                )
+                ).status == "successful"
             except Exception as e:
                 streamer.queue_message(MessageType.STDERR, f"ansible-runner: {e}")
             finally:
                 try:
                     extravars_path.unlink(missing_ok=True)
                 finally:
-                    self._finish(result is not None and result.status == "successful")
+                    self._finish(successful)
 
         loop.run_in_executor(None, run_ansible)
 
