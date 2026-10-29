@@ -299,7 +299,6 @@
         create: true
         mode: '0644'
       when: lmn_disable_auto_updates | bool
-      changed_when: true
       notify: Automatische Sicherheitsupdates wieder einschalten
 
     # =========================================================================
@@ -813,21 +812,21 @@
 
   handlers:
     # Ubuntus 50unattended-upgrades laesst nur Ubuntus eigene Release- und Security-Quellen zu; linuxmuster-Pakete bleiben manuell.
-    - name: Automatische Sicherheitsupdates wieder einschalten
+    - name: Automatische Sicherheitsupdates in 20auto-upgrades einschalten
       ansible.builtin.lineinfile:
         path: /etc/apt/apt.conf.d/20auto-upgrades
         regexp: '^APT::Periodic::Unattended-Upgrade'
         line: 'APT::Periodic::Unattended-Upgrade "1";'
         create: true
         mode: '0644'
-      changed_when: true
-      notify: Unattended-upgrades starten
+      listen: Automatische Sicherheitsupdates wieder einschalten
 
     - name: Unattended-upgrades starten
       ansible.builtin.systemd:
         name: unattended-upgrades
         enabled: true
         state: started
+      listen: Automatische Sicherheitsupdates wieder einschalten
 
     - name: Linuxmuster-WebUI neustarten
       ansible.builtin.systemd:
