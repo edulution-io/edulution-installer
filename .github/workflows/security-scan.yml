@@ -72,7 +72,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 22.23.4
           package-manager-cache: false
 
       - name: Use Python
@@ -124,7 +124,6 @@ jobs:
           fi
           # Each advisory is keyed by its file, so one moving into another file still counts as new;
           # a renamed file is compared with its old path.
-          git diff -z -M --name-status HEAD^1 HEAD -- '*requirements.txt' > "$WORK/requirements"
           while IFS= read -r -d '' status
           do
             IFS= read -r -d '' base_path
@@ -139,7 +138,7 @@ jobs:
             if [ -f "$head_path" ]; then
               pip_advisories "$head_path" | sed "s|^|$head_path |" >> "$WORK/head.txt"
             fi
-          done < "$WORK/requirements"
+          done < <(git diff -z -M --name-status HEAD^1 HEAD -- '*requirements.txt')
 
           NEW=$(comm -13 <(sort -u "$WORK/base.txt") <(sort -u "$WORK/head.txt"))
           if [ -n "$NEW" ]; then
@@ -199,6 +198,7 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           image="ghcr.io/edulution-io/edulution-installer:${TAG#v}"
+          echo "ref=$image" >> "$GITHUB_OUTPUT"
           tries=1
           if [ "$EVENT" = release ]; then
             tries=90
@@ -228,12 +228,11 @@ jobs:
       - name: Scan the installer image
         if: steps.image.outputs.found == 'true'
         env:
-          TAG: ${{ github.event.release.tag_name || 'latest' }}
+          IMAGE: ${{ steps.image.outputs.ref }}
         run: |
           docker run --rm -v "$PWD:/out" \
             aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa \
-            image --quiet --format sarif --output /out/trivy.sarif \
-            "ghcr.io/edulution-io/edulution-installer:${TAG#v}"
+            image --quiet --format sarif --output /out/trivy.sarif "$IMAGE"
 
       - name: Upload the results to code scanning
         if: steps.image.outputs.found == 'true'
