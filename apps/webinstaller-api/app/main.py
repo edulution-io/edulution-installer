@@ -619,10 +619,9 @@ class LmnApiAccess:
             return False
 
 
-def saveLmnApiAccess(host, token, cert):
+def saveLmnApiAccess(access):
     with openPrivate(LMN_API_ACCESS_FILE) as f:
-        json.dump({"host": host, "token": token, "cert": cert}, f)
-    return LmnApiAccess(host, token, cert)
+        json.dump({"host": access.host, "token": access.token, "cert": access.cert}, f)
 
 
 def loadLmnApiAccess(host):
@@ -731,7 +730,8 @@ async def lmn_bootstrap(ssh: SSHConnection, data: Data = Depends(getData)):
             bootstrap_manager.add_event("Warte auf LMN-Installer API...")
             for attempt in range(30):
                 if access.healthy():
-                    data.DATA_LMN_API = saveLmnApiAccess(ssh.host, token, cert)
+                    saveLmnApiAccess(access)
+                    data.DATA_LMN_API = access
                     bootstrap_manager.add_event("LMN-Installer API ist bereit!")
                     bootstrap_manager.add_event("Bootstrap erfolgreich", 'done')
                     bootstrap_manager.finish('completed')

@@ -11,7 +11,7 @@ from api.config import settings
 from api.models import JobStatus
 from api.routes import playbook, websocket
 from api.services.ansible_runner import runner_service
-from api.services.lifecycle import remove_install_leftovers, stop_when_idle
+from api.services.lifecycle import remove_install_leftovers, stop_when_idle, touch
 from api.services.output_streamer import streamer
 
 
@@ -50,6 +50,7 @@ class RequireApiToken:
 
         given = HTTPConnection(scope).headers.get("authorization", "").encode()
         if secrets.compare_digest(given, self.expected):
+            touch()
             return await self.app(scope, receive, send)
 
         if scope["type"] == "websocket":

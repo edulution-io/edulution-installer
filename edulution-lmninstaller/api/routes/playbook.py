@@ -3,7 +3,7 @@ import os
 import signal
 import threading
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from api.models import (
     JobStatus,
@@ -14,10 +14,9 @@ from api.models import (
 )
 from api.config import EDULUTION_CONFIG_PATH
 from api.services.ansible_runner import runner_service
-from api.services.lifecycle import touch
 from api.services.system_checker import system_checker
 
-router = APIRouter(prefix="/api", tags=["playbook"], dependencies=[Depends(touch)])
+router = APIRouter(prefix="/api", tags=["playbook"])
 
 
 @router.get("/health")
