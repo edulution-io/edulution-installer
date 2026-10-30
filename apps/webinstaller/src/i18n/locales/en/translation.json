@@ -98,7 +98,7 @@
   "lmnSetup": {
     "title": "Set up linuxmuster.net server",
     "requirementsTitle": "Requirements for the linuxmuster.net server",
-    "reqOs": "Ubuntu 24.04 LTS or newer",
+    "reqOs": "Ubuntu 26.04 LTS (linuxmuster.net 7.4); a server on Ubuntu 24.04 needs a release upgrade first",
     "reqRam": "At least 4 GB RAM",
     "reqDisks": "At least 2 disks with 25 GB each",
     "sshHost": "SSH Host:",
@@ -118,7 +118,8 @@
     "checkingRequirements": "Checking requirements...",
     "checkRequirements": "Check requirements",
     "systemRequirements": "System requirements",
-    "requirementsNotMet": "Not all requirements met. Please fix the issues and check again."
+    "requirementsNotMet": "Not all requirements met. Please fix the issues and check again.",
+    "releaseUpgradeHint": "New installations of linuxmuster.net use version 7.4 on Ubuntu 26.04 only. Please run a release upgrade on the server first (sudo do-release-upgrade), then check again."
   },
   "lmnConfig": {
     "title": "linuxmuster.net Configuration (Step {{step}}/2)",

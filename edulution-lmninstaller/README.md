@@ -1,6 +1,6 @@
 # Edulution LMN Installer
 
-Installation of [linuxmuster.net 7.3](https://docs.linuxmuster.net/de/latest/) with a minimal API for variable configuration and real-time progress monitoring via WebSocket.
+Installation of [linuxmuster.net 7.4](https://docs.linuxmuster.net/de/latest/) with a minimal API for variable configuration and real-time progress monitoring via WebSocket.
 
 ## Architecture
 
@@ -29,7 +29,7 @@ Installation of [linuxmuster.net 7.3](https://docs.linuxmuster.net/de/latest/) w
 
 ### Prerequisites
 
-- **Target server**: Ubuntu 24.04 LTS, root access
+- **Target server**: Ubuntu 26.04 LTS, root access. A server on Ubuntu 24.04 needs a release upgrade first (`do-release-upgrade`); new installations use linuxmuster.net 7.4 only.
 
 ### 1. Run bootstrap on the target server
 
@@ -121,7 +121,7 @@ curl http://localhost:8000/api/playbook/linuxmuster.yml/requirements
   ],
   "system_info": {
     "os": "Ubuntu",
-    "os_version": "24.04",
+    "os_version": "26.04",
     "ram_gb": 15.5,
     "disks": [
       {"name": "sda", "size_gb": 100.0},
@@ -238,15 +238,7 @@ All variables have default values. Through the API, the settings in the tables b
 |----------|---------|-------------|
 | `lmn_skip_firewall` | `true` | Skip firewall setup (configure firewall separately) |
 | `lmn_unattended` | `true` | No interactive prompts |
-| `lmn_disable_auto_updates` | `true` | Disable auto updates |
-
-### Data Disk
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `lmn_setup_data_disk` | `true` | Set up a separate data disk |
-| `lmn_data_disk` | `''` | Device such as `/dev/vdb`; empty means the first empty non-system disk |
-| `lmn_lvm_volumes` | `''` | Volume sizes such as `var:10,linbo:40,global:10,default-school:100%FREE`; empty means the lmn-prepare default |
+| `lmn_disable_auto_updates` | `true` | Pause automatic updates during the installation (see below) |
 
 ### Network Services
 
@@ -262,6 +254,21 @@ All variables have default values. Through the API, the settings in the tables b
 | `lmn_webui_port` | `8443` | Port of the linuxmuster web UI in that case |
 
 The API checks every value against the form its setting needs (addresses, names, disk, port, flags). Server name, domain name and country are taken in lower case. School name, location and state may contain any text except line breaks, control characters, `%` and `$`; the admin password uses the characters the web installer allows.
+
+### Updates on the linuxmuster Server
+
+While the playbook runs, automatic updates are paused if `lmn_disable_auto_updates` is set; with `false` they keep running during the installation. At the end of the run, also when a task failed, the playbook switches them on: `unattended-upgrades` then installs updates from Ubuntu's own release and security origins (security updates in practice, Samba among them), as configured in Ubuntu's `50unattended-upgrades`. A later run of the playbook switches them on again, even if they were switched off by hand in the meantime. linuxmuster packages from deb.linuxmuster.net are not part of that and are updated by hand:
+
+```bash
+apt update && apt full-upgrade
+```
+
+If an installation was interrupted (for example by a reboot), run the installation again. On servers set up with an earlier installer version, automatic updates stay paused; switch them on with:
+
+```bash
+sed -i 's/^APT::Periodic::Unattended-Upgrade.*/APT::Periodic::Unattended-Upgrade "1";/' /etc/apt/apt.conf.d/20auto-upgrades
+systemctl enable --now unattended-upgrades
+```
 
 ### Password Requirements
 
@@ -343,7 +350,7 @@ edulution-lmninstaller/
 
 ## Target Server Requirements
 
-- Ubuntu 24.04 LTS
+- Ubuntu 26.04 LTS (linuxmuster.net 7.4)
 - At least 4 GB RAM (16 GB recommended)
 - 25 GB system + 100 GB data
 - Network: 10.0.0.0/16 (default)
