@@ -467,6 +467,7 @@ docker rm edulution-keycloak-db 2>&1 > /dev/zero
 docker network rm edulution-prepare 2>&1 > /dev/zero
 
 rm ${DIRECTORY}realm-edulution.json
+rm -f ${DIRECTORY}lmn-installer-api.json
 
 echo "[*] Arbeiten am Authentifizierungserver abgeschlossen."
 

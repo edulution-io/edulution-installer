@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     playbook_dir: Path = Path("/opt/edulution-installer/playbooks")
     private_data_dir: Path = Path("/opt/edulution-installer/ansible")
     shutdown_delay: int = 5
+    api_token_file: Path = Path("/opt/edulution-installer/api-token")
 
     class Config:
         env_prefix = "EDULUTION_"
