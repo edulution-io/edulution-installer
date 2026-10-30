@@ -34,6 +34,8 @@ npm run dev:webinstaller-api  # Backend dev server on http://localhost:8000
 npm run build:webinstaller    # Build frontend to dist/apps/webinstaller/
 ```
 
+The backend requires a session. Export `INSTALLER_TOKEN` before `npm run dev:webinstaller-api` so the token survives reloads, and open `http://localhost:8000/?token=<token>` once to get the session cookie.
+
 ### Docker
 
 ```bash
@@ -41,7 +43,7 @@ npm run build:webinstaller    # Build frontend first
 docker compose up --build     # Build & run container
 ```
 
-The web installer runs on `https://localhost:443`.
+The web installer runs on `https://localhost:443/?token=<token>`. The token is taken from `INSTALLER_TOKEN`; without it, the API generates one and prints it at startup (`docker compose logs`).
 
 ## Deployment
 

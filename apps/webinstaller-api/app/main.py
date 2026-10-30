@@ -1,4 +1,5 @@
 import base64
+import html
 import json
 import requests
 import os
@@ -12,14 +13,17 @@ import shutil
 import asyncio
 import threading
 import urllib3
+from urllib.parse import quote, unquote_plus
 
 # Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from fastapi import FastAPI, Depends, Request, File, UploadFile, APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse, JSONResponse, PlainTextResponse, HTMLResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from fastapi.responses import StreamingResponse, JSONResponse
+from starlette.requests import HTTPConnection
+from starlette.websockets import WebSocketClose
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -188,6 +192,71 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# --- Zugriffsschutz ---
+
+# Das installer-Skript erzeugt den Token und gibt die URL damit in der Konsole aus.
+INSTALLER_TOKEN = os.environ.get("INSTALLER_TOKEN")
+if not INSTALLER_TOKEN:
+    INSTALLER_TOKEN = secrets.token_urlsafe(32)
+    print(f"INSTALLER_TOKEN nicht gesetzt, Zugang ueber ?token={INSTALLER_TOKEN}", flush=True)
+
+SESSION_COOKIE = "edulution_installer_session"
+
+
+def hasInstallerToken(value):
+    return value is not None and secrets.compare_digest(value.encode(), INSTALLER_TOKEN.encode())
+
+
+def exchangeTokenForSession(scope):
+    # Das Ziel bleibt ein Pfad auf diesem Host, ohne den Token, sonst unveraendert.
+    raw_path = scope.get("raw_path", scope["path"].encode()).decode("latin-1")
+    path = "/" + quote(raw_path, safe="/%:@!$&'()*+,;=").lstrip("/")
+    query = "&".join(
+        part
+        for part in scope["query_string"].decode("latin-1").split("&")
+        if part and unquote_plus(part.split("=", 1)[0]) != "token"
+    )
+    target = html.escape(path + (f"?{query}" if query else ""))
+    # Eine Seite statt 303: Kommt der Link von einer anderen Website, sendet der Browser das
+    # Strict-Cookie erst bei einer Navigation, die von dieser Seite ausgeht.
+    response = HTMLResponse(
+        f'<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0;url={target}">'
+        f'<a href="{target}">edulution Web-Installer</a>',
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+    response.set_cookie(SESSION_COOKIE, INSTALLER_TOKEN, httponly=True, secure=True, samesite="strict")
+    return response
+
+
+# Reine ASGI-Middleware, damit dieselbe Pruefung auch WebSockets erfasst.
+class RequireInstallerToken:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] not in ("http", "websocket"):
+            return await self.app(scope, receive, send)
+
+        connection = HTTPConnection(scope)
+        if scope["type"] == "http" and hasInstallerToken(connection.query_params.get("token")):
+            response = exchangeTokenForSession(scope)
+        elif hasInstallerToken(connection.cookies.get(SESSION_COOKIE)):
+            return await self.app(scope, receive, send)
+        elif scope["type"] == "websocket":
+            response = WebSocketClose(code=1008)
+        elif connection.url.path.startswith("/api/"):
+            response = JSONResponse(status_code=401, content={"status": False, "message": "Nicht angemeldet"})
+        else:
+            response = PlainTextResponse(
+                "Bitte öffnen Sie den Link, den das Installationsskript in der Konsole ausgibt.", status_code=401
+            )
+        await response(scope, receive, send)
+
+
+app.add_middleware(RequireInstallerToken)
+
 
 api = APIRouter(prefix="/api")
 
@@ -618,6 +687,9 @@ def check_lmn_connection(req: LmnConnectionCheck, data: Data = Depends(getData))
     return {"status": False, "message": "LMN-Server nicht erreichbar"}
 
 
+LMN_PROXY_HEADERS = {"accept", "content-type"}
+
+
 @api.api_route("/lmn/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def lmn_proxy(path: str, request: Request, data: Data = Depends(getData)):
     if not data.DATA_LMN_TARGET_HOST:
@@ -628,8 +700,8 @@ async def lmn_proxy(path: str, request: Request, data: Data = Depends(getData)):
 
     target_url = f"http://{data.DATA_LMN_TARGET_HOST}:8000/api/{path}"
     body = await request.body()
-    headers = dict(request.headers)
-    headers.pop("host", None)
+    # Nur was die LMN-API braucht; Cookie und Co. gelten nur fuer den Web-Installer.
+    headers = {k: v for k, v in request.headers.items() if k in LMN_PROXY_HEADERS}
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
