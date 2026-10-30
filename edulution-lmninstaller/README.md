@@ -238,7 +238,7 @@ All variables have default values. Through the API, the settings in the tables b
 |----------|---------|-------------|
 | `lmn_skip_firewall` | `true` | Skip firewall setup (configure firewall separately) |
 | `lmn_unattended` | `true` | No interactive prompts |
-| `lmn_disable_auto_updates` | `true` | Disable auto updates |
+| `lmn_disable_auto_updates` | `true` | Pause automatic updates during the installation (see below) |
 
 ### Data Disk
 
@@ -262,6 +262,21 @@ All variables have default values. Through the API, the settings in the tables b
 | `lmn_webui_port` | `8443` | Port of the linuxmuster web UI in that case |
 
 The API checks every value against the form its setting needs (addresses, names, disk, port, flags). Server name, domain name and country are taken in lower case. School name, location and state may contain any text except line breaks, control characters, `%` and `$`; the admin password uses the characters the web installer allows.
+
+### Updates on the linuxmuster Server
+
+While the playbook runs, automatic updates are paused if `lmn_disable_auto_updates` is set; with `false` they keep running during the installation. At the end of the run, also when a task failed, the playbook switches them on: `unattended-upgrades` then installs updates from Ubuntu's own release and security origins (security updates in practice, Samba among them), as configured in Ubuntu's `50unattended-upgrades`. A later run of the playbook switches them on again, even if they were switched off by hand in the meantime. linuxmuster packages from deb.linuxmuster.net are not part of that and are updated by hand:
+
+```bash
+apt update && apt full-upgrade
+```
+
+If an installation was interrupted (for example by a reboot), run the installation again. On servers set up with an earlier installer version, automatic updates stay paused; switch them on with:
+
+```bash
+sed -i 's/^APT::Periodic::Unattended-Upgrade.*/APT::Periodic::Unattended-Upgrade "1";/' /etc/apt/apt.conf.d/20auto-upgrades
+systemctl enable --now unattended-upgrades
+```
 
 ### Password Requirements
 
