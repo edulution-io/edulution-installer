@@ -80,13 +80,6 @@ def _dhcprange(value: Any) -> bool:
     return len(parts) == 2 and all(map(_ipv4, parts))
 
 
-_dev_path = _matches(r"(/dev/[A-Za-z0-9/_.:-]+)?")
-
-
-def _data_disk(value: Any) -> bool:
-    return _dev_path(value) and ".." not in value
-
-
 # Extra vars override everything in the playbook, so only the settings an admin chooses get through,
 # each in the form the playbook uses it in shell commands and setup.ini.
 ALLOWED_EXTRA_VARS: dict[str, Callable[[Any], bool]] = {
@@ -110,9 +103,6 @@ ALLOWED_EXTRA_VARS: dict[str, Callable[[Any], bool]] = {
     "lmn_disable_auto_updates": _flag,
     "lmn_local_install": _flag,
     "lmn_webui_port": lambda value: type(value) is int and 1 <= value <= 65535,
-    "lmn_setup_data_disk": _flag,
-    "lmn_data_disk": _data_disk,
-    "lmn_lvm_volumes": _matches(r"([a-z0-9-]+:[0-9]+(%FREE)?(,[a-z0-9-]+:[0-9]+(%FREE)?)*)?"),
 }
 
 # Names and codes linuxmuster expects in lower case, and a DHCP range as two addresses.

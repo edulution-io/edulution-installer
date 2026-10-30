@@ -1,7 +1,6 @@
 ---
 # =============================================================================
-# LINUXMUSTER.NET 7.3 / 7.4 INSTALLATION PLAYBOOK
-# (Version automatisch nach Ubuntu: 24.04 -> 7.3 (lmn73), 26.04 -> 7.4 (lmn74))
+# LINUXMUSTER.NET 7.4 INSTALLATION PLAYBOOK (Ubuntu 26.04)
 # =============================================================================
 #
 # Verwendung:
@@ -20,7 +19,7 @@
 #
 # =============================================================================
 
-- name: linuxmuster.net 7.3/7.4 Installation
+- name: linuxmuster.net 7.4 Installation
   hosts: localhost
   connection: local
   become: true
@@ -96,49 +95,25 @@
     lmn_local_install: false
     lmn_webui_port: 8443
 
-    # Datenplatte: linuxmuster legt seine Daten (/srv/samba, /srv/linbo) und /var
-    # auf einer zweiten Platte via LVM ab. Das erledigt lmn-appliance/lmn-prepare
-    # selbst, wenn man ihm die Platte per -l uebergibt (VG vg_srv, Volumes s.u.,
-    # Quota auf global/default-school). Ist eine zweite, LEERE Platte vorhanden,
-    # uebergeben wir sie automatisch.
-    lmn_setup_data_disk: true
-    # Leer lassen -> automatische Erkennung der ersten komplett leeren
-    # Nicht-System-Platte (z.B. /dev/vdb, /dev/sdb). Sonst Geraet explizit setzen.
-    lmn_data_disk: ''
-    # Leer lassen -> Standard von lmn-prepare:
-    # var:10,linbo:40,global:10,default-school:100%FREE
-    lmn_lvm_volumes: ''
-
     # Firewall wird standardmaessig NICHT installiert (lmn_skip_firewall: true).
     # Die Firewall muss separat eingerichtet werden.
 
     # Repository (normalerweise nicht ändern)
     lmn_repo_url: 'https://deb.linuxmuster.net/'
     lmn_repo_gpg_url: 'https://deb.linuxmuster.net/pub.gpg'
-    # linuxmuster-Version automatisch anhand der Ubuntu-Version:
-    #   Ubuntu 24.04 -> lmn73 (7.3),  Ubuntu 26.04 -> lmn74 (7.4).
+    # linuxmuster-Version anhand der Ubuntu-Version; neu installiert wird nur noch 7.4 auf Ubuntu 26.04.
     # lmn_repo_distribution/lmn_prepare_version werden daraus per set_fact
     # abgeleitet (per -e ueberschreibbar; eine andere lmn-appliance-Version braucht
-    # zusaetzlich lmn_prepare_commit und lmn_appliance_sha256). Nur 7.3 nutzt eine separate Datenplatte
-    # via LVM (lmn-appliance -l/--pvdevice); 7.4 hat das LVM-Setup abgeschafft und
-    # installiert direkt auf die Systemplatte -> dort wird kein -l uebergeben.
+    # zusaetzlich lmn_prepare_commit und lmn_appliance_sha256).
     # lmn-appliance wird ueber den Commit des Tags geladen und gegen die Pruefsumme geprueft;
     # ein neuer Tag braucht beide Werte neu.
     lmn_version_map:
-      '24':
-        distribution: 'lmn73'
-        prepare_version: 'v7.3.1'
-        prepare_commit: '6acff93a85e5c31834639f106be019b1fd13c4c0'
-        appliance_sha256: '89679563237b488fcbfc4da873a1df665b1775935b5a076d520117bff759a4a9'
-        label: '7.3'
-        pvdevice: true
       '26':
         distribution: 'lmn74'
         prepare_version: 'v7.4.0'
         prepare_commit: '659a9940c03efc5e0a4d6d4a096a9096f06d9a8c'
         appliance_sha256: 'd08354cb5114070f9e6b2407821fd8903a296f779dba00dd573b9dc6ae3a7351'
         label: '7.4'
-        pvdevice: false
     lmn_appliance_url: 'https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/{{ lmn_prepare_commit }}/lmn-appliance'
 
     # Pakete
@@ -161,6 +136,17 @@
     # GRUNDLEGENDE SYSTEMKONFIGURATION
     # =========================================================================
 
+    - name: Betriebssystem pruefen (Ubuntu 26.04 -> linuxmuster.net 7.4)
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Ubuntu"
+          - ansible_distribution_major_version in lmn_version_map
+        fail_msg: >-
+          linuxmuster.net 7.4 benoetigt Ubuntu 26.04, gefunden: {{ ansible_distribution }}
+          {{ ansible_distribution_version }}. Bitte zuerst ein Release-Upgrade auf Ubuntu 26.04
+          durchfuehren (do-release-upgrade) und die Installation danach erneut starten.
+        success_msg: 'Ubuntu {{ ansible_distribution_version }} erkannt'
+
     # setup.ini nimmt Werte zeilenweise; ein Zeilenumbruch wuerde eine weitere Einstellung ergeben.
     - name: Einstellungen pruefen
       ansible.builtin.assert:
@@ -175,16 +161,6 @@
           Bitte ein eigenes Admin-Passwort setzen (-e lmn_adminpw=...). Die Werte fuer
           setup.ini duerfen keinen Zeilenumbruch enthalten.
 
-    - name: Betriebssystem pruefen (Ubuntu 24.04 -> 7.3, 26.04 -> 7.4)
-      ansible.builtin.assert:
-        that:
-          - ansible_distribution == "Ubuntu"
-          - ansible_distribution_major_version in ['24', '26']
-        fail_msg: >-
-          linuxmuster.net benoetigt Ubuntu 24.04 (-> 7.3) oder 26.04 (-> 7.4).
-          Gefunden: {{ ansible_distribution }} {{ ansible_distribution_version }}
-        success_msg: 'Ubuntu {{ ansible_distribution_version }} erkannt'
-
     - name: linuxmuster-Version anhand der Ubuntu-Version bestimmen
       ansible.builtin.set_fact:
         lmn_repo_distribution: "{{ lmn_version_map[ansible_distribution_major_version].distribution }}"
@@ -192,7 +168,6 @@
         lmn_prepare_commit: "{{ lmn_version_map[ansible_distribution_major_version].prepare_commit }}"
         lmn_appliance_sha256: "{{ lmn_version_map[ansible_distribution_major_version].appliance_sha256 }}"
         lmn_version_label: "{{ lmn_version_map[ansible_distribution_major_version].label }}"
-        lmn_appliance_supports_pvdevice: "{{ lmn_version_map[ansible_distribution_major_version].pvdevice }}"
 
     # Per -e gesetzte Werte gehen dem set_fact vor; eine andere Version braucht ihren eigenen Commit und ihre Pruefsumme.
     - name: lmn-appliance-Version und Commit pruefen
@@ -418,54 +393,7 @@
       ansible.builtin.set_fact:
         lmn_cidr: "{{ (lmn_server_ip + '/' + lmn_netmask) | ansible.utils.ipaddr('prefix') }}"
 
-    # -------------------------------------------------------------------------
-    # DATENPLATTE ERMITTELN (wird per -l an lmn-appliance uebergeben)
-    # -------------------------------------------------------------------------
-    - name: Leere zweite Platte fuer LVM ermitteln
-      ansible.builtin.shell: |
-        # Erste vollstaendig leere Nicht-System-Platte:
-        # keine Partitionen, kein Dateisystem, keine Signatur (fs/parttable/LVM).
-        for d in $(lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}'); do
-          dev="/dev/$d"
-          [ "$(lsblk -n -o NAME "$dev" | wc -l)" -eq 1 ] || continue
-          [ -z "$(lsblk -dn -o FSTYPE "$dev")" ] || continue
-          blkid "$dev" >/dev/null 2>&1 && continue
-          echo "$dev"; break
-        done
-      args:
-        executable: /bin/bash
-      register: lmn_detected_disk
-      changed_when: false
-      when: lmn_setup_data_disk | bool
-
-    - name: Zu verwendende Datenplatte festlegen
-      ansible.builtin.set_fact:
-        lmn_data_disk_final: "{{ (lmn_data_disk | default('', true)) or (lmn_detected_disk.stdout | default('') | trim) }}"
-      when: lmn_setup_data_disk | bool
-
-    - name: Hinweis wenn keine leere Datenplatte gefunden wurde
-      ansible.builtin.debug:
-        msg: >-
-          Keine leere zweite Platte gefunden - Installation erfolgt auf der
-          Systemplatte (kein separates LVM). Vorhandene Platten werden nie
-          ueberschrieben; ggf. lmn_data_disk explizit setzen.
-      when:
-        - lmn_setup_data_disk | bool
-        - (lmn_data_disk_final | default('')) == ''
-
-    - name: Hinweis Datenplatte (7.4 ohne separates LVM)
-      ansible.builtin.debug:
-        msg: >-
-          linuxmuster.net {{ lmn_version_label }} verwendet kein separates
-          Daten-LVM mehr - die Installation erfolgt direkt auf der Systemplatte.
-          Eine evtl. erkannte zweite Platte ({{ lmn_data_disk_final }}) bleibt
-          unangetastet.
-      when:
-        - lmn_setup_data_disk | bool
-        - (lmn_data_disk_final | default('')) != ''
-        - not (lmn_appliance_supports_pvdevice | default(false) | bool)
-
-    - name: lmn-appliance ausführen (Server-Profil, LVM auf Datenplatte falls vorhanden)
+    - name: lmn-appliance ausführen (Server-Profil)
       ansible.builtin.shell: |
         set -o pipefail
         /root/lmn-appliance -p server -u \
@@ -473,8 +401,6 @@
           -f {{ lmn_gateway | quote }} \
           -d {{ lmn_domainname | quote }} \
           -t {{ lmn_servername | quote }} \
-          {{ ('-l ' ~ (lmn_data_disk_final | quote)) if ((lmn_data_disk_final | default('')) != '' and (lmn_appliance_supports_pvdevice | default(false) | bool)) else '' }} \
-          {{ ('-v ' ~ (lmn_lvm_volumes | quote)) if ((lmn_lvm_volumes | default('')) != '' and (lmn_appliance_supports_pvdevice | default(false) | bool)) else '' }} \
           2>&1 | while IFS= read -r line; do
           echo "$line"
         done
