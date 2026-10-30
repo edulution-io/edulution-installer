@@ -1,6 +1,6 @@
 # Edulution LMN Installer
 
-Installation of [linuxmuster.net 7.3](https://docs.linuxmuster.net/de/latest/) with a minimal API for variable configuration and real-time progress monitoring via WebSocket.
+Installation of [linuxmuster.net 7.4](https://docs.linuxmuster.net/de/latest/) with a minimal API for variable configuration and real-time progress monitoring via WebSocket.
 
 ## Architecture
 
@@ -29,7 +29,7 @@ Installation of [linuxmuster.net 7.3](https://docs.linuxmuster.net/de/latest/) w
 
 ### Prerequisites
 
-- **Target server**: Ubuntu 24.04 LTS, root access
+- **Target server**: Ubuntu 26.04 LTS, root access. A server on Ubuntu 24.04 needs a release upgrade first (`do-release-upgrade`); new installations use linuxmuster.net 7.4 only.
 
 ### 1. Run bootstrap on the target server
 
@@ -121,7 +121,7 @@ curl http://localhost:8000/api/playbook/linuxmuster.yml/requirements
   ],
   "system_info": {
     "os": "Ubuntu",
-    "os_version": "24.04",
+    "os_version": "26.04",
     "ram_gb": 15.5,
     "disks": [
       {"name": "sda", "size_gb": 100.0},
@@ -240,14 +240,6 @@ All variables have default values. Through the API, the settings in the tables b
 | `lmn_unattended` | `true` | No interactive prompts |
 | `lmn_disable_auto_updates` | `true` | Pause automatic updates during the installation (see below) |
 
-### Data Disk
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `lmn_setup_data_disk` | `true` | Set up a separate data disk |
-| `lmn_data_disk` | `''` | Device such as `/dev/vdb`; empty means the first empty non-system disk |
-| `lmn_lvm_volumes` | `''` | Volume sizes such as `var:10,linbo:40,global:10,default-school:100%FREE`; empty means the lmn-prepare default |
-
 ### Network Services
 
 | Variable | Default | Description |
@@ -358,7 +350,7 @@ edulution-lmninstaller/
 
 ## Target Server Requirements
 
-- Ubuntu 24.04 LTS
+- Ubuntu 26.04 LTS (linuxmuster.net 7.4)
 - At least 4 GB RAM (16 GB recommended)
 - 25 GB system + 100 GB data
 - Network: 10.0.0.0/16 (default)

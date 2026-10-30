@@ -345,6 +345,9 @@ const LmnSetupPage = () => {
       {requirements && !store.lmnRequirementsPassed && (
         <div className="rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800">
           {t('lmnSetup.requirementsNotMet')}
+          {requirements.checks.some((check) => check.name === 'os_version' && check.status === 'failed') && (
+            <p className="mt-1 font-bold">{t('lmnSetup.releaseUpgradeHint')}</p>
+          )}
         </div>
       )}
 
