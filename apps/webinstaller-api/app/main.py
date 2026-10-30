@@ -22,7 +22,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from fastapi import FastAPI, Depends, Request, File, UploadFile, APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, PlainTextResponse, HTMLResponse
+from fastapi.responses import StreamingResponse, JSONResponse, PlainTextResponse, HTMLResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import HTTPConnection
 from starlette.websockets import WebSocketClose
 from fastapi.middleware.cors import CORSMiddleware
@@ -859,12 +860,18 @@ if STATIC_PATH.exists():
     app.mount("/assets", StaticFiles(directory=str(STATIC_PATH / "assets")), name="assets")
     app.mount("/img", StaticFiles(directory=str(STATIC_PATH / "img")), name="img")
 
-    @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        file_path = STATIC_PATH / full_path
-        if file_path.exists() and file_path.is_file():
-            return FileResponse(str(file_path))
-        return FileResponse(str(STATIC_PATH / "index.html"))
+    # StaticFiles prueft die Pfade; was es nicht findet, ist eine Route der SPA, ausser unter /api.
+    class SPAStaticFiles(StaticFiles):
+        async def get_response(self, path, scope):
+            try:
+                return await super().get_response(path, scope)
+            except StarletteHTTPException as e:
+                if e.status_code != 404 or path.split("/")[0] == "api":
+                    raise
+                return await super().get_response("index.html", scope)
+
+    # Als letzte Registrierung, sonst verdeckt der Mount auf "/" die Routen darueber.
+    app.mount("/", SPAStaticFiles(directory=str(STATIC_PATH)), name="spa")
 
 
 # --- Helper Functions ---

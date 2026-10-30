@@ -98,7 +98,7 @@
   "lmnSetup": {
     "title": "linuxmuster.net-Server einrichten",
     "requirementsTitle": "Voraussetzungen für den linuxmuster.net-Server",
-    "reqOs": "Ubuntu 24.04 LTS oder neuer",
+    "reqOs": "Ubuntu 26.04 LTS (linuxmuster.net 7.4); ein Server mit Ubuntu 24.04 braucht zuerst ein Release-Upgrade",
     "reqRam": "Mindestens 4 GB RAM",
     "reqDisks": "Mindestens 2 Festplatten mit je 25 GB",
     "sshHost": "SSH Host:",
@@ -118,7 +118,8 @@
     "checkingRequirements": "Requirements werden geprüft...",
     "checkRequirements": "Requirements prüfen",
     "systemRequirements": "System-Anforderungen",
-    "requirementsNotMet": "Nicht alle Anforderungen erfüllt. Bitte behebe die Probleme und prüfe erneut."
+    "requirementsNotMet": "Nicht alle Anforderungen erfüllt. Bitte behebe die Probleme und prüfe erneut.",
+    "releaseUpgradeHint": "linuxmuster.net wird nur noch als Version 7.4 auf Ubuntu 26.04 neu installiert. Bitte führe auf dem Server zuerst ein Release-Upgrade durch (sudo do-release-upgrade) und prüfe danach erneut."
   },
   "lmnConfig": {
     "title": "linuxmuster.net Konfiguration (Schritt {{step}}/2)",
