@@ -212,7 +212,7 @@ Message format:
 
 ## Playbook Variables (linuxmuster.yml)
 
-All variables have default values and can be overridden via `extra_vars`.
+All variables have default values. Through the API, the settings in the tables below can be passed as `extra_vars`; repository and download settings always come from the playbook.
 
 ### Basic Configuration
 
@@ -228,7 +228,7 @@ All variables have default values and can be overridden via `extra_vars`.
 | `lmn_country` | `de` | Country code |
 | `lmn_state` | `BW` | State/province |
 | `lmn_dhcprange` | `10.0.100.1 10.0.100.254` | DHCP range |
-| `lmn_adminpw` | `Muster!` | Admin password |
+| `lmn_adminpw` | `Muster!` | Admin password; has to be set, the default is refused |
 | `lmn_timezone` | `Europe/Berlin` | Timezone |
 | `lmn_locale` | `de_DE.UTF-8` | System locale |
 
@@ -238,9 +238,45 @@ All variables have default values and can be overridden via `extra_vars`.
 |----------|---------|-------------|
 | `lmn_skip_firewall` | `true` | Skip firewall setup (configure firewall separately) |
 | `lmn_unattended` | `true` | No interactive prompts |
-| `lmn_disable_auto_updates` | `true` | Disable auto updates |
-| `lmn_repo_url` | `https://deb.linuxmuster.net/` | Repository URL |
-| `lmn_repo_distribution` | `lmn73` | Repository distribution |
+| `lmn_disable_auto_updates` | `true` | Pause automatic updates during the installation (see below) |
+
+### Data Disk
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `lmn_setup_data_disk` | `true` | Set up a separate data disk |
+| `lmn_data_disk` | `''` | Device such as `/dev/vdb`; empty means the first empty non-system disk |
+| `lmn_lvm_volumes` | `''` | Volume sizes such as `var:10,linbo:40,global:10,default-school:100%FREE`; empty means the lmn-prepare default |
+
+### Network Services
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `lmn_dns_forwarder` | `auto` | DNS forwarder for Samba; `auto` takes the host's resolver |
+
+### Installation next to edulution
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `lmn_local_install` | `false` | linuxmuster runs on the same machine as edulution |
+| `lmn_webui_port` | `8443` | Port of the linuxmuster web UI in that case |
+
+The API checks every value against the form its setting needs (addresses, names, disk, port, flags). Server name, domain name and country are taken in lower case. School name, location and state may contain any text except line breaks, control characters, `%` and `$`; the admin password uses the characters the web installer allows.
+
+### Updates on the linuxmuster Server
+
+While the playbook runs, automatic updates are paused if `lmn_disable_auto_updates` is set; with `false` they keep running during the installation. At the end of the run, also when a task failed, the playbook switches them on: `unattended-upgrades` then installs updates from Ubuntu's own release and security origins (security updates in practice, Samba among them), as configured in Ubuntu's `50unattended-upgrades`. A later run of the playbook switches them on again, even if they were switched off by hand in the meantime. linuxmuster packages from deb.linuxmuster.net are not part of that and are updated by hand:
+
+```bash
+apt update && apt full-upgrade
+```
+
+If an installation was interrupted (for example by a reboot), run the installation again. On servers set up with an earlier installer version, automatic updates stay paused; switch them on with:
+
+```bash
+sed -i 's/^APT::Periodic::Unattended-Upgrade.*/APT::Periodic::Unattended-Upgrade "1";/' /etc/apt/apt.conf.d/20auto-upgrades
+systemctl enable --now unattended-upgrades
+```
 
 ### Password Requirements
 
@@ -253,7 +289,7 @@ The password is set for: `root` (server), `global-admin`, `pgmadmin`, `linbo`.
 
 ## Adding Custom Playbooks
 
-Place a new YAML file in the `playbooks/` directory (on the target server at `/opt/edulution-installer/playbooks/`). It becomes automatically available via the API:
+Place a new YAML file in the `playbooks/` directory (on the target server at `/opt/edulution-installer/playbooks/`). It becomes automatically available via the API; through the API it receives only the settings listed under Playbook Variables (`ALLOWED_EXTRA_VARS` in `api/models.py`):
 
 ```bash
 curl -X POST http://10.0.0.1:8000/api/playbook/my-playbook.yml/start \
