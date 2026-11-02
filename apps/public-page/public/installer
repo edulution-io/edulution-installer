@@ -425,7 +425,11 @@ until curl --output /dev/null --silent --get --fail "http://localhost:8080/auth/
     sleep 3
 done
 
-source ${DIRECTORY}edulution.env
+# Nur die erzeugten Werte, die das Skript braucht: edulution.env ist fuer Docker Compose geschrieben, nicht fuer die Shell.
+env_value() { sed -n "s/^$1=//p" "${DIRECTORY}edulution.env" | head -n 1; }
+KEYCLOAK_ADMIN=$(env_value KEYCLOAK_ADMIN)
+KEYCLOAK_ADMIN_PASSWORD=$(env_value KEYCLOAK_ADMIN_PASSWORD)
+EDULUTION_BASE_DOMAIN=$(env_value EDULUTION_BASE_DOMAIN)
 
 AUTH_TOKEN=$(curl -s --request POST 'http://localhost:8080/auth/realms/master/protocol/openid-connect/token' \
                 --header 'Content-Type: application/x-www-form-urlencoded' \
