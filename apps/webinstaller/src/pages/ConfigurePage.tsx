@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@edulution-io/ui-kit';
 import { Input } from '@shared-ui';
-import useInstallerStore from '../store/useInstallerStore';
+import useInstallerStore, { lmnLdapHost } from '../store/useInstallerStore';
 import { submitConfiguration } from '../api/installerApi';
 
 const ConfigurePage = () => {
@@ -69,6 +69,8 @@ const ConfigurePage = () => {
         lmnBinduserPw,
         lmnLdapSchema,
         lmnLdapPort,
+        lmnLdapHost: lmnLdapHost(store),
+        lmnCaCertificate: store.lmnCaCertificate,
         edulutionExternalDomain,
         lmnLocalInstall: store.lmnLocalInstall,
         lmnWebuiPort: store.lmnWebuiPort,

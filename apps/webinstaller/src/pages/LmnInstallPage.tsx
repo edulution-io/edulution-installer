@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@edulution-io/ui-kit';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner, faCircleCheck, faCircleXmark, faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
-import useInstallerStore from '../store/useInstallerStore';
+import useInstallerStore, { lmnLdapHost } from '../store/useInstallerStore';
 import {
   startLmnPlaybook,
   createLmnWebSocket,
@@ -128,6 +128,7 @@ const LmnInstallPage = () => {
 
       try {
         const edulutionConfig = await getEdulutionConfig();
+        if (!edulutionConfig.ca_certificate) throw new Error('missing CA certificate');
 
         const currentStore = useInstallerStore.getState();
         const lmnExternalDomain = currentStore.lmnSshHost;
@@ -137,8 +138,9 @@ const LmnInstallPage = () => {
           lmnExternalDomain,
           lmnBinduserDn: edulutionConfig.binduser_dn,
           lmnBinduserPw: edulutionConfig.binduser_password,
-          lmnLdapSchema: 'ldap',
-          lmnLdapPort: 389,
+          lmnLdapSchema: 'ldaps',
+          lmnLdapPort: 636,
+          lmnCaCertificate: edulutionConfig.ca_certificate,
           edulutionExternalDomain,
         });
 
@@ -171,6 +173,8 @@ const LmnInstallPage = () => {
         lmnBinduserPw: currentStore.lmnBinduserPw,
         lmnLdapSchema: currentStore.lmnLdapSchema,
         lmnLdapPort: currentStore.lmnLdapPort,
+        lmnLdapHost: lmnLdapHost(currentStore),
+        lmnCaCertificate: currentStore.lmnCaCertificate,
         edulutionExternalDomain: currentStore.edulutionExternalDomain,
         lmnLocalInstall: currentStore.lmnLocalInstall,
         lmnWebuiPort: currentStore.lmnWebuiPort,

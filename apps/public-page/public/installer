@@ -190,9 +190,14 @@ trap remove_ssh_installer_access EXIT
 # Bei SIGHUP (abgebrochene SSH-Sitzung) und SIGTERM laeuft die EXIT-Trap sonst nicht zuverlaessig.
 trap 'exit 1' HUP TERM
 
+# Der Web-Installer laeuft im Default-Bridge-Netz von Docker, dessen Subnetz per daemon.json (bip) abweichen kann.
+DOCKER_BRIDGE_SUBNETS=$(docker network inspect bridge --format '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' 2>/dev/null \
+    | grep -E '^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$' | paste -sd, -)
+DOCKER_BRIDGE_SUBNETS=${DOCKER_BRIDGE_SUBNETS:-172.17.0.0/16}
+
 mkdir -p /etc/ssh/sshd_config.d
-cat <<'SSHEOF' > "${SSH_INSTALLER_CONF}"
-Match Address 127.0.0.1,172.17.0.0/16
+cat <<SSHEOF > "${SSH_INSTALLER_CONF}"
+Match Address 127.0.0.1,${DOCKER_BRIDGE_SUBNETS}
     PermitRootLogin yes
     PasswordAuthentication yes
 SSHEOF

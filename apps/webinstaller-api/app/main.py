@@ -29,13 +29,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import HTTPConnection
 from starlette.websockets import WebSocketClose
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 import paramiko
 import httpx
 
 from ldap3 import Server, Connection, ALL, Tls
-from ldap3.core.exceptions import LDAPSocketOpenError, LDAPBindError
+from ldap3.core.exceptions import LDAPBindError, LDAPSocketOpenError
 
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -80,9 +80,18 @@ class ConfigurationRequest(BaseModel):
     lmnBinduserPw: str
     lmnLdapSchema: str
     lmnLdapPort: int
+    lmnLdapHost: str = ""
+    lmnCaCertificate: str = ""
     edulutionExternalDomain: str
     lmnLocalInstall: bool = False
     lmnWebuiPort: int = 8443
+
+    @field_validator("lmnCaCertificate")
+    @classmethod
+    def pemCertificate(cls, value: str) -> str:
+        if value:
+            x509.load_pem_x509_certificate(value.encode())
+        return value
 
 
 class AdminGroupRequest(BaseModel):
@@ -166,6 +175,8 @@ class Data:
         self.DATA_LMN_BINDUSER_PW = None
         self.DATA_LMN_LDAP_SCHEMA = None
         self.DATA_LMN_LDAP_PORT = None
+        self.DATA_LMN_LDAP_HOST = None
+        self.DATA_LMN_CA_CERTIFICATE = None
         self.DATA_EDULUTION_EXTERNAL_DOMAIN = None
         self.DATA_LE_USED = False
         self.DATA_LE_EMAIL = None
@@ -295,6 +306,8 @@ def configure(config: ConfigurationRequest, data: Data = Depends(getData)):
     data.DATA_LMN_BINDUSER_PW = config.lmnBinduserPw
     data.DATA_LMN_LDAP_SCHEMA = config.lmnLdapSchema
     data.DATA_LMN_LDAP_PORT = config.lmnLdapPort
+    data.DATA_LMN_LDAP_HOST = config.lmnLdapHost or config.lmnExternalDomain
+    data.DATA_LMN_CA_CERTIFICATE = config.lmnCaCertificate
     data.DATA_EDULUTION_EXTERNAL_DOMAIN = config.edulutionExternalDomain
     data.DATA_LMN_LOCAL_INSTALL = config.lmnLocalInstall
     # Ajenti/webdav bleibt auf 443, ausser bei "gleiche Maschine": dort weicht
@@ -339,55 +352,58 @@ def checkWebDAV(data: Data = Depends(getData)):
         return {"status": False, "message": "Unbekannter Fehler!"}
 
 
+class _LinuxmusterCaTls(Tls):
+    # Verifies the handshake of the connection that binds, against the linuxmuster CA and the host name, as
+    # Keycloak does. Not strict: the linuxmuster CA has no key usage extension, which Python 3.13 rejects by
+    # default, and ldap3 offers no way to relax that.
+    def __init__(self, ca_certificate: str, host: str):
+        super().__init__(validate=ssl.CERT_REQUIRED)
+        self._host = host
+        self._context = ssl.create_default_context(cadata=ca_certificate)
+        self._context.minimum_version = ssl.TLSVersion.TLSv1_2
+        self._context.verify_flags &= ~ssl.VERIFY_X509_STRICT
+
+    def wrap_socket(self, connection, do_handshake=False):
+        connection.socket = self._context.wrap_socket(
+            connection.socket, server_hostname=self._host, do_handshake_on_connect=do_handshake
+        )
+
+
 def _create_ldap_server(data: Data) -> Server:
     if data.DATA_LMN_LDAP_SCHEMA == "ldaps":
+        if data.DATA_LMN_CA_CERTIFICATE:
+            tls = _LinuxmusterCaTls(data.DATA_LMN_CA_CERTIFICATE, data.DATA_LMN_LDAP_HOST)
+        else:
+            tls = Tls(validate=ssl.CERT_NONE)
         return Server(
-            data.DATA_LMN_EXTERNAL_DOMAIN,
+            data.DATA_LMN_LDAP_HOST,
             port=int(data.DATA_LMN_LDAP_PORT),
             get_info=ALL,
             connect_timeout=3,
             use_ssl=True,
-            tls=Tls(validate=ssl.CERT_NONE),
+            tls=tls,
         )
     return Server(
-        data.DATA_LMN_EXTERNAL_DOMAIN,
+        data.DATA_LMN_LDAP_HOST,
         port=int(data.DATA_LMN_LDAP_PORT),
         get_info=ALL,
         connect_timeout=3,
     )
 
 
-@api.get("/check-ldap-status")
-def checkLDAPStatus(data: Data = Depends(getData)):
+def _check_ldap(data: Data, user=None, password=None) -> dict:
     try:
-        server = _create_ldap_server(data)
-        conn = Connection(server, auto_bind=True)
+        conn = Connection(_create_ldap_server(data), user=user, password=password, auto_bind=True)
         if conn.bind():
             return {"status": True, "message": "Successful"}
         return {"status": False, "message": "Keine Verbindung zum LDAP-Server!"}
     except LDAPSocketOpenError as e:
+        # ldap3 reports a failed certificate check only as text.
         print(e)
-        return {"status": False, "message": "Unbekannter Fehler!"}
-    except Exception as e:
-        print(e)
-        return {"status": False, "message": "Unbekannter Fehler!"}
-
-
-@api.get("/check-ldap-access-status")
-def checkLDAPAccessStatus(data: Data = Depends(getData)):
-    try:
-        server = _create_ldap_server(data)
-        conn = Connection(
-            server,
-            user=data.DATA_LMN_BINDUSER_DN,
-            password=data.DATA_LMN_BINDUSER_PW,
-            auto_bind=True,
-        )
-        if conn.bind():
-            return {"status": True, "message": "Successful"}
-        return {"status": False, "message": "Keine Verbindung zum LDAP-Server!"}
-    except LDAPSocketOpenError as e:
-        print(e)
+        if "mismatch, certificate is not valid for" in str(e):
+            return {"status": False, "message": "Die Adresse des LDAP-Servers steht nicht in seinem Zertifikat!"}
+        if "CERTIFICATE_VERIFY_FAILED" in str(e):
+            return {"status": False, "message": "Das Zertifikat des LDAP-Servers stammt nicht von der linuxmuster-CA!"}
         return {"status": False, "message": "Unbekannter Fehler!"}
     except LDAPBindError as e:
         if "invalidCredentials" in str(e):
@@ -397,6 +413,16 @@ def checkLDAPAccessStatus(data: Data = Depends(getData)):
     except Exception as e:
         print(e)
         return {"status": False, "message": "Unbekannter Fehler!"}
+
+
+@api.get("/check-ldap-status")
+def checkLDAPStatus(data: Data = Depends(getData)):
+    return _check_ldap(data)
+
+
+@api.get("/check-ldap-access-status")
+def checkLDAPAccessStatus(data: Data = Depends(getData)):
+    return _check_ldap(data, data.DATA_LMN_BINDUSER_DN, data.DATA_LMN_BINDUSER_PW)
 
 
 @api.post("/set-admin-group")
@@ -1036,7 +1062,7 @@ def createEdulutionEnvFile(data: Data):
             comp["config"]["connectionUrl"] = [
                 data.DATA_LMN_LDAP_SCHEMA
                 + "://"
-                + data.DATA_LMN_EXTERNAL_DOMAIN
+                + data.DATA_LMN_LDAP_HOST
                 + ":"
                 + str(data.DATA_LMN_LDAP_PORT)
             ]
@@ -1046,6 +1072,12 @@ def createEdulutionEnvFile(data: Data):
     )
 
     json.dump(realm_file, open("/edulution-ui/realm-edulution.json", "w"))
+
+    # Keycloak loads every certificate in conf/truststores (mounted from here) when it starts.
+    if data.DATA_LMN_CA_CERTIFICATE:
+        os.makedirs("/edulution-ui/data/keycloak/truststores", exist_ok=True)
+        with open("/edulution-ui/data/keycloak/truststores/linuxmuster-ca.pem", "w") as f:
+            f.write(data.DATA_LMN_CA_CERTIFICATE)
 
     environment_file = f"""EDULUTION_BASE_DOMAIN={data.DATA_EDULUTION_EXTERNAL_DOMAIN}
 

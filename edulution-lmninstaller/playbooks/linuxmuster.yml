@@ -783,6 +783,12 @@
       changed_when: false
       no_log: true
 
+    # Keycloak connects over LDAPS and verifies the server certificate against this CA.
+    - name: Read the linuxmuster CA certificate
+      ansible.builtin.slurp:
+        src: /etc/linuxmuster/ssl/cacert.pem
+      register: lmn_ca_certificate
+
     - name: Create the edulution configuration directory
       ansible.builtin.file:
         path: /var/lib/edulution
@@ -796,6 +802,7 @@
           {{ {
             'binduser_dn': 'CN=edulutionui-binduser,OU=Management,OU=GLOBAL,' ~ edulution_dc_parts,
             'binduser_password': binduser_pw_result.stdout | trim,
+            'ca_certificate': lmn_ca_certificate.content | b64decode,
           } | to_nice_json }}
         dest: /var/lib/edulution/binduser-config.json
         mode: '0600'
