@@ -7,7 +7,8 @@ import { Input } from '@shared-ui';
 import useInstallerStore from '../store/useInstallerStore';
 import { getLmnNetworkInfo } from '../api/installerApi';
 
-const ALLOWED_PW_CHARS = /^[A-Za-z0-9!#@&*()[\]{}+\-=_.,?§]+$/;
+// The LMN installer API accepts the same characters (lmn_adminpw in edulution-lmninstaller/api/models.py).
+const ALLOWED_PW_CHARS =/^[A-Za-z0-9!#@&*()[\]{}+\-=_.,?§]+$/;
 const ALLOWED_PW_SPECIAL = /[!#@&*()[\]{}+\-=_.,?§]/;
 
 const validatePassword = (pw: string, t: TFunction): string[] => {

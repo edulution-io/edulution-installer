@@ -1,11 +1,10 @@
 ---
 # =============================================================================
-# LINUXMUSTER.NET 7.3 / 7.4 INSTALLATION PLAYBOOK
-# (Version automatisch nach Ubuntu: 24.04 -> 7.3 (lmn73), 26.04 -> 7.4 (lmn74))
+# LINUXMUSTER.NET 7.4 INSTALLATION PLAYBOOK (Ubuntu 26.04)
 # =============================================================================
 #
 # Verwendung:
-#   ansible-playbook linuxmuster.yml -e lmn_schoolname="Meine Schule"
+#   ansible-playbook linuxmuster.yml -e lmn_schoolname="Meine Schule" -e lmn_adminpw="..."
 #
 #   Oder via API mit extra_vars:
 #   POST /api/playbook/start
@@ -20,11 +19,13 @@
 #
 # =============================================================================
 
-- name: linuxmuster.net 7.3/7.4 Installation
+- name: linuxmuster.net 7.4 Installation
   hosts: localhost
   connection: local
   become: true
   gather_facts: true
+  # Damit die pausierten automatischen Updates auch nach einem fehlgeschlagenen Task wieder angehen.
+  force_handlers: true
 
   # System-Proxy (falls gesetzt) an alle Tasks durchreichen, damit get_url/curl/
   # apt auch in Proxy-Umgebungen funktionieren. Die Werte werden frueh aus
@@ -39,7 +40,7 @@
 
   # Variablen können überschrieben werden durch:
   # 1. -e / --extra-vars auf der Kommandozeile
-  # 2. API extra_vars
+  # 2. API extra_vars (nur die Einstellungen in ALLOWED_EXTRA_VARS, api/models.py)
 
   vars:
     # -------------------------------------------------------------------------
@@ -84,6 +85,7 @@
     # Erweiterte Optionen
     lmn_skip_firewall: true
     lmn_unattended: true
+    # Pausiert die automatischen Updates nur waehrend der Installation; danach laufen die Sicherheitsupdates wieder.
     lmn_disable_auto_updates: true
 
     # Lokale Installation (edulution-UI und LMN-Server auf derselben Maschine).
@@ -93,35 +95,40 @@
     lmn_local_install: false
     lmn_webui_port: 8443
 
-    # Datenplatte: linuxmuster legt seine Daten (/srv/samba, /srv/linbo) und /var
-    # auf einer zweiten Platte via LVM ab. Das erledigt lmn-appliance/lmn-prepare
-    # selbst, wenn man ihm die Platte per -l uebergibt (VG vg_srv, Volumes s.u.,
-    # Quota auf global/default-school). Ist eine zweite, LEERE Platte vorhanden,
-    # uebergeben wir sie automatisch.
-    lmn_setup_data_disk: true
-    # Leer lassen -> automatische Erkennung der ersten komplett leeren
-    # Nicht-System-Platte (z.B. /dev/vdb, /dev/sdb). Sonst Geraet explizit setzen.
-    lmn_data_disk: ''
-    # Leer lassen -> Standard von lmn-prepare:
-    # var:10,linbo:40,global:10,default-school:100%FREE
-    lmn_lvm_volumes: ''
-
     # Firewall wird standardmaessig NICHT installiert (lmn_skip_firewall: true).
     # Die Firewall muss separat eingerichtet werden.
 
     # Repository (normalerweise nicht ändern)
     lmn_repo_url: 'https://deb.linuxmuster.net/'
     lmn_repo_gpg_url: 'https://deb.linuxmuster.net/pub.gpg'
-    # linuxmuster-Version automatisch anhand der Ubuntu-Version:
-    #   Ubuntu 24.04 -> lmn73 (7.3),  Ubuntu 26.04 -> lmn74 (7.4).
+    # Fingerprint des linuxmuster.net Archiv Key; auch lmn-appliance bekommt diesen Schluessel.
+    lmn_repo_key_fingerprint: '21A91AEC28D1BE943FCF2AA94E8B8B667D752C32'  # gitleaks:allow
+    lmn_repo_key_download: /root/linuxmuster.gpg
+    lmn_repo_keyring: /usr/share/keyrings/linuxmuster.net.gpg
+    lmn_appliance_global_key: /etc/apt/trusted.gpg.d/linuxmuster.net.gpg
+    lmn_repo_list: /etc/apt/sources.list.d/lmn.list
+    lmn_repo_sources: /etc/apt/sources.list.d/lmn.sources
+    lmn_appliance_script: /root/lmn-appliance
+    lmn_repo_key_fpr: "{{ lmn_repo_key_fingerprint | replace(' ', '') | upper }}"
+    lmn_repo_deb_line: 'deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} {{ lmn_repo_distribution }} main'
+    # Zeilen in lmn-appliance, die auf den geprueften Schluessel umgestellt werden.
+    lmn_appliance_key_lines:
+      lmnkey_remote: "lmnkey_remote = 'file://{{ lmn_repo_key_download }}'"
+      lmnkey_local: "lmnkey_local = '{{ lmn_repo_keyring }}'"
+    # linuxmuster-Version anhand der Ubuntu-Version; neu installiert wird nur noch 7.4 auf Ubuntu 26.04.
     # lmn_repo_distribution/lmn_prepare_version werden daraus per set_fact
-    # abgeleitet (per -e ueberschreibbar). Nur 7.3 nutzt eine separate Datenplatte
-    # via LVM (lmn-appliance -l/--pvdevice); 7.4 hat das LVM-Setup abgeschafft und
-    # installiert direkt auf die Systemplatte -> dort wird kein -l uebergeben.
+    # abgeleitet (per -e ueberschreibbar; eine andere lmn-appliance-Version braucht
+    # zusaetzlich lmn_prepare_commit und lmn_appliance_sha256).
+    # lmn-appliance wird ueber den Commit des Tags geladen und gegen die Pruefsumme geprueft;
+    # ein neuer Tag braucht beide Werte neu.
     lmn_version_map:
-      '24': { distribution: 'lmn73', prepare_version: 'v7.3.1', label: '7.3', pvdevice: true }
-      '26': { distribution: 'lmn74', prepare_version: 'v7.4.0', label: '7.4', pvdevice: false }
-    lmn_appliance_url: 'https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/{{ lmn_prepare_version }}/lmn-appliance'
+      '26':
+        distribution: 'lmn74'
+        prepare_version: 'v7.4.0'
+        prepare_commit: '659a9940c03efc5e0a4d6d4a096a9096f06d9a8c'
+        appliance_sha256: 'd08354cb5114070f9e6b2407821fd8903a296f779dba00dd573b9dc6ae3a7351'
+        label: '7.4'
+    lmn_appliance_url: 'https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/{{ lmn_prepare_commit }}/lmn-appliance'
 
     # Pakete
     lmn_additional_packages:
@@ -135,35 +142,67 @@
       - curl
       - gnupg
       - lvm2
+      # Als manuell installiert markiert, damit ein spaeteres autoremove das Paket nicht mitnimmt.
+      - unattended-upgrades
 
   tasks:
     # =========================================================================
     # GRUNDLEGENDE SYSTEMKONFIGURATION
     # =========================================================================
 
-    - name: Betriebssystem pruefen (Ubuntu 24.04 -> 7.3, 26.04 -> 7.4)
+    - name: Betriebssystem pruefen (Ubuntu 26.04 -> linuxmuster.net 7.4)
       ansible.builtin.assert:
         that:
           - ansible_distribution == "Ubuntu"
-          - ansible_distribution_major_version in ['24', '26']
+          - ansible_distribution_major_version in lmn_version_map
         fail_msg: >-
-          linuxmuster.net benoetigt Ubuntu 24.04 (-> 7.3) oder 26.04 (-> 7.4).
-          Gefunden: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          linuxmuster.net 7.4 benoetigt Ubuntu 26.04, gefunden: {{ ansible_distribution }}
+          {{ ansible_distribution_version }}. Bitte zuerst ein Release-Upgrade auf Ubuntu 26.04
+          durchfuehren (do-release-upgrade) und die Installation danach erneut starten.
         success_msg: 'Ubuntu {{ ansible_distribution_version }} erkannt'
+
+    # setup.ini nimmt Werte zeilenweise; ein Zeilenumbruch wuerde eine weitere Einstellung ergeben.
+    - name: Einstellungen pruefen
+      ansible.builtin.assert:
+        that:
+          - lmn_adminpw | string | trim | length > 0
+          - lmn_adminpw != 'Muster!'
+          - >-
+            (lmn_server_ip ~ lmn_netmask ~ lmn_gateway ~ lmn_servername ~ lmn_domainname
+            ~ lmn_dhcprange ~ lmn_schoolname ~ lmn_location ~ lmn_country ~ lmn_state ~ lmn_adminpw)
+            is not search('[\r\n]')
+        fail_msg: >-
+          Bitte ein eigenes Admin-Passwort setzen (-e lmn_adminpw=...). Die Werte fuer
+          setup.ini duerfen keinen Zeilenumbruch enthalten.
 
     - name: linuxmuster-Version anhand der Ubuntu-Version bestimmen
       ansible.builtin.set_fact:
         lmn_repo_distribution: "{{ lmn_version_map[ansible_distribution_major_version].distribution }}"
         lmn_prepare_version: "{{ lmn_version_map[ansible_distribution_major_version].prepare_version }}"
+        lmn_prepare_commit: "{{ lmn_version_map[ansible_distribution_major_version].prepare_commit }}"
+        lmn_appliance_sha256: "{{ lmn_version_map[ansible_distribution_major_version].appliance_sha256 }}"
         lmn_version_label: "{{ lmn_version_map[ansible_distribution_major_version].label }}"
-        lmn_appliance_supports_pvdevice: "{{ lmn_version_map[ansible_distribution_major_version].pvdevice }}"
+
+    # Per -e gesetzte Werte gehen dem set_fact vor; eine andere Version braucht ihren eigenen Commit und ihre Pruefsumme.
+    - name: lmn-appliance-Version und Commit pruefen
+      ansible.builtin.assert:
+        that:
+          - >-
+            (lmn_prepare_version == lmn_defaults.prepare_version and lmn_prepare_commit == lmn_defaults.prepare_commit
+            and lmn_appliance_sha256 == lmn_defaults.appliance_sha256)
+            or (lmn_prepare_commit != lmn_defaults.prepare_commit and lmn_appliance_sha256 != lmn_defaults.appliance_sha256)
+        fail_msg: >-
+          Fuer lmn-appliance {{ lmn_prepare_version }} bitte auch lmn_prepare_commit und
+          lmn_appliance_sha256 setzen (-e).
+      vars:
+        lmn_defaults: '{{ lmn_version_map[ansible_distribution_major_version] }}'
 
     - name: Gewaehlte linuxmuster-Version anzeigen
       ansible.builtin.debug:
         msg: >-
           Ubuntu {{ ansible_distribution_version }} erkannt -> linuxmuster.net
           {{ lmn_version_label }} ({{ lmn_repo_distribution }}, lmn-appliance
-          {{ lmn_prepare_version }})
+          {{ lmn_prepare_version }}, Commit {{ lmn_prepare_commit[:7] }})
 
     # -------------------------------------------------------------------------
     # PROXY + UPSTREAM-DNS ERMITTELN (vor der Netz-Neukonfiguration)
@@ -228,7 +267,9 @@
         while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
           sleep 3
         done
-      changed_when: false
+      changed_when: true
+      when: lmn_disable_auto_updates | bool
+      notify: Automatische Sicherheitsupdates wieder einschalten
 
     - name: Zeitzone konfigurieren
       community.general.timezone:
@@ -277,21 +318,22 @@
 
     - name: Locale als Standard setzen
       ansible.builtin.command:
-        cmd: localectl set-locale LANG={{ lmn_locale }}
+        argv: [localectl, set-locale, "LANG={{ lmn_locale }}"]
       changed_when: true
 
     # =========================================================================
-    # AUTOMATISCHE UPDATES DEAKTIVIEREN
+    # AUTOMATISCHE UPDATES WAEHREND DER INSTALLATION PAUSIEREN
     # =========================================================================
 
-    - name: Automatische Updates deaktivieren
+    - name: Automatische Updates waehrend der Installation pausieren
       ansible.builtin.lineinfile:
         path: /etc/apt/apt.conf.d/20auto-upgrades
         regexp: '^APT::Periodic::Unattended-Upgrade'
         line: 'APT::Periodic::Unattended-Upgrade "0";'
         create: true
         mode: '0644'
-      when: lmn_disable_auto_updates
+      when: lmn_disable_auto_updates | bool
+      notify: Automatische Sicherheitsupdates wieder einschalten
 
     # =========================================================================
     # QEMU GUEST AGENT (für Virtualisierung)
@@ -331,20 +373,54 @@
     - name: GPG-Schlüssel herunterladen
       ansible.builtin.get_url:
         url: '{{ lmn_repo_gpg_url }}'
-        dest: /tmp/linuxmuster.gpg
+        dest: '{{ lmn_repo_key_download }}'
         mode: '0644'
+        force: true
+
+    - name: Fingerprint des linuxmuster-Schlüssels lesen
+      ansible.builtin.command:
+        argv: [gpg, --batch, --show-keys, --with-colons, '{{ lmn_repo_key_download }}']
+      register: lmn_repo_key_info
+      changed_when: false
+
+    - name: Fingerprint des linuxmuster-Schlüssels prüfen
+      ansible.builtin.assert:
+        that:
+          - lmn_repo_key_info.stdout_lines | select('match', '^pub:') | list | length == 1
+          - (lmn_repo_key_info.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == lmn_repo_key_fpr
+        fail_msg: >-
+          {{ lmn_repo_gpg_url }} liefert nicht den erwarteten Schluessel
+          ({{ lmn_repo_key_fingerprint }}). Installation abgebrochen.
+        quiet: true
 
     - name: GPG-Schlüssel konvertieren und installieren
-      ansible.builtin.shell: |
-        cat /tmp/linuxmuster.gpg | gpg --dearmor -o /usr/share/keyrings/linuxmuster.net.gpg
-      args:
-        creates: /usr/share/keyrings/linuxmuster.net.gpg
+      ansible.builtin.command:
+        argv: [gpg, --batch, --yes, --dearmor, -o, '{{ lmn_repo_keyring }}', '{{ lmn_repo_key_download }}']
+
+    # Feste Inhalte statt apt_repository: eine aeltere Einrichtung hinterlaesst
+    # lmn.list ohne signed-by, die sonst neben der neuen Zeile stehen bliebe.
+    - name: Global vertrauten linuxmuster-Schlüssel vor dem Repository entfernen
+      ansible.builtin.file:
+        path: '{{ lmn_appliance_global_key }}'
+        state: absent
+
+    - name: Vorhandene deb822-Quelle vor dem Repository finden
+      ansible.builtin.stat:
+        path: '{{ lmn_repo_sources }}'
+      register: lmn_repo_sources_before
 
     - name: linuxmuster Repository hinzufügen
-      ansible.builtin.apt_repository:
-        repo: 'deb [arch=amd64 signed-by=/usr/share/keyrings/linuxmuster.net.gpg] {{ lmn_repo_url }} {{ lmn_repo_distribution }} main'
-        filename: lmn
-        state: present
+      ansible.builtin.copy:
+        dest: '{{ lmn_repo_list }}'
+        content: "{{ lmn_repo_deb_line }}\n"
+        mode: '0644'
+      when: not lmn_repo_sources_before.stat.exists
+
+    - name: Doppelte linuxmuster-Quelle vor dem Repository entfernen
+      ansible.builtin.file:
+        path: '{{ lmn_repo_list }}'
+        state: absent
+      when: lmn_repo_sources_before.stat.exists
 
     - name: Paketlisten aktualisieren
       ansible.builtin.apt:
@@ -357,70 +433,49 @@
     - name: lmn-appliance Script herunterladen
       ansible.builtin.get_url:
         url: '{{ lmn_appliance_url }}'
-        dest: /root/lmn-appliance
+        dest: '{{ lmn_appliance_script }}'
         mode: '0755'
+        checksum: 'sha256:{{ lmn_appliance_sha256 }}'
+
+    # lmn-appliance bekommt den oben geprueften Schluessel als Quelle und Keyring.
+    - name: lmn-appliance auf den geprüften Schlüssel umstellen
+      ansible.builtin.replace:
+        path: '{{ lmn_appliance_script }}'
+        regexp: '^{{ item.key }} = .*$'
+        replace: '{{ item.value }}'
+      loop: '{{ lmn_appliance_key_lines | dict2items }}'
+      loop_control:
+        label: '{{ item.value }}'
+
+    - name: lmn-appliance-Script lesen
+      ansible.builtin.slurp:
+        src: '{{ lmn_appliance_script }}'
+      register: lmn_appliance_source
+
+    - name: Prüfen dass lmn-appliance den geprüften Schlüssel nutzt
+      ansible.builtin.assert:
+        that:
+          - (lmn_appliance_lines | select('match', '^lmnkey_remote ') | list) == [lmn_appliance_key_lines.lmnkey_remote]
+          - (lmn_appliance_lines | select('match', '^lmnkey_local ') | list) == [lmn_appliance_key_lines.lmnkey_local]
+        fail_msg: >-
+          lmn-appliance laesst sich nicht auf den geprueften Schluessel umstellen
+          (lmnkey_remote oder lmnkey_local). Installation abgebrochen.
+        quiet: true
+      vars:
+        lmn_appliance_lines: "{{ (lmn_appliance_source.content | b64decode).splitlines() }}"
 
     - name: Netzmaske in CIDR-Notation umrechnen
       ansible.builtin.set_fact:
         lmn_cidr: "{{ (lmn_server_ip + '/' + lmn_netmask) | ansible.utils.ipaddr('prefix') }}"
 
-    # -------------------------------------------------------------------------
-    # DATENPLATTE ERMITTELN (wird per -l an lmn-appliance uebergeben)
-    # -------------------------------------------------------------------------
-    - name: Leere zweite Platte fuer LVM ermitteln
-      ansible.builtin.shell: |
-        # Erste vollstaendig leere Nicht-System-Platte:
-        # keine Partitionen, kein Dateisystem, keine Signatur (fs/parttable/LVM).
-        for d in $(lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}'); do
-          dev="/dev/$d"
-          [ "$(lsblk -n -o NAME "$dev" | wc -l)" -eq 1 ] || continue
-          [ -z "$(lsblk -dn -o FSTYPE "$dev")" ] || continue
-          blkid "$dev" >/dev/null 2>&1 && continue
-          echo "$dev"; break
-        done
-      args:
-        executable: /bin/bash
-      register: lmn_detected_disk
-      changed_when: false
-      when: lmn_setup_data_disk | bool
-
-    - name: Zu verwendende Datenplatte festlegen
-      ansible.builtin.set_fact:
-        lmn_data_disk_final: "{{ (lmn_data_disk | default('', true)) or (lmn_detected_disk.stdout | default('') | trim) }}"
-      when: lmn_setup_data_disk | bool
-
-    - name: Hinweis wenn keine leere Datenplatte gefunden wurde
-      ansible.builtin.debug:
-        msg: >-
-          Keine leere zweite Platte gefunden - Installation erfolgt auf der
-          Systemplatte (kein separates LVM). Vorhandene Platten werden nie
-          ueberschrieben; ggf. lmn_data_disk explizit setzen.
-      when:
-        - lmn_setup_data_disk | bool
-        - (lmn_data_disk_final | default('')) == ''
-
-    - name: Hinweis Datenplatte (7.4 ohne separates LVM)
-      ansible.builtin.debug:
-        msg: >-
-          linuxmuster.net {{ lmn_version_label }} verwendet kein separates
-          Daten-LVM mehr - die Installation erfolgt direkt auf der Systemplatte.
-          Eine evtl. erkannte zweite Platte ({{ lmn_data_disk_final }}) bleibt
-          unangetastet.
-      when:
-        - lmn_setup_data_disk | bool
-        - (lmn_data_disk_final | default('')) != ''
-        - not (lmn_appliance_supports_pvdevice | default(false) | bool)
-
-    - name: lmn-appliance ausführen (Server-Profil, LVM auf Datenplatte falls vorhanden)
+    - name: lmn-appliance ausführen (Server-Profil)
       ansible.builtin.shell: |
         set -o pipefail
-        /root/lmn-appliance -p server -u \
-          -n {{ lmn_server_ip }}/{{ lmn_cidr }} \
-          -f {{ lmn_gateway }} \
-          -d {{ lmn_domainname }} \
-          -t {{ lmn_servername }} \
-          {{ ('-l ' + lmn_data_disk_final) if ((lmn_data_disk_final | default('')) != '' and (lmn_appliance_supports_pvdevice | default(false) | bool)) else '' }} \
-          {{ ('-v ' + lmn_lvm_volumes) if ((lmn_lvm_volumes | default('')) != '' and (lmn_appliance_supports_pvdevice | default(false) | bool)) else '' }} \
+        {{ lmn_appliance_script }} -p server -u \
+          -n {{ (lmn_server_ip ~ '/' ~ lmn_cidr) | quote }} \
+          -f {{ lmn_gateway | quote }} \
+          -d {{ lmn_domainname | quote }} \
+          -t {{ lmn_servername | quote }} \
           2>&1 | while IFS= read -r line; do
           echo "$line"
         done
@@ -431,6 +486,89 @@
       changed_when: lmn_appliance_result.rc == 0
       async: 1800
       poll: 30
+
+    # =========================================================================
+    # REPOSITORY-SCHLUESSEL NACH LMN-APPLIANCE
+    # =========================================================================
+    # Nachpruefung: lmn-appliance darf nur den geprueften Schluessel hinterlassen,
+    # und das Repository nutzt ihn ausschliesslich ueber signed-by.
+
+    - name: Repository-Schlüssel nach lmn-appliance prüfen
+      block:
+        - name: Von lmn-appliance geschriebene Schlüssel finden
+          ansible.builtin.stat:
+            path: '{{ item }}'
+          loop:
+            - '{{ lmn_repo_keyring }}'
+            - '{{ lmn_appliance_global_key }}'
+          register: lmn_written_keys
+
+        - name: Repository-Schlüssel nach lmn-appliance vorhanden
+          ansible.builtin.assert:
+            that: lmn_written_keys.results[0].stat.exists
+            fail_msg: '{{ lmn_repo_keyring }} fehlt nach lmn-appliance.'
+            quiet: true
+
+        - name: Fingerprint der von lmn-appliance geschriebenen Schlüssel lesen
+          ansible.builtin.command:
+            argv: [gpg, --batch, --show-keys, --with-colons, '{{ item.stat.path }}']
+          loop: "{{ lmn_written_keys.results | selectattr('stat.exists') | list }}"
+          loop_control:
+            label: '{{ item.stat.path }}'
+          register: lmn_written_key_info
+          changed_when: false
+
+        - name: Fingerprint der von lmn-appliance geschriebenen Schlüssel prüfen
+          ansible.builtin.assert:
+            that:
+              - item.stdout_lines | select('match', '^pub:') | list | length == 1
+              - (item.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == lmn_repo_key_fpr
+            fail_msg: >-
+              {{ item.item.stat.path }} enthaelt nicht den erwarteten Schluessel
+              ({{ lmn_repo_key_fingerprint }}). Installation abgebrochen.
+            quiet: true
+          loop: '{{ lmn_written_key_info.results }}'
+          loop_control:
+            label: '{{ item.item.stat.path }}'
+      rescue:
+        - name: Unerwarteten linuxmuster-Schlüssel und seine Paketquellen entfernen
+          ansible.builtin.file:
+            path: '{{ item }}'
+            state: absent
+          loop:
+            - '{{ lmn_repo_keyring }}'
+            - '{{ lmn_appliance_global_key }}'
+            - '{{ lmn_repo_list }}'
+            - '{{ lmn_repo_sources }}'
+
+        - name: Nach unerwartetem linuxmuster-Schlüssel abbrechen
+          ansible.builtin.fail:
+            msg: >-
+              Nach lmn-appliance fehlt der linuxmuster-Schluessel oder es liegt ein anderer vor;
+              Schluessel und Paketquelle wurden entfernt. Erwartet: {{ lmn_repo_key_fingerprint }}
+
+    - name: Global vertrauten linuxmuster-Schlüssel entfernen
+      ansible.builtin.file:
+        path: '{{ lmn_appliance_global_key }}'
+        state: absent
+
+    - name: Vorhandene deb822-Quelle von lmn-appliance finden
+      ansible.builtin.stat:
+        path: '{{ lmn_repo_sources }}'
+      register: lmn_repo_sources_file
+
+    - name: linuxmuster-Repository auf seinen Schlüssel beschränken
+      ansible.builtin.copy:
+        dest: '{{ lmn_repo_list }}'
+        content: "{{ lmn_repo_deb_line }}\n"
+        mode: '0644'
+      when: not lmn_repo_sources_file.stat.exists
+
+    - name: Doppelte linuxmuster-Quelle entfernen
+      ansible.builtin.file:
+        path: '{{ lmn_repo_list }}'
+        state: absent
+      when: lmn_repo_sources_file.stat.exists
 
     # =========================================================================
     # LINUXMUSTER-SERVER-PAKETE SICHERSTELLEN
@@ -509,6 +647,7 @@
           skipfw = {{ lmn_skip_firewall | ternary('True', 'False') }}
         dest: /root/.linuxmuster/setup.ini
         mode: '0600'
+      no_log: true
 
     # =========================================================================
     # LINUXMUSTER-SETUP AUSFÜHREN
@@ -519,7 +658,6 @@
         set -o pipefail
         /usr/sbin/linuxmuster-setup \
           --config=/root/.linuxmuster/setup.ini \
-          --adminpw='{{ lmn_adminpw }}' \
           {% if lmn_unattended %}--unattended{% endif %} \
           {% if lmn_skip_firewall %}--skip-fw{% endif %} \
           2>&1 | while IFS= read -r line; do
@@ -627,6 +765,8 @@
           --create-global-binduser edulutionui-binduser
           --random-passwd-save
       register: binduser_create_result
+      # sophomorix-admin prints the generated password.
+      no_log: true
       when: binduser_exists.rc != 0
       until: binduser_create_result.rc == 0
       retries: 12
@@ -636,18 +776,18 @@
       ansible.builtin.debug:
         msg: |
           rc: {{ binduser_create_result.rc | default('skipped') }}
-          stdout: {{ binduser_create_result.stdout | default('skipped') }}
-          stderr: {{ binduser_create_result.stderr | default('skipped') }}
 
     - name: Binduser-Passwort aus linuxmuster secret lesen
       ansible.builtin.command:
         cmd: cat /etc/linuxmuster/.secret/edulutionui-binduser
       register: binduser_pw_result
       changed_when: false
+      no_log: true
 
     - name: Binduser-Passwort als Fakt setzen
       ansible.builtin.set_fact:
         edulution_binduser_password: '{{ binduser_pw_result.stdout | trim }}'
+      no_log: true
 
     - name: Edulution-Konfigurationsverzeichnis erstellen
       ansible.builtin.file:
@@ -664,6 +804,7 @@
           }
         dest: /var/lib/edulution/binduser-config.json
         mode: '0600'
+      no_log: true
 
     # =========================================================================
     # LINUXMUSTER-API INSTALLIEREN
@@ -787,7 +928,7 @@
           IP:     {{ lmn_server_ip }}
 
           Web-UI: https://{{ lmn_server_ip }}{{ (':' + lmn_webui_port | string) if (lmn_local_install | bool) else '' }}
-          Login:  global-admin / {{ lmn_adminpw }}
+          Login:  global-admin (Passwort aus der Einrichtung)
 
           edulution Binduser: CN=edulutionui-binduser,OU=Management,OU=GLOBAL,{{ edulution_dc_parts }}
 
@@ -803,6 +944,23 @@
   # ===========================================================================
 
   handlers:
+    # Ubuntus 50unattended-upgrades laesst nur Ubuntus eigene Release- und Security-Quellen zu; linuxmuster-Pakete bleiben manuell.
+    - name: Automatische Sicherheitsupdates in 20auto-upgrades einschalten
+      ansible.builtin.lineinfile:
+        path: /etc/apt/apt.conf.d/20auto-upgrades
+        regexp: '^APT::Periodic::Unattended-Upgrade'
+        line: 'APT::Periodic::Unattended-Upgrade "1";'
+        create: true
+        mode: '0644'
+      listen: Automatische Sicherheitsupdates wieder einschalten
+
+    - name: Unattended-upgrades starten
+      ansible.builtin.systemd:
+        name: unattended-upgrades
+        enabled: true
+        state: started
+      listen: Automatische Sicherheitsupdates wieder einschalten
+
     - name: Linuxmuster-WebUI neustarten
       ansible.builtin.systemd:
         name: linuxmuster-webui

@@ -112,8 +112,8 @@ const LmnInstallPage = () => {
         lmn_local_install: currentStore.lmnLocalInstall,
         lmn_webui_port: currentStore.lmnWebuiPort,
       });
-    } catch {
-      store.appendLmnOutput(t('lmnInstall.playbookError'));
+    } catch (error) {
+      store.appendLmnOutput(`${t('lmnInstall.playbookError')}: ${(error as Error).message}`);
       store.setLmnPlaybookStatus('failed');
     }
   }, [started, store]);
