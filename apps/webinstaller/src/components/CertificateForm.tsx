@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner, faCircleCheck, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
@@ -47,7 +47,11 @@ const CertificateForm = () => {
   const [certFile, setCertFile] = useState<File | null>(null);
   const [keyFile, setKeyFile] = useState<File | null>(null);
 
+  // Counts certificate type changes, so a response for an earlier choice is dropped.
+  const selection = useRef(0);
+
   const resetStatus = useCallback(() => {
+    selection.current += 1;
     setStatus('idle');
     setErrorMessage('');
     setAcmeDnsRegistration(null);
@@ -78,6 +82,7 @@ const CertificateForm = () => {
 
   const handleGenerateSs = useCallback(async () => {
     setStatus('loading');
+    const { current } = selection;
     const result = await createSsCertificate({
       countrycode: countryCode,
       state,
@@ -85,6 +90,7 @@ const CertificateForm = () => {
       organization,
       valid_days: Number(validDays),
     });
+    if (current !== selection.current) return;
     if (result.status) {
       setStatus('success');
       setCertificateConfigured(true);
@@ -100,7 +106,9 @@ const CertificateForm = () => {
     setCnameCheck(NO_CNAME_CHECK);
     setSkipCname(false);
     setCertificateConfigured(false);
+    const { current } = selection;
     const result = await createLeCertificate({ email });
+    if (current !== selection.current) return;
     if (result.status) {
       setStatus('success');
       const reg = result.registration as unknown;
@@ -120,10 +128,13 @@ const CertificateForm = () => {
 
   const handleCheckCname = useCallback(async () => {
     setCnameCheck({ ...NO_CNAME_CHECK, status: 'loading' });
+    const { current } = selection;
     try {
       const result = await checkAcmeCname();
+      if (current !== selection.current) return;
       setCnameCheck({ status: result.status ? 'success' : 'error', found: result.found, resolved: result.resolved });
     } catch {
+      if (current !== selection.current) return;
       setCnameCheck({ status: 'error', found: [], resolved: false });
     }
   }, []);
@@ -131,7 +142,9 @@ const CertificateForm = () => {
   const handleUpload = useCallback(async () => {
     if (!certFile || !keyFile) return;
     setStatus('loading');
+    const { current } = selection;
     const result = await uploadCertificate(certFile, keyFile);
+    if (current !== selection.current) return;
     if (result.status) {
       setStatus('success');
       setCertificateConfigured(true);
