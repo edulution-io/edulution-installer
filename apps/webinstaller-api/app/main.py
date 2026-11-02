@@ -67,7 +67,6 @@ class SSCertificate(BaseModel):
 
 class LECertificate(BaseModel):
     email: str
-    dns_provider: str
 
 
 class ConfigurationRequest(BaseModel):
@@ -167,7 +166,6 @@ class Data:
         self.DATA_EDULUTION_EXTERNAL_DOMAIN = None
         self.DATA_LE_USED = False
         self.DATA_LE_EMAIL = None
-        self.DATA_LE_DNS_PROVIDER = None
         self.DATA_LE_ACME_DNS_REGISTRATION = None
         self.DATA_PROXY_USED = False
         self.DATA_ORGANIZATION_TYPE = None
@@ -484,37 +482,63 @@ def createSSCertificate(ssdata: SSCertificate, data: Data = Depends(getData)):
 def createLECertificate(ledata: LECertificate, data: Data = Depends(getData)):
     data.DATA_LE_USED = True
     data.DATA_LE_EMAIL = ledata.email
-    data.DATA_LE_DNS_PROVIDER = ledata.dns_provider
 
-    # Register with acme-dns
-    try:
-        acme_dns_url = "https://acme-dns.netzint.de/register"
-        response = requests.post(acme_dns_url, timeout=15)
-        if response.status_code not in (200, 201):
+    # A new registration would need a new CNAME record, so a repeated request keeps the existing one.
+    if not data.DATA_LE_ACME_DNS_REGISTRATION:
+        try:
+            response = requests.post("https://acme-dns.netzint.de/register", timeout=15)
+            if response.status_code not in (200, 201):
+                return {
+                    "status": False,
+                    "message": f"ACME-DNS Registrierung fehlgeschlagen (HTTP {response.status_code})",
+                }
+            data.DATA_LE_ACME_DNS_REGISTRATION = response.json()
+        except requests.exceptions.Timeout:
             return {
                 "status": False,
-                "message": f"ACME-DNS Registrierung fehlgeschlagen (HTTP {response.status_code})",
+                "message": "ACME-DNS Registrierung fehlgeschlagen: Timeout",
+            }
+        except Exception as e:
+            print(e)
+            return {
+                "status": False,
+                "message": f"ACME-DNS Registrierung fehlgeschlagen: {str(e)}",
             }
 
-        registration = response.json()
-        data.DATA_LE_ACME_DNS_REGISTRATION = registration
+    return {
+        "status": True,
+        "message": "Let's Encrypt wird beim Start von Traefik konfiguriert",
+        "registration": data.DATA_LE_ACME_DNS_REGISTRATION,
+    }
 
-        return {
-            "status": True,
-            "message": "Let's Encrypt wird beim Start von Traefik konfiguriert",
-            "registration": registration,
-        }
-    except requests.exceptions.Timeout:
-        return {
-            "status": False,
-            "message": "ACME-DNS Registrierung fehlgeschlagen: Timeout",
-        }
-    except Exception as e:
-        print(e)
-        return {
-            "status": False,
-            "message": f"ACME-DNS Registrierung fehlgeschlagen: {str(e)}",
-        }
+
+# Public DNS-over-HTTPS resolvers: outbound DNS is often limited to local resolvers.
+ACME_CNAME_RESOLVERS = ("https://cloudflare-dns.com/dns-query", "https://dns.google/resolve")
+
+
+@api.get("/check-acme-cname")
+def checkAcmeCname(data: Data = Depends(getData)):
+    registration = data.DATA_LE_ACME_DNS_REGISTRATION
+    if not registration:
+        return {"status": False, "found": []}
+    expected = registration["fulldomain"].rstrip(".").lower()
+    found = set()
+    for url in ACME_CNAME_RESOLVERS:
+        try:
+            response = requests.get(
+                url,
+                params={"name": f"_acme-challenge.{data.DATA_EDULUTION_EXTERNAL_DOMAIN}", "type": "CNAME"},
+                headers={"accept": "application/dns-json"},
+                timeout=5,
+            )
+            found |= {
+                answer["data"].rstrip(".").lower() for answer in response.json().get("Answer", []) if answer.get("type") == 5
+            }
+        except Exception as e:
+            print(e)
+        if expected in found:
+            break
+    return {"status": expected in found, "found": sorted(found)}
 
 
 @api.post("/upload-certificate")
@@ -1126,49 +1150,23 @@ http:
 
     # Traefik-Konfiguration basierend auf Proxy und Let's Encrypt anpassen
     if not data.DATA_PROXY_USED and data.DATA_LE_USED:
-        # traefik.yml: Basis-Template + certificatesResolvers mit DNS-Challenge anhängen
-        traefik_le_config = f"""entryPoints:
-  web:
-    address: ":80"
-    http:
-      redirections:
-        entryPoint:
-          to: "websecure"
-          scheme: "https"
-  websecure:
-    address: ":443"
-    http:
-      tls: {{}}
-    transport:
-      respondingTimeouts:
-        readTimeout: 0s
-        writeTimeout: 0s
-        idleTimeout: 0s
-  imap:
-    address: ":143"
-  imaps:
-    address: ":993"
-
-providers:
-  file:
-    directory: "/etc/traefik/dynamic/"
-    watch: true
-
-log:
-  level: ERROR
-
-serversTransport:
-  insecureSkipVerify: true
-
-ping: {{}}
+        # traefik.yml: Basis-Template + certificatesResolvers mit DNS-Challenge anhängen. Traefik prüft die
+        # Propagation sonst selbst bei den Nameservern, was eingeschränktes DNS verhindert; Let's Encrypt prüft ohnehin.
+        traefik_template = (Path(EDULUTION_DIRECTORY) / "traefik.yml").read_text()
+        traefik_le_config = traefik_template.split("\ncertificatesResolvers:")[0].rstrip() + f"""
 
 certificatesResolvers:
   letsencrypt:
     acme:
-      email: {data.DATA_LE_EMAIL}
+      email: {json.dumps(data.DATA_LE_EMAIL)}
       storage: /etc/traefik/ssl/acme.json
       dnsChallenge:
         provider: acme-dns
+        resolvers:
+          - "1.1.1.1:53"
+          - "8.8.8.8:53"
+        delayBeforeCheck: 30
+        disablePropagationCheck: true
 """
 
         with open(f"{EDULUTION_DIRECTORY}/traefik.yml", "w") as f:

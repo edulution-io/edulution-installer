@@ -8,8 +8,9 @@ http:
       tls:
         certResolver: letsencrypt
         domains:
-          - main: "*.{{DOMAIN}}"
-          - sans: "{{DOMAIN}}"
+          - main: "{{DOMAIN}}"
+            sans:
+              - "*.{{DOMAIN}}"
 
     edulution-keycloak:
       rule: "PathPrefix(`/auth`)"
@@ -19,8 +20,9 @@ http:
       tls:
         certResolver: letsencrypt
         domains:
-          - main: "*.{{DOMAIN}}"
-          - sans: "{{DOMAIN}}"
+          - main: "{{DOMAIN}}"
+            sans:
+              - "*.{{DOMAIN}}"
 
     # Admin console and admin REST API. Containers use http://edu-keycloak:8080/auth directly instead.
     edulution-keycloak-admin:
@@ -33,8 +35,9 @@ http:
       tls:
         certResolver: letsencrypt
         domains:
-          - main: "*.{{DOMAIN}}"
-          - sans: "{{DOMAIN}}"
+          - main: "{{DOMAIN}}"
+            sans:
+              - "*.{{DOMAIN}}"
 
     edulution-ui:
       rule: "PathPrefix(`/`)"
@@ -44,8 +47,9 @@ http:
       tls:
         certResolver: letsencrypt
         domains:
-          - main: "*.{{DOMAIN}}"
-          - sans: "{{DOMAIN}}"
+          - main: "{{DOMAIN}}"
+            sans:
+              - "*.{{DOMAIN}}"
 
   middlewares:
     # Not 172.16.0.0/12: Docker uses it, also as the source of IPv6 and local clients.
