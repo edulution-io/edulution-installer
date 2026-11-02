@@ -12,5 +12,9 @@ COPY dist/apps/webinstaller /app/static
 COPY apps/webinstaller-api/startup.sh /startup.sh
 RUN chmod +x /startup.sh
 
+# Set from the release tag by the release workflow.
+ARG INSTALLER_VERSION=dev
+ENV INSTALLER_VERSION=$INSTALLER_VERSION
+
 EXPOSE 8000
 CMD ["/startup.sh"]

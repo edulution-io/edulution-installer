@@ -51,6 +51,8 @@ STATIC_PATH = BASE_PATH / "static"
 # Container path of the mounted install directory, as for every other file this installer writes.
 EDULUTION_DIRECTORY = "/edulution-ui"
 
+INSTALLER_VERSION = os.environ.get("INSTALLER_VERSION", "dev")
+
 
 # --- Pydantic Models ---
 
@@ -265,6 +267,11 @@ api = APIRouter(prefix="/api")
 
 
 # --- API Endpoints ---
+
+@api.get("/version")
+def getVersion():
+    return {"version": INSTALLER_VERSION}
+
 
 @api.post("/check-token")
 def checkToken(token: Token):

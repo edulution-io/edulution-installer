@@ -58,7 +58,8 @@ jobs:
 
       - name: Build installer image locally
         run: |
-          docker build -t "ghcr.io/edulution-io/edulution-installer:${INSTALLER_TAG}" .
+          docker build --build-arg INSTALLER_VERSION="${INSTALLER_TAG}" \
+            -t "ghcr.io/edulution-io/edulution-installer:${INSTALLER_TAG}" .
           docker images "ghcr.io/edulution-io/edulution-installer"
 
       - name: Check templates on get.edulution.io
@@ -125,6 +126,14 @@ jobs:
           done
           echo "::error::The installer did not finish within 25 minutes."
           exit 1
+
+      - name: Check the version in the installer output
+        run: |
+          WS="${{ github.workspace }}"
+          if ! sudo grep -qxF "                Version ${INSTALLER_TAG}" "${WS}/installer.log"; then
+            echo "::error::The installer output does not show version ${INSTALLER_TAG}."
+            exit 1
+          fi
 
       - name: Assert the stack
         run: sudo -E .github/e2e/assert-stack.sh

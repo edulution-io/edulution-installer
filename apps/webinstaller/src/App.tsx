@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@shared-ui';
@@ -13,9 +14,17 @@ import LmnConfigPage from './pages/LmnConfigPage';
 import LmnInstallPage from './pages/LmnInstallPage';
 import FinishPage from './pages/FinishPage';
 import LanguageSwitcher from './components/LanguageSwitcher';
+import { getInstallerVersion } from './api/installerApi';
 
 const App = () => {
   const { t } = useTranslation();
+  const [version, setVersion] = useState('');
+
+  useEffect(() => {
+    getInstallerVersion()
+      .then((result) => setVersion(result.version))
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="page-wrapper">
@@ -104,6 +113,7 @@ const App = () => {
               {t('footer.documentation')}
             </a>
             <LanguageSwitcher />
+            {version && <p className="mt-2 text-xs">{t('footer.version', { version })}</p>}
           </div>
         </CardContent>
       </Card>

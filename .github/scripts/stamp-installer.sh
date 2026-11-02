@@ -1,15 +1,21 @@
 #!/bin/bash
-# Writes the released image digest into the installer script that get.edulution.io serves.
-# Usage: stamp-installer.sh <installer-file> <image-ref>
+# Writes the released image digest and version into the installer script that get.edulution.io serves.
+# Usage: stamp-installer.sh <installer-file> <image-ref> <version>
 set -euo pipefail
 
 file=$1
 image=$2
+version=$3
 
 # The value ends up in a script that runs as root, so only a digest is accepted.
 if [[ ! $image =~ @sha256:[0-9a-f]{64}$ ]]
 then
   echo "::error::$image is not pinned by digest"
+  exit 1
+fi
+if [[ ! $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+then
+  echo "::error::$version is not a release version"
   exit 1
 fi
 
@@ -27,3 +33,4 @@ replace() {
 }
 
 replace EDULUTION_INSTALLER_IMAGE "$image"
+replace EDULUTION_INSTALLER_VERSION "$version"
