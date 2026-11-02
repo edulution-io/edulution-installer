@@ -3,10 +3,10 @@
 # LINUXMUSTER.NET 7.4 INSTALLATION PLAYBOOK (Ubuntu 26.04)
 # =============================================================================
 #
-# Verwendung:
+# Usage:
 #   ansible-playbook linuxmuster.yml -e lmn_schoolname="Meine Schule" -e lmn_adminpw="..."
 #
-#   Oder via API mit extra_vars:
+#   Or via the API with extra_vars:
 #   POST /api/playbook/start
 #   {
 #     "variables": {
@@ -19,17 +19,17 @@
 #
 # =============================================================================
 
-- name: linuxmuster.net 7.4 Installation
+- name: linuxmuster.net 7.4 installation
   hosts: localhost
   connection: local
   become: true
   gather_facts: true
-  # Damit die pausierten automatischen Updates auch nach einem fehlgeschlagenen Task wieder angehen.
+  # So that the paused automatic updates are switched back on after a failed task as well.
   force_handlers: true
 
-  # System-Proxy (falls gesetzt) an alle Tasks durchreichen, damit get_url/curl/
-  # apt auch in Proxy-Umgebungen funktionieren. Die Werte werden frueh aus
-  # /etc/environment gelesen (leer = kein Proxy).
+  # Pass the system proxy (if set) to all tasks so that get_url/curl/apt also
+  # work behind a proxy. The values are read early from /etc/environment
+  # (empty = no proxy).
   environment:
     http_proxy: "{{ lmn_http_proxy | default('') }}"
     https_proxy: "{{ lmn_https_proxy | default('') }}"
@@ -38,35 +38,34 @@
     no_proxy: "{{ lmn_no_proxy | default('') }}"
     NO_PROXY: "{{ lmn_no_proxy | default('') }}"
 
-  # Variablen können überschrieben werden durch:
-  # 1. -e / --extra-vars auf der Kommandozeile
-  # 2. API extra_vars (nur die Einstellungen in ALLOWED_EXTRA_VARS, api/models.py)
+  # Variables can be overridden by:
+  # 1. -e / --extra-vars on the command line
+  # 2. API extra_vars (only the settings in ALLOWED_EXTRA_VARS, api/models.py)
 
   vars:
     # -------------------------------------------------------------------------
-    # STANDARD-WERTE (werden durch extra_vars überschrieben)
+    # DEFAULTS (overridden by extra_vars)
     # -------------------------------------------------------------------------
-    # Extra-vars via -e oder API überschreiben diese Werte automatisch
+    # Extra vars passed with -e or through the API override these values.
 
-    # Netzwerk
+    # Network
     lmn_server_ip: '10.0.0.1'
     lmn_netmask: '255.255.0.0'
     lmn_gateway: '10.0.0.254'
 
-    # DNS-Forwarder fuer die Samba-interne DNS.
-    # linuxmuster-setup schreibt in die smb.conf zwingend
-    # "dns forwarder = <firewallip>". Ohne installierte Firewall zeigt das ins
-    # Leere. 'auto' -> wir lesen den tatsaechlich genutzten Upstream-DNS des
-    # Hosts (aus /run/systemd/resolve/resolv.conf bzw. resolv.conf) aus und nehmen
-    # den; nur wenn nichts gefunden wird, Fallback 9.9.9.9. Fest ueberschreibbar
-    # per -e lmn_dns_forwarder=<ip>.
+    # DNS forwarder for the Samba internal DNS.
+    # linuxmuster-setup always writes "dns forwarder = <firewallip>" into
+    # smb.conf. Without an installed firewall that points nowhere. 'auto' reads
+    # the upstream DNS the host actually uses (from /run/systemd/resolve/resolv.conf
+    # or resolv.conf) and uses it; only if none is found, it falls back to 9.9.9.9.
+    # Set a fixed one with -e lmn_dns_forwarder=<ip>.
     lmn_dns_forwarder: 'auto'
 
     # Server
     lmn_servername: 'server'
     lmn_domainname: 'linuxmuster.lan'
 
-    # Schule
+    # School
     lmn_schoolname: 'Meine Schule'
     lmn_location: 'Musterstadt'
     lmn_country: 'de'
@@ -75,33 +74,33 @@
     # DHCP
     lmn_dhcprange: '10.0.100.1 10.0.100.254'
 
-    # Admin-Passwort (MUSS überschrieben werden!)
+    # Admin password (MUST be overridden!)
     lmn_adminpw: 'Muster!'
 
     # System
     lmn_timezone: 'Europe/Berlin'
     lmn_locale: 'de_DE.UTF-8'
 
-    # Erweiterte Optionen
+    # Advanced options
     lmn_skip_firewall: true
     lmn_unattended: true
-    # Pausiert die automatischen Updates nur waehrend der Installation; danach laufen die Sicherheitsupdates wieder.
+    # Pauses automatic updates only during the installation; security updates run again afterwards.
     lmn_disable_auto_updates: true
 
-    # Lokale Installation (edulution-UI und LMN-Server auf derselben Maschine).
-    # Wird bei "gleiche Maschine" in der Installer-UI auf true gesetzt.
-    # In diesem Fall kollidiert die Ajenti-Web-UI (Port 443) mit dem Traefik
-    # von edulution, daher wird Ajenti auf lmn_webui_port verschoben.
+    # Local installation (edulution UI and LMN server on the same machine).
+    # Set to true for "same machine" in the installer UI.
+    # In that case the Ajenti web UI (port 443) collides with the edulution
+    # Traefik, so Ajenti is moved to lmn_webui_port.
     lmn_local_install: false
     lmn_webui_port: 8443
 
-    # Firewall wird standardmaessig NICHT installiert (lmn_skip_firewall: true).
-    # Die Firewall muss separat eingerichtet werden.
+    # The firewall is NOT installed by default (lmn_skip_firewall: true).
+    # It has to be set up separately.
 
-    # Repository (normalerweise nicht ändern)
+    # Repository (normally left unchanged)
     lmn_repo_url: 'https://deb.linuxmuster.net/'
     lmn_repo_gpg_url: 'https://deb.linuxmuster.net/pub.gpg'
-    # Fingerprint des linuxmuster.net Archiv Key; auch lmn-appliance bekommt diesen Schluessel.
+    # Fingerprint of the linuxmuster.net archive key; lmn-appliance gets this key as well.
     lmn_repo_key_fingerprint: '21A91AEC28D1BE943FCF2AA94E8B8B667D752C32'  # gitleaks:allow
     lmn_repo_key_download: /root/linuxmuster.gpg
     lmn_repo_keyring: /usr/share/keyrings/linuxmuster.net.gpg
@@ -111,16 +110,16 @@
     lmn_appliance_script: /root/lmn-appliance
     lmn_repo_key_fpr: "{{ lmn_repo_key_fingerprint | replace(' ', '') | upper }}"
     lmn_repo_deb_line: 'deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} {{ lmn_repo_distribution }} main'
-    # Zeilen in lmn-appliance, die auf den geprueften Schluessel umgestellt werden.
+    # Lines in lmn-appliance that are switched to the checked key.
     lmn_appliance_key_lines:
       lmnkey_remote: "lmnkey_remote = 'file://{{ lmn_repo_key_download }}'"
       lmnkey_local: "lmnkey_local = '{{ lmn_repo_keyring }}'"
-    # linuxmuster-Version anhand der Ubuntu-Version; neu installiert wird nur noch 7.4 auf Ubuntu 26.04.
-    # lmn_repo_distribution/lmn_prepare_version werden daraus per set_fact
-    # abgeleitet (per -e ueberschreibbar; eine andere lmn-appliance-Version braucht
-    # zusaetzlich lmn_prepare_commit und lmn_appliance_sha256).
-    # lmn-appliance wird ueber den Commit des Tags geladen und gegen die Pruefsumme geprueft;
-    # ein neuer Tag braucht beide Werte neu.
+    # linuxmuster version by Ubuntu version; new installations use 7.4 on Ubuntu 26.04 only.
+    # lmn_repo_distribution/lmn_prepare_version are derived from it with set_fact
+    # (can be overridden with -e; another lmn-appliance version also needs
+    # lmn_prepare_commit and lmn_appliance_sha256).
+    # lmn-appliance is loaded by the commit of the tag and checked against the checksum;
+    # a new tag needs both values again.
     lmn_version_map:
       '26':
         distribution: 'lmn74'
@@ -130,7 +129,7 @@
         label: '7.4'
     lmn_appliance_url: 'https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/{{ lmn_prepare_commit }}/lmn-appliance'
 
-    # Pakete
+    # Packages
     lmn_additional_packages:
       - net-tools
       - iputils-ping
@@ -142,27 +141,27 @@
       - curl
       - gnupg
       - lvm2
-      # Als manuell installiert markiert, damit ein spaeteres autoremove das Paket nicht mitnimmt.
+      # Marked as manually installed so that a later autoremove does not take the package with it.
       - unattended-upgrades
 
   tasks:
     # =========================================================================
-    # GRUNDLEGENDE SYSTEMKONFIGURATION
+    # BASIC SYSTEM CONFIGURATION
     # =========================================================================
 
-    - name: Betriebssystem pruefen (Ubuntu 26.04 -> linuxmuster.net 7.4)
+    - name: Check the operating system (Ubuntu 26.04 -> linuxmuster.net 7.4)
       ansible.builtin.assert:
         that:
           - ansible_distribution == "Ubuntu"
           - ansible_distribution_major_version in lmn_version_map
         fail_msg: >-
-          linuxmuster.net 7.4 benoetigt Ubuntu 26.04, gefunden: {{ ansible_distribution }}
-          {{ ansible_distribution_version }}. Bitte zuerst ein Release-Upgrade auf Ubuntu 26.04
-          durchfuehren (do-release-upgrade) und die Installation danach erneut starten.
-        success_msg: 'Ubuntu {{ ansible_distribution_version }} erkannt'
+          linuxmuster.net 7.4 requires Ubuntu 26.04, found: {{ ansible_distribution }}
+          {{ ansible_distribution_version }}. Please run a release upgrade to Ubuntu 26.04
+          first (do-release-upgrade) and then start the installation again.
+        success_msg: 'Ubuntu {{ ansible_distribution_version }} detected'
 
-    # setup.ini nimmt Werte zeilenweise; ein Zeilenumbruch wuerde eine weitere Einstellung ergeben.
-    - name: Einstellungen pruefen
+    # setup.ini takes one value per line; a line break would add another setting.
+    - name: Check the settings
       ansible.builtin.assert:
         that:
           - lmn_adminpw | string | trim | length > 0
@@ -172,10 +171,10 @@
             ~ lmn_dhcprange ~ lmn_schoolname ~ lmn_location ~ lmn_country ~ lmn_state ~ lmn_adminpw)
             is not search('[\r\n]')
         fail_msg: >-
-          Bitte ein eigenes Admin-Passwort setzen (-e lmn_adminpw=...). Die Werte fuer
-          setup.ini duerfen keinen Zeilenumbruch enthalten.
+          Please set your own admin password (-e lmn_adminpw=...). The values for
+          setup.ini must not contain a line break.
 
-    - name: linuxmuster-Version anhand der Ubuntu-Version bestimmen
+    - name: Determine the linuxmuster version from the Ubuntu version
       ansible.builtin.set_fact:
         lmn_repo_distribution: "{{ lmn_version_map[ansible_distribution_major_version].distribution }}"
         lmn_prepare_version: "{{ lmn_version_map[ansible_distribution_major_version].prepare_version }}"
@@ -183,8 +182,8 @@
         lmn_appliance_sha256: "{{ lmn_version_map[ansible_distribution_major_version].appliance_sha256 }}"
         lmn_version_label: "{{ lmn_version_map[ansible_distribution_major_version].label }}"
 
-    # Per -e gesetzte Werte gehen dem set_fact vor; eine andere Version braucht ihren eigenen Commit und ihre Pruefsumme.
-    - name: lmn-appliance-Version und Commit pruefen
+    # Values set with -e take precedence over set_fact; another version needs its own commit and checksum.
+    - name: Check the lmn-appliance version and commit
       ansible.builtin.assert:
         that:
           - >-
@@ -192,22 +191,22 @@
             and lmn_appliance_sha256 == lmn_defaults.appliance_sha256)
             or (lmn_prepare_commit != lmn_defaults.prepare_commit and lmn_appliance_sha256 != lmn_defaults.appliance_sha256)
         fail_msg: >-
-          Fuer lmn-appliance {{ lmn_prepare_version }} bitte auch lmn_prepare_commit und
-          lmn_appliance_sha256 setzen (-e).
+          For lmn-appliance {{ lmn_prepare_version }}, please also set lmn_prepare_commit and
+          lmn_appliance_sha256 (-e).
       vars:
         lmn_defaults: '{{ lmn_version_map[ansible_distribution_major_version] }}'
 
-    - name: Gewaehlte linuxmuster-Version anzeigen
+    - name: Show the selected linuxmuster version
       ansible.builtin.debug:
         msg: >-
-          Ubuntu {{ ansible_distribution_version }} erkannt -> linuxmuster.net
+          Ubuntu {{ ansible_distribution_version }} detected -> linuxmuster.net
           {{ lmn_version_label }} ({{ lmn_repo_distribution }}, lmn-appliance
-          {{ lmn_prepare_version }}, Commit {{ lmn_prepare_commit[:7] }})
+          {{ lmn_prepare_version }}, commit {{ lmn_prepare_commit[:7] }})
 
     # -------------------------------------------------------------------------
-    # PROXY + UPSTREAM-DNS ERMITTELN (vor der Netz-Neukonfiguration)
+    # DETECT PROXY + UPSTREAM DNS (before the network is reconfigured)
     # -------------------------------------------------------------------------
-    - name: System-Proxy aus /etc/environment lesen
+    - name: Read the system proxy from /etc/environment
       ansible.builtin.shell: |
         . /etc/environment 2>/dev/null || true
         printf '%s\n%s\n%s\n' "${http_proxy:-${HTTP_PROXY:-}}" "${https_proxy:-${HTTPS_PROXY:-}}" "${no_proxy:-${NO_PROXY:-}}"
@@ -217,19 +216,19 @@
       changed_when: false
       failed_when: false
 
-    - name: Proxy-Variablen setzen
+    - name: Set the proxy variables
       ansible.builtin.set_fact:
         lmn_http_proxy: "{{ lmn_proxy_raw.stdout_lines[0] | default('') }}"
         lmn_https_proxy: "{{ lmn_proxy_raw.stdout_lines[1] | default('') }}"
         lmn_no_proxy: "{{ lmn_proxy_raw.stdout_lines[2] | default('') }}"
 
-    - name: Proxy-Konfiguration anzeigen
+    - name: Show the proxy configuration
       ansible.builtin.debug:
         msg: >-
           Proxy: http='{{ lmn_http_proxy }}' https='{{ lmn_https_proxy }}'
           no_proxy='{{ lmn_no_proxy }}'
 
-    - name: Upstream-DNS des Hosts ermitteln
+    - name: Detect the upstream DNS of the host
       ansible.builtin.shell: |
         for f in /run/systemd/resolve/resolv.conf /etc/resolv.conf; do
           [ -r "$f" ] || continue
@@ -243,23 +242,23 @@
       changed_when: false
       failed_when: false
 
-    - name: DNS-Forwarder bestimmen (auto -> erkannter Upstream, sonst 9.9.9.9)
+    - name: Determine the DNS forwarder (auto -> detected upstream, otherwise 9.9.9.9)
       ansible.builtin.set_fact:
         lmn_dns_forwarder: "{{ (lmn_detected_dns.stdout | default('') | trim) or '9.9.9.9' }}"
       when: lmn_dns_forwarder == 'auto'
 
-    - name: Verwendeten DNS-Forwarder anzeigen
+    - name: Show the DNS forwarder in use
       ansible.builtin.debug:
-        msg: "DNS-Forwarder fuer Samba: {{ lmn_dns_forwarder }}"
+        msg: "DNS forwarder for Samba: {{ lmn_dns_forwarder }}"
 
-    - name: Warten bis apt-Lock frei ist
+    - name: Wait for the apt lock
       ansible.builtin.shell: |
         while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
           sleep 5
         done
       changed_when: false
 
-    - name: Unattended-upgrades stoppen und deaktivieren
+    - name: Stop and disable unattended-upgrades
       ansible.builtin.shell: |
         systemctl stop unattended-upgrades 2>/dev/null || true
         systemctl disable unattended-upgrades 2>/dev/null || true
@@ -269,34 +268,34 @@
         done
       changed_when: true
       when: lmn_disable_auto_updates | bool
-      notify: Automatische Sicherheitsupdates wieder einschalten
+      notify: Switch automatic security updates back on
 
-    - name: Zeitzone konfigurieren
+    - name: Configure the time zone
       community.general.timezone:
         name: '{{ lmn_timezone }}'
 
-    - name: Cloud-init deaktivieren
+    - name: Disable cloud-init
       ansible.builtin.file:
         path: /etc/cloud/cloud-init.disabled
         state: touch
         mode: '0644'
       ignore_errors: true
 
-    - name: Warten bis apt-Lock frei ist (vor cloud-init)
+    - name: Wait for the apt lock (before cloud-init)
       ansible.builtin.shell: |
         while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
           sleep 5
         done
       changed_when: false
 
-    - name: Cloud-init Paket entfernen
+    - name: Remove the cloud-init package
       ansible.builtin.apt:
         name: cloud-init
         state: absent
         purge: true
       ignore_errors: true
 
-    - name: Cloud-init Verzeichnisse entfernen
+    - name: Remove the cloud-init directories
       ansible.builtin.file:
         path: '{{ item }}'
         state: absent
@@ -305,27 +304,27 @@
         - /var/lib/cloud
       ignore_errors: true
 
-    - name: Erforderliche Pakete installieren
+    - name: Install the required packages
       ansible.builtin.apt:
         name: '{{ lmn_additional_packages }}'
         state: present
         update_cache: true
 
-    - name: Locale generieren
+    - name: Generate the locale
       community.general.locale_gen:
         name: '{{ lmn_locale }}'
         state: present
 
-    - name: Locale als Standard setzen
+    - name: Set the locale as default
       ansible.builtin.command:
         argv: [localectl, set-locale, "LANG={{ lmn_locale }}"]
       changed_when: true
 
     # =========================================================================
-    # AUTOMATISCHE UPDATES WAEHREND DER INSTALLATION PAUSIEREN
+    # PAUSE AUTOMATIC UPDATES DURING THE INSTALLATION
     # =========================================================================
 
-    - name: Automatische Updates waehrend der Installation pausieren
+    - name: Pause automatic updates during the installation
       ansible.builtin.lineinfile:
         path: /etc/apt/apt.conf.d/20auto-upgrades
         regexp: '^APT::Periodic::Unattended-Upgrade'
@@ -333,13 +332,13 @@
         create: true
         mode: '0644'
       when: lmn_disable_auto_updates | bool
-      notify: Automatische Sicherheitsupdates wieder einschalten
+      notify: Switch automatic security updates back on
 
     # =========================================================================
-    # QEMU GUEST AGENT (für Virtualisierung)
+    # QEMU GUEST AGENT (for virtualisation)
     # =========================================================================
 
-    - name: QEMU Guest Agent aktivieren
+    - name: Enable the QEMU guest agent
       ansible.builtin.systemd:
         name: qemu-guest-agent
         enabled: true
@@ -347,10 +346,10 @@
       ignore_errors: true
 
     # =========================================================================
-    # SERIAL CONSOLE (für Proxmox)
+    # SERIAL CONSOLE (for Proxmox)
     # =========================================================================
 
-    - name: Serial Console Service aktivieren
+    - name: Enable the serial console service
       ansible.builtin.systemd:
         name: serial-getty@ttyS0.service
         enabled: true
@@ -358,10 +357,10 @@
       ignore_errors: true
 
     # =========================================================================
-    # SYSTEM-UPDATE
+    # SYSTEM UPDATE
     # =========================================================================
 
-    - name: System aktualisieren
+    - name: Update the system
       ansible.builtin.apt:
         upgrade: dist
         update_cache: true
@@ -370,59 +369,59 @@
     # LINUXMUSTER.NET REPOSITORY
     # =========================================================================
 
-    - name: GPG-Schlüssel herunterladen
+    - name: Download the GPG key
       ansible.builtin.get_url:
         url: '{{ lmn_repo_gpg_url }}'
         dest: '{{ lmn_repo_key_download }}'
         mode: '0644'
         force: true
 
-    - name: Fingerprint des linuxmuster-Schlüssels lesen
+    - name: Read the fingerprint of the linuxmuster key
       ansible.builtin.command:
         argv: [gpg, --batch, --show-keys, --with-colons, '{{ lmn_repo_key_download }}']
       register: lmn_repo_key_info
       changed_when: false
 
-    - name: Fingerprint des linuxmuster-Schlüssels prüfen
+    - name: Check the fingerprint of the linuxmuster key
       ansible.builtin.assert:
         that:
           - lmn_repo_key_info.stdout_lines | select('match', '^pub:') | list | length == 1
           - (lmn_repo_key_info.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == lmn_repo_key_fpr
         fail_msg: >-
-          {{ lmn_repo_gpg_url }} liefert nicht den erwarteten Schluessel
-          ({{ lmn_repo_key_fingerprint }}). Installation abgebrochen.
+          {{ lmn_repo_gpg_url }} does not provide the expected key
+          ({{ lmn_repo_key_fingerprint }}). Installation stopped.
         quiet: true
 
-    - name: GPG-Schlüssel konvertieren und installieren
+    - name: Convert and install the GPG key
       ansible.builtin.command:
         argv: [gpg, --batch, --yes, --dearmor, -o, '{{ lmn_repo_keyring }}', '{{ lmn_repo_key_download }}']
 
-    # Feste Inhalte statt apt_repository: eine aeltere Einrichtung hinterlaesst
-    # lmn.list ohne signed-by, die sonst neben der neuen Zeile stehen bliebe.
-    - name: Global vertrauten linuxmuster-Schlüssel vor dem Repository entfernen
+    # Fixed content instead of apt_repository: an older setup leaves lmn.list
+    # without signed-by, which would otherwise stay next to the new line.
+    - name: Remove the globally trusted linuxmuster key before adding the repository
       ansible.builtin.file:
         path: '{{ lmn_appliance_global_key }}'
         state: absent
 
-    - name: Vorhandene deb822-Quelle vor dem Repository finden
+    - name: Find an existing deb822 source before adding the repository
       ansible.builtin.stat:
         path: '{{ lmn_repo_sources }}'
       register: lmn_repo_sources_before
 
-    - name: linuxmuster Repository hinzufügen
+    - name: Add the linuxmuster repository
       ansible.builtin.copy:
         dest: '{{ lmn_repo_list }}'
         content: "{{ lmn_repo_deb_line }}\n"
         mode: '0644'
       when: not lmn_repo_sources_before.stat.exists
 
-    - name: Doppelte linuxmuster-Quelle vor dem Repository entfernen
+    - name: Remove the duplicate linuxmuster source before adding the repository
       ansible.builtin.file:
         path: '{{ lmn_repo_list }}'
         state: absent
       when: lmn_repo_sources_before.stat.exists
 
-    - name: Paketlisten aktualisieren
+    - name: Update the package lists
       ansible.builtin.apt:
         update_cache: true
 
@@ -430,15 +429,15 @@
     # LMN-APPLIANCE SCRIPT
     # =========================================================================
 
-    - name: lmn-appliance Script herunterladen
+    - name: Download the lmn-appliance script
       ansible.builtin.get_url:
         url: '{{ lmn_appliance_url }}'
         dest: '{{ lmn_appliance_script }}'
         mode: '0755'
         checksum: 'sha256:{{ lmn_appliance_sha256 }}'
 
-    # lmn-appliance bekommt den oben geprueften Schluessel als Quelle und Keyring.
-    - name: lmn-appliance auf den geprüften Schlüssel umstellen
+    # lmn-appliance gets the key checked above as its source and keyring.
+    - name: Switch lmn-appliance to the checked key
       ansible.builtin.replace:
         path: '{{ lmn_appliance_script }}'
         regexp: '^{{ item.key }} = .*$'
@@ -447,28 +446,28 @@
       loop_control:
         label: '{{ item.value }}'
 
-    - name: lmn-appliance-Script lesen
+    - name: Read the lmn-appliance script
       ansible.builtin.slurp:
         src: '{{ lmn_appliance_script }}'
       register: lmn_appliance_source
 
-    - name: Prüfen dass lmn-appliance den geprüften Schlüssel nutzt
+    - name: Check that lmn-appliance uses the checked key
       ansible.builtin.assert:
         that:
           - (lmn_appliance_lines | select('match', '^lmnkey_remote ') | list) == [lmn_appliance_key_lines.lmnkey_remote]
           - (lmn_appliance_lines | select('match', '^lmnkey_local ') | list) == [lmn_appliance_key_lines.lmnkey_local]
         fail_msg: >-
-          lmn-appliance laesst sich nicht auf den geprueften Schluessel umstellen
-          (lmnkey_remote oder lmnkey_local). Installation abgebrochen.
+          lmn-appliance cannot be switched to the checked key
+          (lmnkey_remote or lmnkey_local). Installation stopped.
         quiet: true
       vars:
         lmn_appliance_lines: "{{ (lmn_appliance_source.content | b64decode).splitlines() }}"
 
-    - name: Netzmaske in CIDR-Notation umrechnen
+    - name: Convert the netmask to CIDR notation
       ansible.builtin.set_fact:
         lmn_cidr: "{{ (lmn_server_ip + '/' + lmn_netmask) | ansible.utils.ipaddr('prefix') }}"
 
-    - name: lmn-appliance ausführen (Server-Profil)
+    - name: Run lmn-appliance (server profile)
       ansible.builtin.shell: |
         set -o pipefail
         {{ lmn_appliance_script }} -p server -u \
@@ -488,14 +487,14 @@
       poll: 30
 
     # =========================================================================
-    # REPOSITORY-SCHLUESSEL NACH LMN-APPLIANCE
+    # REPOSITORY KEY AFTER LMN-APPLIANCE
     # =========================================================================
-    # Nachpruefung: lmn-appliance darf nur den geprueften Schluessel hinterlassen,
-    # und das Repository nutzt ihn ausschliesslich ueber signed-by.
+    # Follow-up check: lmn-appliance may leave only the checked key behind,
+    # and the repository uses it through signed-by only.
 
-    - name: Repository-Schlüssel nach lmn-appliance prüfen
+    - name: Check the repository key after lmn-appliance
       block:
-        - name: Von lmn-appliance geschriebene Schlüssel finden
+        - name: Find the keys written by lmn-appliance
           ansible.builtin.stat:
             path: '{{ item }}'
           loop:
@@ -503,13 +502,13 @@
             - '{{ lmn_appliance_global_key }}'
           register: lmn_written_keys
 
-        - name: Repository-Schlüssel nach lmn-appliance vorhanden
+        - name: Repository key present after lmn-appliance
           ansible.builtin.assert:
             that: lmn_written_keys.results[0].stat.exists
-            fail_msg: '{{ lmn_repo_keyring }} fehlt nach lmn-appliance.'
+            fail_msg: '{{ lmn_repo_keyring }} is missing after lmn-appliance.'
             quiet: true
 
-        - name: Fingerprint der von lmn-appliance geschriebenen Schlüssel lesen
+        - name: Read the fingerprint of the keys written by lmn-appliance
           ansible.builtin.command:
             argv: [gpg, --batch, --show-keys, --with-colons, '{{ item.stat.path }}']
           loop: "{{ lmn_written_keys.results | selectattr('stat.exists') | list }}"
@@ -518,20 +517,20 @@
           register: lmn_written_key_info
           changed_when: false
 
-        - name: Fingerprint der von lmn-appliance geschriebenen Schlüssel prüfen
+        - name: Check the fingerprint of the keys written by lmn-appliance
           ansible.builtin.assert:
             that:
               - item.stdout_lines | select('match', '^pub:') | list | length == 1
               - (item.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == lmn_repo_key_fpr
             fail_msg: >-
-              {{ item.item.stat.path }} enthaelt nicht den erwarteten Schluessel
-              ({{ lmn_repo_key_fingerprint }}). Installation abgebrochen.
+              {{ item.item.stat.path }} does not contain the expected key
+              ({{ lmn_repo_key_fingerprint }}). Installation stopped.
             quiet: true
           loop: '{{ lmn_written_key_info.results }}'
           loop_control:
             label: '{{ item.item.stat.path }}'
       rescue:
-        - name: Unerwarteten linuxmuster-Schlüssel und seine Paketquellen entfernen
+        - name: Remove the unexpected linuxmuster key and its package sources
           ansible.builtin.file:
             path: '{{ item }}'
             state: absent
@@ -541,52 +540,52 @@
             - '{{ lmn_repo_list }}'
             - '{{ lmn_repo_sources }}'
 
-        - name: Nach unerwartetem linuxmuster-Schlüssel abbrechen
+        - name: Stop after an unexpected linuxmuster key
           ansible.builtin.fail:
             msg: >-
-              Nach lmn-appliance fehlt der linuxmuster-Schluessel oder es liegt ein anderer vor;
-              Schluessel und Paketquelle wurden entfernt. Erwartet: {{ lmn_repo_key_fingerprint }}
+              After lmn-appliance the linuxmuster key is missing or a different one is present;
+              the key and the package source were removed. Expected: {{ lmn_repo_key_fingerprint }}
 
-    - name: Global vertrauten linuxmuster-Schlüssel entfernen
+    - name: Remove the globally trusted linuxmuster key
       ansible.builtin.file:
         path: '{{ lmn_appliance_global_key }}'
         state: absent
 
-    - name: Vorhandene deb822-Quelle von lmn-appliance finden
+    - name: Find the deb822 source written by lmn-appliance
       ansible.builtin.stat:
         path: '{{ lmn_repo_sources }}'
       register: lmn_repo_sources_file
 
-    - name: linuxmuster-Repository auf seinen Schlüssel beschränken
+    - name: Restrict the linuxmuster repository to its key
       ansible.builtin.copy:
         dest: '{{ lmn_repo_list }}'
         content: "{{ lmn_repo_deb_line }}\n"
         mode: '0644'
       when: not lmn_repo_sources_file.stat.exists
 
-    - name: Doppelte linuxmuster-Quelle entfernen
+    - name: Remove the duplicate linuxmuster source
       ansible.builtin.file:
         path: '{{ lmn_repo_list }}'
         state: absent
       when: lmn_repo_sources_file.stat.exists
 
     # =========================================================================
-    # LINUXMUSTER-SERVER-PAKETE SICHERSTELLEN
+    # MAKE SURE THE LINUXMUSTER SERVER PACKAGES ARE INSTALLED
     # =========================================================================
-    # lmn-appliance/lmn-prepare installiert die Server-Pakete zwar selbst, prueft
-    # den Return-Code aber nicht und laeuft ggf. ohne DEBIAN_FRONTEND -> bei
-    # Paketen mit debconf-Rueckfragen bricht der Install im nicht-interaktiven
-    # Lauf still ab, sodass /usr/sbin/linuxmuster-setup fehlt. Daher hier explizit
-    # und nicht-interaktiv nachziehen (idempotent, klare Fehlermeldung).
+    # lmn-appliance/lmn-prepare installs the server packages itself, but does not
+    # check the return code and may run without DEBIAN_FRONTEND -> packages with
+    # debconf questions make the install stop silently in a non-interactive run,
+    # so /usr/sbin/linuxmuster-setup is missing. Therefore install them here
+    # explicitly and non-interactively (idempotent, clear error message).
 
-    - name: Halb-konfigurierte Pakete abschliessen
+    - name: Finish half-configured packages
       ansible.builtin.command:
         cmd: dpkg --configure -a
       environment:
         DEBIAN_FRONTEND: noninteractive
       changed_when: false
 
-    - name: linuxmuster-Server-Pakete installieren (nicht-interaktiv)
+    - name: Install the linuxmuster server packages (non-interactive)
       ansible.builtin.apt:
         name:
           - linuxmuster-base7
@@ -599,35 +598,35 @@
       environment:
         DEBIAN_FRONTEND: noninteractive
 
-    - name: Sicherstellen dass linuxmuster-setup vorhanden ist
+    - name: Make sure linuxmuster-setup is present
       ansible.builtin.stat:
         path: /usr/sbin/linuxmuster-setup
       register: lmn_setup_bin
 
-    - name: Abbrechen wenn linuxmuster-setup fehlt
+    - name: Stop if linuxmuster-setup is missing
       ansible.builtin.assert:
         that: lmn_setup_bin.stat.exists
         fail_msg: >-
-          /usr/sbin/linuxmuster-setup fehlt - die linuxmuster-Server-Pakete
-          konnten nicht installiert werden. Bitte 'apt-get install
-          linuxmuster-base7' pruefen (Repo/Abhaengigkeiten).
+          /usr/sbin/linuxmuster-setup is missing - the linuxmuster server packages
+          could not be installed. Please check 'apt-get install
+          linuxmuster-base7' (repository/dependencies).
 
     # =========================================================================
-    # LINUXMUSTER-SETUP KONFIGURATIONSDATEI
+    # LINUXMUSTER-SETUP CONFIGURATION FILE
     # =========================================================================
 
-    - name: Setup-Konfigurationsverzeichnis erstellen
+    - name: Create the setup configuration directory
       ansible.builtin.file:
         path: /root/.linuxmuster
         state: directory
         mode: '0700'
 
-    # HINWEIS: lmn_adminpw darf die Zeichen $ und % nicht enthalten.
-    # linuxmuster-setup liest die ini mit Pythons ConfigParser ein, dessen
-    # Interpolation $...-/%(...) s-Sequenzen auswertet und das Passwort
-    # sonst beschädigt. Die Web-UI validiert das bereits; bei direktem
-    # Aufruf via ansible-playbook muss der Aufrufer das selbst sicherstellen.
-    - name: Setup-Konfigurationsdatei erstellen
+    # NOTE: lmn_adminpw must not contain the characters $ and %.
+    # linuxmuster-setup reads the ini with Python's ConfigParser, whose
+    # interpolation evaluates $... and %(...)s sequences and would otherwise
+    # damage the password. The web UI already validates this; when calling
+    # ansible-playbook directly, the caller has to make sure of it.
+    - name: Create the setup configuration file
       ansible.builtin.copy:
         content: |
           [setup]
@@ -650,10 +649,10 @@
       no_log: true
 
     # =========================================================================
-    # LINUXMUSTER-SETUP AUSFÜHREN
+    # RUN LINUXMUSTER-SETUP
     # =========================================================================
 
-    - name: linuxmuster-setup ausführen
+    - name: Run linuxmuster-setup
       ansible.builtin.shell: |
         set -o pipefail
         /usr/sbin/linuxmuster-setup \
@@ -672,10 +671,10 @@
       poll: 30
 
     # =========================================================================
-    # POST-SETUP AUFGABEN
+    # POST-SETUP TASKS
     # =========================================================================
 
-    - name: Setup-Logdateien sichern
+    - name: Protect the setup log files
       ansible.builtin.file:
         path: '{{ item }}'
         mode: '0600'
@@ -683,44 +682,44 @@
         - /var/log/linuxmuster/setup.log
       ignore_errors: true
 
-    - name: Marker-Datei für erfolgreiche Installation erstellen
+    - name: Create the marker file for a successful installation
       ansible.builtin.file:
         path: /var/lib/linuxmuster/.setup.done
         state: touch
         mode: '0644'
       when: lmn_setup_result is defined and lmn_setup_result.rc == 0
 
-    # linuxmuster-setup verankert "dns forwarder = <firewallip>" in der
-    # smb.conf. Ohne Firewall ist das ein toter Resolver -> externe DNS-Namen
-    # (deb.linuxmuster.net, archive.ubuntu.com, ...) lassen sich nicht mehr
-    # aufloesen. Vor dem Samba-Neustart auf einen funktionierenden Forwarder
-    # umbiegen, damit die anschliessenden apt-Tasks nicht scheitern.
-    - name: DNS-Forwarder in smb.conf auf funktionierenden Resolver setzen
+    # linuxmuster-setup puts "dns forwarder = <firewallip>" into smb.conf.
+    # Without a firewall that is a dead resolver -> external DNS names
+    # (deb.linuxmuster.net, archive.ubuntu.com, ...) no longer resolve.
+    # Point it to a working forwarder before Samba restarts so that the
+    # following apt tasks do not fail.
+    - name: Set the DNS forwarder in smb.conf to a working resolver
       ansible.builtin.replace:
         path: /etc/samba/smb.conf
         regexp: '^(\s*dns forwarder\s*=\s*).*$'
         replace: '\g<1>{{ lmn_dns_forwarder }}'
 
-    - name: Samba AD DC neu starten
+    - name: Restart Samba AD DC
       ansible.builtin.systemd:
         name: samba-ad-dc
         state: restarted
         enabled: true
 
-    - name: Warten bis Samba LDAP bereit ist
+    - name: Wait until Samba LDAP is ready
       ansible.builtin.shell: |
         for i in $(seq 1 30); do
           if samba-tool user show Administrator >/dev/null 2>&1; then
-            echo "Samba LDAP bereit nach $i Versuchen"
+            echo "Samba LDAP ready after $i attempts"
             exit 0
           fi
           sleep 5
         done
-        echo "Samba LDAP nicht erreichbar nach 150 Sekunden"
+        echo "Samba LDAP not reachable after 150 seconds"
         exit 1
       changed_when: false
 
-    - name: Externe DNS-Aufloesung pruefen (nicht kritisch)
+    - name: Check external DNS resolution (not critical)
       ansible.builtin.command:
         cmd: getent hosts deb.linuxmuster.net
       register: lmn_dns_check
@@ -730,35 +729,35 @@
       changed_when: false
       failed_when: false
 
-    - name: Hinweis wenn externe DNS-Aufloesung nicht funktioniert
+    - name: Note when external DNS resolution does not work
       ansible.builtin.debug:
         msg: >-
-          Externe Namensaufloesung (deb.linuxmuster.net) ueber den DNS-Forwarder
-          {{ lmn_dns_forwarder }} funktioniert nicht. In Proxy-Umgebungen ist das
-          oft normal (apt laeuft ueber den Proxy). Falls danach apt-Tasks
-          scheitern, bitte lmn_dns_forwarder pruefen.
+          External name resolution (deb.linuxmuster.net) through the DNS forwarder
+          {{ lmn_dns_forwarder }} does not work. Behind a proxy this is often
+          normal (apt goes through the proxy). If apt tasks fail afterwards,
+          please check lmn_dns_forwarder.
       when: lmn_dns_check.rc != 0
 
     # =========================================================================
-    # EDULUTION BINDUSER ERSTELLEN (via sophomorix)
+    # CREATE THE EDULUTION BIND USER (via sophomorix)
     # =========================================================================
 
-    - name: Domain-Komponenten berechnen
+    - name: Compute the domain components
       ansible.builtin.set_fact:
         edulution_dc_parts: "{{ lmn_domainname.split('.') | map('regex_replace', '^(.*)$', 'DC=\\1') | join(',') }}"
 
-    - name: Pruefen ob edulutionui-binduser bereits existiert
+    - name: Check whether edulutionui-binduser already exists
       ansible.builtin.command:
         cmd: samba-tool user show edulutionui-binduser
       register: binduser_exists
       failed_when: false
       changed_when: false
 
-    # Nach dem samba-ad-dc-Neustart antwortet samba-tool (lokale DB) bereits,
-    # waehrend das Netzwerk-LDAP, das sophomorix nutzt, noch nicht bereit ist
-    # ("No connection to Samba4 AD!"). Daher den Aufruf mit kurzem Delay
-    # wiederholen, bis die Verbindung steht (nichts wird vorher angelegt).
-    - name: edulutionui-binduser mit sophomorix erstellen
+    # After the samba-ad-dc restart, samba-tool (local DB) already answers
+    # while the network LDAP that sophomorix uses is not ready yet
+    # ("No connection to Samba4 AD!"). So repeat the call with a short delay
+    # until the connection works (nothing is created before that).
+    - name: Create edulutionui-binduser with sophomorix
       ansible.builtin.command:
         cmd: >
           sophomorix-admin
@@ -772,25 +771,25 @@
       retries: 12
       delay: 5
 
-    - name: Debug - Binduser-Erstellung Ergebnis
+    - name: Debug - bind user creation result
       ansible.builtin.debug:
         msg: |
           rc: {{ binduser_create_result.rc | default('skipped') }}
 
-    - name: Binduser-Passwort aus linuxmuster secret lesen
+    - name: Read the bind user password from the linuxmuster secret
       ansible.builtin.command:
         cmd: cat /etc/linuxmuster/.secret/edulutionui-binduser
       register: binduser_pw_result
       changed_when: false
       no_log: true
 
-    - name: Edulution-Konfigurationsverzeichnis erstellen
+    - name: Create the edulution configuration directory
       ansible.builtin.file:
         path: /var/lib/edulution
         state: directory
         mode: '0700'
 
-    - name: Edulution Binduser-Konfiguration schreiben
+    - name: Write the edulution bind user configuration
       ansible.builtin.copy:
         # One expression: a password assigned as its own template would become a list or bool under ansible-core 2.16.
         content: |
@@ -803,29 +802,29 @@
       no_log: true
 
     # =========================================================================
-    # LINUXMUSTER-API INSTALLIEREN
+    # INSTALL LINUXMUSTER-API
     # =========================================================================
 
-    - name: Warten bis apt-Lock frei ist (post-setup)
+    - name: Wait for the apt lock (post-setup)
       ansible.builtin.shell: |
         while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
           sleep 5
         done
       changed_when: false
 
-    - name: linuxmuster-api7 installieren
+    - name: Install linuxmuster-api7
       ansible.builtin.apt:
         name: linuxmuster-api7
         state: present
         update_cache: true
 
-    - name: systemd-Override-Verzeichnis fuer linuxmuster-api erstellen
+    - name: Create the systemd override directory for linuxmuster-api
       ansible.builtin.file:
         path: /etc/systemd/system/linuxmuster-api.service.d
         state: directory
         mode: '0755'
 
-    - name: systemd-Override fuer linuxmuster-api erstellen (Samba-Abhaengigkeit)
+    - name: Create the systemd override for linuxmuster-api (Samba dependency)
       ansible.builtin.copy:
         content: |
           [Unit]
@@ -838,54 +837,54 @@
         dest: /etc/systemd/system/linuxmuster-api.service.d/override.conf
         mode: '0644'
 
-    - name: systemd-Konfiguration neu laden
+    - name: Reload the systemd configuration
       ansible.builtin.systemd:
         daemon_reload: true
 
     # =========================================================================
-    # AJENTI-PORT ANPASSEN (nur bei lokaler Installation)
+    # ADJUST THE AJENTI PORT (local installation only)
     # =========================================================================
-    # Auf derselben Maschine belegt der edulution-Traefik den Host-Port 443.
-    # Damit die Ajenti-Web-UI (linuxmuster.net) nicht kollidiert, wird sie auf
-    # lmn_webui_port verschoben.
+    # On the same machine the edulution Traefik uses host port 443. So that the
+    # Ajenti web UI (linuxmuster.net) does not collide with it, it is moved to
+    # lmn_webui_port.
 
-    - name: Ajenti-Port anpassen (lokale Installation)
+    - name: Adjust the Ajenti port (local installation)
       ansible.builtin.replace:
         path: /etc/ajenti/config.yml
         regexp: '(^\s*port:\s*)443\b'
         replace: '\g<1>{{ lmn_webui_port }}'
       when: lmn_local_install | bool
-      notify: Linuxmuster-WebUI neustarten
+      notify: Restart the linuxmuster web UI
 
     # =========================================================================
-    # REBOOT-ERSATZ: gezielte Dienst-Neustarts statt vollem Neustart
+    # REBOOT REPLACEMENT: targeted service restarts instead of a full reboot
     # =========================================================================
-    # linuxmuster.net empfiehlt nach dem Setup einen Reboot. Wo das nicht moeglich
-    # ist, ersetzen wir ihn so weit wie sinnvoll:
-    #  - needrestart startet Dienste mit veralteten Bibliotheken neu (apt-Upgrade)
-    #  - der LMN-Stack wird gezielt neu gestartet, damit er die neue Konfiguration
-    #    liest -- bewusst OHNE Netzwerk (netplan/IP-Wechsel), um die laufende
-    #    Verbindung nicht zu kappen.
-    #  - Bleibt ein Kernel-Update, ist ein echter Reboot weiterhin noetig; das
-    #    wird am Ende gemeldet.
+    # linuxmuster.net recommends a reboot after the setup. Where that is not
+    # possible, we replace it as far as it makes sense:
+    #  - needrestart restarts services with outdated libraries (apt upgrade)
+    #  - the LMN stack is restarted so that it reads the new configuration --
+    #    deliberately WITHOUT the network (netplan/IP change), so the current
+    #    connection is not cut.
+    #  - If a kernel update remains, a real reboot is still needed; this is
+    #    reported at the end.
 
-    - name: needrestart installieren (falls nicht vorhanden)
+    - name: Install needrestart (if missing)
       ansible.builtin.apt:
         name: needrestart
         state: present
       failed_when: false
 
-    - name: Dienste mit veralteten Bibliotheken automatisch neu starten
+    - name: Restart services with outdated libraries automatically
       ansible.builtin.command:
         cmd: needrestart -r a -b
       register: needrestart_auto
       changed_when: false
       failed_when: false
 
-    - name: Installierte Dienste ermitteln
+    - name: Gather the installed services
       ansible.builtin.service_facts:
 
-    - name: LMN-Stack neu starten (Reboot-Ersatz, ohne Netzwerk)
+    - name: Restart the LMN stack (reboot replacement, without the network)
       ansible.builtin.systemd:
         name: '{{ item }}'
         state: restarted
@@ -898,40 +897,40 @@
       when: (item ~ '.service') in ansible_facts.services
       failed_when: false
 
-    - name: Pruefen ob ein Kernel-Reboot noetig ist
+    - name: Check whether a kernel reboot is needed
       ansible.builtin.command:
         cmd: needrestart -k -b
       register: needrestart_kernel
       changed_when: false
       failed_when: false
 
-    - name: Kernel-Reboot-Status merken
+    - name: Remember the kernel reboot status
       ansible.builtin.set_fact:
         lmn_kernel_reboot_required: "{{ 'NEEDRESTART-KSTA: 3' in (needrestart_kernel.stdout | default('')) }}"
 
     # =========================================================================
-    # ABSCHLUSSMELDUNG
+    # FINAL MESSAGE
     # =========================================================================
 
-    - name: Installation abgeschlossen
+    - name: Installation finished
       ansible.builtin.debug:
         msg: |
           ====================================================================
-          LINUXMUSTER.NET {{ lmn_version_label }} INSTALLATION ABGESCHLOSSEN
+          LINUXMUSTER.NET {{ lmn_version_label }} INSTALLATION FINISHED
           ====================================================================
 
           Server: {{ lmn_servername }}.{{ lmn_domainname }}
           IP:     {{ lmn_server_ip }}
 
-          Web-UI: https://{{ lmn_server_ip }}{{ (':' + lmn_webui_port | string) if (lmn_local_install | bool) else '' }}
-          Login:  global-admin (Passwort aus der Einrichtung)
+          Web UI: https://{{ lmn_server_ip }}{{ (':' + lmn_webui_port | string) if (lmn_local_install | bool) else '' }}
+          Login:  global-admin (password from the setup)
 
-          edulution Binduser: CN=edulutionui-binduser,OU=Management,OU=GLOBAL,{{ edulution_dc_parts }}
+          edulution bind user: CN=edulutionui-binduser,OU=Management,OU=GLOBAL,{{ edulution_dc_parts }}
 
-          Dienste wurden gezielt neugestartet (Reboot-Ersatz, ohne Netzwerk).
-          {{ 'ACHTUNG: Der Kernel wurde aktualisiert - ein echter Reboot ist noetig!'
+          Services were restarted selectively (reboot replacement, without the network).
+          {{ 'NOTE: The kernel was updated - a real reboot is needed!'
              if (lmn_kernel_reboot_required | default(false) | bool)
-             else 'Kein Kernel-Reboot noetig - die Dienst-Neustarts genuegen.' }}
+             else 'No kernel reboot needed - the service restarts are sufficient.' }}
 
           ====================================================================
 
@@ -940,24 +939,24 @@
   # ===========================================================================
 
   handlers:
-    # Ubuntus 50unattended-upgrades laesst nur Ubuntus eigene Release- und Security-Quellen zu; linuxmuster-Pakete bleiben manuell.
-    - name: Automatische Sicherheitsupdates in 20auto-upgrades einschalten
+    # Ubuntu's 50unattended-upgrades only allows Ubuntu's own release and security sources; linuxmuster packages stay manual.
+    - name: Switch on automatic security updates in 20auto-upgrades
       ansible.builtin.lineinfile:
         path: /etc/apt/apt.conf.d/20auto-upgrades
         regexp: '^APT::Periodic::Unattended-Upgrade'
         line: 'APT::Periodic::Unattended-Upgrade "1";'
         create: true
         mode: '0644'
-      listen: Automatische Sicherheitsupdates wieder einschalten
+      listen: Switch automatic security updates back on
 
-    - name: Unattended-upgrades starten
+    - name: Start unattended-upgrades
       ansible.builtin.systemd:
         name: unattended-upgrades
         enabled: true
         state: started
-      listen: Automatische Sicherheitsupdates wieder einschalten
+      listen: Switch automatic security updates back on
 
-    - name: Linuxmuster-WebUI neustarten
+    - name: Restart the linuxmuster web UI
       ansible.builtin.systemd:
         name: linuxmuster-webui
         state: restarted
