@@ -128,6 +128,7 @@ const LmnInstallPage = () => {
 
       try {
         const edulutionConfig = await getEdulutionConfig();
+        if (!edulutionConfig.ca_certificate) throw new Error('missing CA certificate');
 
         const currentStore = useInstallerStore.getState();
         const lmnExternalDomain = currentStore.lmnSshHost;
@@ -137,8 +138,9 @@ const LmnInstallPage = () => {
           lmnExternalDomain,
           lmnBinduserDn: edulutionConfig.binduser_dn,
           lmnBinduserPw: edulutionConfig.binduser_password,
-          lmnLdapSchema: 'ldap',
-          lmnLdapPort: 389,
+          lmnLdapSchema: 'ldaps',
+          lmnLdapPort: 636,
+          lmnCaCertificate: edulutionConfig.ca_certificate,
           edulutionExternalDomain,
         });
 
@@ -171,6 +173,10 @@ const LmnInstallPage = () => {
         lmnBinduserPw: currentStore.lmnBinduserPw,
         lmnLdapSchema: currentStore.lmnLdapSchema,
         lmnLdapPort: currentStore.lmnLdapPort,
+        // Keycloak checks the LDAP host against the server certificate, which names the server IP but not the
+        // docker gateway used in "same machine" mode. Other services keep the gateway.
+        lmnLdapHost: currentStore.lmnLocalInstall ? currentStore.lmnServerIp : '',
+        lmnCaCertificate: currentStore.lmnCaCertificate,
         edulutionExternalDomain: currentStore.edulutionExternalDomain,
         lmnLocalInstall: currentStore.lmnLocalInstall,
         lmnWebuiPort: currentStore.lmnWebuiPort,

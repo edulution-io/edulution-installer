@@ -13,6 +13,8 @@ interface ConfigurationRequest {
   lmnBinduserPw: string;
   lmnLdapSchema: 'ldap' | 'ldaps';
   lmnLdapPort: number;
+  lmnLdapHost?: string;
+  lmnCaCertificate?: string;
   edulutionExternalDomain: string;
   lmnLocalInstall: boolean;
   lmnWebuiPort: number;
@@ -272,6 +274,7 @@ export const createLmnWebSocket = (): WebSocket => {
 export interface EdulutionConfig {
   binduser_dn: string;
   binduser_password: string;
+  ca_certificate?: string;
 }
 
 export const getEdulutionConfig = (): Promise<EdulutionConfig> =>

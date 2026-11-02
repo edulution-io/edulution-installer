@@ -26,6 +26,7 @@ interface InstallerState {
   lmnBinduserPw: string;
   lmnLdapSchema: 'ldap' | 'ldaps';
   lmnLdapPort: number;
+  lmnCaCertificate: string;
   edulutionExternalDomain: string;
   checks: Record<CheckKey, CheckResult | null>;
   initialAdminGroup: string;
@@ -68,6 +69,7 @@ interface InstallerState {
     lmnBinduserPw: string;
     lmnLdapSchema: 'ldap' | 'ldaps';
     lmnLdapPort: number;
+    lmnCaCertificate: string;
     edulutionExternalDomain: string;
   }) => void;
   setCheckResult: (check: CheckKey, result: CheckResult) => void;
@@ -109,6 +111,7 @@ const initialState = {
   lmnBinduserPw: '',
   lmnLdapSchema: 'ldap' as const,
   lmnLdapPort: 389,
+  lmnCaCertificate: '',
   edulutionExternalDomain: '',
   checks: {
     api: null,

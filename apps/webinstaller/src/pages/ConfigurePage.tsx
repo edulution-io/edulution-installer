@@ -57,6 +57,7 @@ const ConfigurePage = () => {
       lmnBinduserPw,
       lmnLdapSchema,
       lmnLdapPort,
+      lmnCaCertificate: '',
       edulutionExternalDomain,
     });
 
