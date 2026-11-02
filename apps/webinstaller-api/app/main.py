@@ -927,8 +927,9 @@ def openPrivate(path, mode="w"):
 
 def envValue(value):
     # The file is read by docker compose and sourced by the shell installer; single quotes are literal in both.
-    # Compose keeps the backslash before a backtick, so only a value with both ' and ` changes.
-    if "'" not in value:
+    # Compose reads a trailing \ as escaping the closing quote, so such values take double quotes, where
+    # Compose keeps the backslash before a backtick: only a value with ` that needs double quotes changes.
+    if "'" not in value and not value.endswith("\\"):
         return f"'{value}'"
     return '"' + re.sub(r'([\\"$`])', r'\\\1', value) + '"'
 
