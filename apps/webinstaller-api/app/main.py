@@ -12,7 +12,6 @@ import string
 import tarfile
 import ipaddress
 import shlex
-import socket
 import ssl
 import shutil
 import asyncio
@@ -36,7 +35,7 @@ import paramiko
 import httpx
 
 from ldap3 import Server, Connection, ALL, Tls
-from ldap3.core.exceptions import LDAPBindError
+from ldap3.core.exceptions import LDAPBindError, LDAPSocketOpenError
 
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -346,28 +345,36 @@ def checkWebDAV(data: Data = Depends(getData)):
         return {"status": False, "message": "Unbekannter Fehler!"}
 
 
-def _verify_ldap_certificate(data: Data) -> None:
-    # Checks chain and host name the way Keycloak will. Not strict: the linuxmuster CA has no key usage
-    # extension, which Python 3.13 rejects by default and Keycloak accepts.
-    context = ssl.create_default_context(cadata=data.DATA_LMN_CA_CERTIFICATE)
-    context.minimum_version = ssl.TLSVersion.TLSv1_2
-    context.verify_flags &= ~ssl.VERIFY_X509_STRICT
-    with socket.create_connection((data.DATA_LMN_LDAP_HOST, int(data.DATA_LMN_LDAP_PORT)), timeout=3) as sock:
-        with context.wrap_socket(sock, server_hostname=data.DATA_LMN_LDAP_HOST):
-            pass
+class _LinuxmusterCaTls(Tls):
+    # Verifies the handshake of the connection that binds, against the linuxmuster CA and the host name, as
+    # Keycloak does. Not strict: the linuxmuster CA has no key usage extension, which Python 3.13 rejects by
+    # default, and ldap3 offers no way to relax that.
+    def __init__(self, ca_certificate: str, host: str):
+        super().__init__(validate=ssl.CERT_REQUIRED)
+        self._host = host
+        self._context = ssl.create_default_context(cadata=ca_certificate)
+        self._context.minimum_version = ssl.TLSVersion.TLSv1_2
+        self._context.verify_flags &= ~ssl.VERIFY_X509_STRICT
+
+    def wrap_socket(self, connection, do_handshake=False):
+        connection.socket = self._context.wrap_socket(
+            connection.socket, server_hostname=self._host, do_handshake_on_connect=do_handshake
+        )
 
 
 def _create_ldap_server(data: Data) -> Server:
     if data.DATA_LMN_LDAP_SCHEMA == "ldaps":
         if data.DATA_LMN_CA_CERTIFICATE:
-            _verify_ldap_certificate(data)
+            tls = _LinuxmusterCaTls(data.DATA_LMN_CA_CERTIFICATE, data.DATA_LMN_LDAP_HOST)
+        else:
+            tls = Tls(validate=ssl.CERT_NONE)
         return Server(
             data.DATA_LMN_LDAP_HOST,
             port=int(data.DATA_LMN_LDAP_PORT),
             get_info=ALL,
             connect_timeout=3,
             use_ssl=True,
-            tls=Tls(validate=ssl.CERT_NONE),
+            tls=tls,
         )
     return Server(
         data.DATA_LMN_LDAP_HOST,
@@ -383,8 +390,13 @@ def _check_ldap(data: Data, user=None, password=None) -> dict:
         if conn.bind():
             return {"status": True, "message": "Successful"}
         return {"status": False, "message": "Keine Verbindung zum LDAP-Server!"}
-    except ssl.SSLCertVerificationError as e:
-        return {"status": False, "message": f"Zertifikat des LDAP-Servers ungültig: {e.verify_message}"}
+    except LDAPSocketOpenError as e:
+        # ldap3 reports a failed certificate check only as text.
+        verify_error = re.search(r"certificate verify failed: ([^(]+)", str(e).replace("\\'", "'"))
+        if verify_error:
+            return {"status": False, "message": f"Zertifikat des LDAP-Servers ungültig: {verify_error.group(1).strip()}"}
+        print(e)
+        return {"status": False, "message": "Unbekannter Fehler!"}
     except LDAPBindError as e:
         if "invalidCredentials" in str(e):
             return {"status": False, "message": "LDAP Zugangsdaten falsch!"}
