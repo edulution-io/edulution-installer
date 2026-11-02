@@ -10,5 +10,4 @@ services:
       - 443:8000
     entrypoint: /startup.sh
     environment:
-      - EDULUTION_DIRECTORY=/srv/docker/edulution-installer/data
       - INSTALLER_TOKEN

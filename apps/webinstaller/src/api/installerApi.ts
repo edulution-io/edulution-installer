@@ -45,6 +45,7 @@ interface LeCertificateResponse extends StatusResponse {
 interface AcmeCnameResponse {
   status: boolean;
   found: string[];
+  resolved: boolean;
 }
 
 const apiFetch = async <T>(

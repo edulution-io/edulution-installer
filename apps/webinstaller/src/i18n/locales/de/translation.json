@@ -92,6 +92,7 @@
     "checkCname": "CNAME-Eintrag prüfen",
     "cnameFound": "Der CNAME-Eintrag ist gesetzt.",
     "cnameMissing": "Noch kein passender CNAME-Eintrag gefunden. Änderungen im DNS können einige Minuten brauchen.",
+    "cnameUnchecked": "Der CNAME-Eintrag ließ sich nicht prüfen, weil weder Cloudflare noch Google per DNS-over-HTTPS erreichbar sind.",
     "cnameOther": "Gefunden: {{found}}",
     "cnameSkip": "Ohne geprüften CNAME-Eintrag fortfahren. edulution startet dann ohne gültiges Zertifikat, Browser zeigen eine Warnung.",
     "uploadCertificate": "Zertifikat hochladen",

@@ -10,6 +10,8 @@ import { createSsCertificate, createLeCertificate, checkAcmeCname, uploadCertifi
 type CertType = 'self-signed' | 'letsencrypt' | 'upload';
 type OperationStatus = 'idle' | 'loading' | 'success' | 'error';
 
+const NO_CNAME_CHECK = { status: 'idle' as OperationStatus, found: [], resolved: true };
+
 interface AcmeDnsRegistration {
   username: string;
   password: string;
@@ -36,10 +38,9 @@ const CertificateForm = () => {
   // Let's Encrypt fields
   const [email, setEmail] = useState('');
   const [acmeDnsRegistration, setAcmeDnsRegistration] = useState<AcmeDnsRegistration | null>(null);
-  const [cnameCheck, setCnameCheck] = useState<{ status: OperationStatus; found: string[] }>({
-    status: 'idle',
-    found: [],
-  });
+  const [cnameCheck, setCnameCheck] = useState<{ status: OperationStatus; found: string[]; resolved: boolean }>(
+    NO_CNAME_CHECK,
+  );
   const [skipCname, setSkipCname] = useState(false);
 
   // Upload fields
@@ -50,7 +51,7 @@ const CertificateForm = () => {
     setStatus('idle');
     setErrorMessage('');
     setAcmeDnsRegistration(null);
-    setCnameCheck({ status: 'idle', found: [] });
+    setCnameCheck(NO_CNAME_CHECK);
     setSkipCname(false);
     setCertificateConfigured(false);
   }, [setCertificateConfigured]);
@@ -96,6 +97,8 @@ const CertificateForm = () => {
   const handleCreateLe = useCallback(async () => {
     setStatus('loading');
     setAcmeDnsRegistration(null);
+    setCnameCheck(NO_CNAME_CHECK);
+    setSkipCname(false);
     setCertificateConfigured(false);
     const result = await createLeCertificate({ email });
     if (result.status) {
@@ -116,12 +119,12 @@ const CertificateForm = () => {
   }, [acmeDnsRegistration, cnameCheck.status, skipCname, setCertificateConfigured]);
 
   const handleCheckCname = useCallback(async () => {
-    setCnameCheck({ status: 'loading', found: [] });
+    setCnameCheck({ ...NO_CNAME_CHECK, status: 'loading' });
     try {
       const result = await checkAcmeCname();
-      setCnameCheck({ status: result.status ? 'success' : 'error', found: result.found });
+      setCnameCheck({ status: result.status ? 'success' : 'error', found: result.found, resolved: result.resolved });
     } catch {
-      setCnameCheck({ status: 'error', found: [] });
+      setCnameCheck({ status: 'error', found: [], resolved: false });
     }
   }, []);
 
@@ -350,7 +353,7 @@ const CertificateForm = () => {
               )}
               {cnameCheck.status === 'error' && (
                 <p className="text-sm text-red-800">
-                  {t('certificateForm.cnameMissing')}
+                  {cnameCheck.resolved ? t('certificateForm.cnameMissing') : t('certificateForm.cnameUnchecked')}
                   {cnameCheck.found.length > 0 &&
                     ` ${t('certificateForm.cnameOther', { found: cnameCheck.found.join(', ') })}`}
                 </p>

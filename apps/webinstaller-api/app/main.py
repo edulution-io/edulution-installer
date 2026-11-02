@@ -48,7 +48,8 @@ from pathlib import Path
 BASE_PATH = Path(__file__).parent
 STATIC_PATH = BASE_PATH / "static"
 
-EDULUTION_DIRECTORY = os.environ.get("EDULUTION_DIRECTORY", "/srv/docker/edulution-ui")
+# Container path of the mounted install directory, as for every other file this installer writes.
+EDULUTION_DIRECTORY = "/edulution-ui"
 
 
 # --- Pydantic Models ---
@@ -425,6 +426,7 @@ def dockerHostIp():
 
 @api.post("/create-ss-certificate")
 def createSSCertificate(ssdata: SSCertificate, data: Data = Depends(getData)):
+    data.DATA_LE_USED = False
     keyfile = "/edulution-ui/data/traefik/ssl/cert.key"
     certfile = "/edulution-ui/data/traefik/ssl/cert.cert"
 
@@ -520,9 +522,10 @@ ACME_CNAME_RESOLVERS = ("https://cloudflare-dns.com/dns-query", "https://dns.goo
 def checkAcmeCname(data: Data = Depends(getData)):
     registration = data.DATA_LE_ACME_DNS_REGISTRATION
     if not registration:
-        return {"status": False, "found": []}
+        return {"status": False, "found": [], "resolved": False}
     expected = registration["fulldomain"].rstrip(".").lower()
     found = set()
+    resolved = False
     for url in ACME_CNAME_RESOLVERS:
         try:
             response = requests.get(
@@ -534,15 +537,17 @@ def checkAcmeCname(data: Data = Depends(getData)):
             found |= {
                 answer["data"].rstrip(".").lower() for answer in response.json().get("Answer", []) if answer.get("type") == 5
             }
+            resolved = True
         except Exception as e:
             print(e)
         if expected in found:
             break
-    return {"status": expected in found, "found": sorted(found)}
+    return {"status": expected in found, "found": sorted(found), "resolved": resolved}
 
 
 @api.post("/upload-certificate")
-def uploadCertificate(cert: UploadFile = File(...), key: UploadFile = File(...)):
+def uploadCertificate(cert: UploadFile = File(...), key: UploadFile = File(...), data: Data = Depends(getData)):
+    data.DATA_LE_USED = False
     keyfile = "/edulution-ui/data/traefik/ssl/cert.key"
     certfile = "/edulution-ui/data/traefik/ssl/cert.cert"
 

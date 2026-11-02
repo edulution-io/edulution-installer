@@ -310,7 +310,7 @@ INSTALLER_TOKEN=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
 
 # BOOTSTRAP_BRANCH nur bei --version: Images bis 2.0 laden bootstrap.sh noch von GitHub.
 INSTALLER_TOKEN="${INSTALLER_TOKEN}" docker run -d --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ \
-    -e EDULUTION_DIRECTORY=${DIRECTORY} -e INSTALLER_TOKEN \
+    -e INSTALLER_TOKEN \
     ${EDULUTION_INSTALLER_REF:+-e BOOTSTRAP_BRANCH=${EDULUTION_INSTALLER_REF}} \
     "${EDULUTION_INSTALLER_IMAGE}" 2>&1 > /dev/zero
 
