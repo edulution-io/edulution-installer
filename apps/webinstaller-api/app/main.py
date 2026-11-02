@@ -392,10 +392,11 @@ def _check_ldap(data: Data, user=None, password=None) -> dict:
         return {"status": False, "message": "Keine Verbindung zum LDAP-Server!"}
     except LDAPSocketOpenError as e:
         # ldap3 reports a failed certificate check only as text.
-        verify_error = re.search(r"certificate verify failed: ([^(]+)", str(e).replace("\\'", "'"))
-        if verify_error:
-            return {"status": False, "message": f"Zertifikat des LDAP-Servers ungültig: {verify_error.group(1).strip()}"}
         print(e)
+        if "mismatch, certificate is not valid for" in str(e):
+            return {"status": False, "message": "Die Adresse des LDAP-Servers steht nicht in seinem Zertifikat!"}
+        if "CERTIFICATE_VERIFY_FAILED" in str(e):
+            return {"status": False, "message": "Das Zertifikat des LDAP-Servers stammt nicht von der linuxmuster-CA!"}
         return {"status": False, "message": "Unbekannter Fehler!"}
     except LDAPBindError as e:
         if "invalidCredentials" in str(e):
