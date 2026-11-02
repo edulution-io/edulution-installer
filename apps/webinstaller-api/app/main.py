@@ -350,6 +350,7 @@ def _verify_ldap_certificate(data: Data) -> None:
     # Checks chain and host name the way Keycloak will. Not strict: the linuxmuster CA has no key usage
     # extension, which Python 3.13 rejects by default and Keycloak accepts.
     context = ssl.create_default_context(cadata=data.DATA_LMN_CA_CERTIFICATE)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.verify_flags &= ~ssl.VERIFY_X509_STRICT
     with socket.create_connection((data.DATA_LMN_LDAP_HOST, int(data.DATA_LMN_LDAP_PORT)), timeout=3) as sock:
         with context.wrap_socket(sock, server_hostname=data.DATA_LMN_LDAP_HOST):
