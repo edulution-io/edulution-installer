@@ -3,7 +3,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from uuid import UUID, uuid4
 
 import ansible_runner
@@ -32,7 +32,6 @@ class AnsibleRunnerService:
         self._finished_at: datetime | None = None
         self._return_code: int | None = None
         self._thread = None
-        self._shutdown_callback: Callable[[], None] | None = None
 
     @property
     def status(self) -> JobStatus:
@@ -53,9 +52,6 @@ class AnsibleRunnerService:
     @property
     def return_code(self) -> int | None:
         return self._return_code
-
-    def set_shutdown_callback(self, callback: Callable[[], None]) -> None:
-        self._shutdown_callback = callback
 
     def _event_handler(self, event: dict[str, Any]) -> bool:
         event_type = event.get("event", "")

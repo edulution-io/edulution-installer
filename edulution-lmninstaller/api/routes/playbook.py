@@ -2,7 +2,6 @@ import json
 import os
 import signal
 import threading
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
@@ -13,10 +12,9 @@ from api.models import (
     RequirementsResponse,
     StatusResponse,
 )
+from api.config import EDULUTION_CONFIG_PATH
 from api.services.ansible_runner import runner_service
 from api.services.system_checker import system_checker
-
-EDULUTION_CONFIG_PATH = Path("/var/lib/edulution/binduser-config.json")
 
 router = APIRouter(prefix="/api", tags=["playbook"])
 

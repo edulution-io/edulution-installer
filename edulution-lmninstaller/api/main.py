@@ -1,6 +1,5 @@
 import asyncio
 import secrets
-import signal
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -9,51 +8,27 @@ from starlette.requests import HTTPConnection
 from starlette.websockets import WebSocketClose
 
 from api.config import settings
+from api.models import JobStatus
 from api.routes import playbook, websocket
 from api.services.ansible_runner import runner_service
+from api.services.lifecycle import remove_install_leftovers, stop_when_idle, touch
 from api.services.output_streamer import streamer
-
-
-shutdown_event = asyncio.Event()
-
-
-def trigger_shutdown() -> None:
-    async def delayed_shutdown():
-        await asyncio.sleep(settings.shutdown_delay)
-        shutdown_event.set()
-
-    try:
-        loop = asyncio.get_event_loop()
-        loop.create_task(delayed_shutdown())
-    except RuntimeError:
-        pass
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    runner_service.set_shutdown_callback(trigger_shutdown)
-
-    queue_task = asyncio.create_task(streamer.process_queue())
-
-    async def watch_shutdown():
-        await shutdown_event.wait()
-        import os
-        os.kill(os.getpid(), signal.SIGTERM)
-
-    shutdown_task = asyncio.create_task(watch_shutdown())
+    tasks = [
+        asyncio.create_task(streamer.process_queue()),
+        asyncio.create_task(stop_when_idle(runner_service)),
+    ]
 
     yield
 
-    queue_task.cancel()
-    shutdown_task.cancel()
-    try:
-        await queue_task
-    except asyncio.CancelledError:
-        pass
-    try:
-        await shutdown_task
-    except asyncio.CancelledError:
-        pass
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    if runner_service.status != JobStatus.RUNNING:
+        remove_install_leftovers()
 
 
 # Read at import, so uvicorn exits right away instead of starting without a usable token.
@@ -75,6 +50,7 @@ class RequireApiToken:
 
         given = HTTPConnection(scope).headers.get("authorization", "").encode()
         if secrets.compare_digest(given, self.expected):
+            touch()
             return await self.app(scope, receive, send)
 
         if scope["type"] == "websocket":
