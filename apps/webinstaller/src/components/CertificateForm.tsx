@@ -1,14 +1,16 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner, faCircleCheck, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
 import { Button } from '@edulution-io/ui-kit';
 import { Input } from '@shared-ui';
 import useInstallerStore from '../store/useInstallerStore';
-import { createSsCertificate, createLeCertificate, uploadCertificate } from '../api/installerApi';
+import { createSsCertificate, createLeCertificate, checkAcmeCname, uploadCertificate } from '../api/installerApi';
 
 type CertType = 'self-signed' | 'letsencrypt' | 'upload';
 type OperationStatus = 'idle' | 'loading' | 'success' | 'error';
+
+const NO_CNAME_CHECK = { status: 'idle' as OperationStatus, found: [], resolved: true };
 
 interface AcmeDnsRegistration {
   username: string;
@@ -34,18 +36,27 @@ const CertificateForm = () => {
   const [validDays, setValidDays] = useState('');
 
   // Let's Encrypt fields
-  const [dnsProvider, setDnsProvider] = useState('netzint-dns');
   const [email, setEmail] = useState('');
   const [acmeDnsRegistration, setAcmeDnsRegistration] = useState<AcmeDnsRegistration | null>(null);
+  const [cnameCheck, setCnameCheck] = useState<{ status: OperationStatus; found: string[]; resolved: boolean }>(
+    NO_CNAME_CHECK,
+  );
+  const [skipCname, setSkipCname] = useState(false);
 
   // Upload fields
   const [certFile, setCertFile] = useState<File | null>(null);
   const [keyFile, setKeyFile] = useState<File | null>(null);
 
+  // Counts certificate type changes, so a response for an earlier choice is dropped.
+  const selection = useRef(0);
+
   const resetStatus = useCallback(() => {
+    selection.current += 1;
     setStatus('idle');
     setErrorMessage('');
     setAcmeDnsRegistration(null);
+    setCnameCheck(NO_CNAME_CHECK);
+    setSkipCname(false);
     setCertificateConfigured(false);
   }, [setCertificateConfigured]);
 
@@ -65,12 +76,13 @@ const CertificateForm = () => {
     validDays.trim() !== '' &&
     Number(validDays) > 0;
 
-  const isLeValid = email.trim() !== '' && dnsProvider.trim() !== '';
+  const isLeValid = email.trim() !== '';
 
   const isUploadValid = certFile !== null && keyFile !== null;
 
   const handleGenerateSs = useCallback(async () => {
     setStatus('loading');
+    const { current } = selection;
     const result = await createSsCertificate({
       countrycode: countryCode,
       state,
@@ -78,6 +90,7 @@ const CertificateForm = () => {
       organization,
       valid_days: Number(validDays),
     });
+    if (current !== selection.current) return;
     if (result.status) {
       setStatus('success');
       setCertificateConfigured(true);
@@ -90,10 +103,14 @@ const CertificateForm = () => {
   const handleCreateLe = useCallback(async () => {
     setStatus('loading');
     setAcmeDnsRegistration(null);
-    const result = await createLeCertificate({ email, dns_provider: dnsProvider });
+    setCnameCheck(NO_CNAME_CHECK);
+    setSkipCname(false);
+    setCertificateConfigured(false);
+    const { current } = selection;
+    const result = await createLeCertificate({ email });
+    if (current !== selection.current) return;
     if (result.status) {
       setStatus('success');
-      setCertificateConfigured(true);
       const reg = result.registration as unknown;
       if (reg) {
         setAcmeDnsRegistration(reg as AcmeDnsRegistration);
@@ -102,12 +119,32 @@ const CertificateForm = () => {
       setStatus('error');
       setErrorMessage(result.message);
     }
-  }, [email, dnsProvider, setCertificateConfigured]);
+  }, [email, setCertificateConfigured]);
+
+  // Without the CNAME record Traefik cannot obtain the certificate.
+  useEffect(() => {
+    if (acmeDnsRegistration) setCertificateConfigured(cnameCheck.status === 'success' || skipCname);
+  }, [acmeDnsRegistration, cnameCheck.status, skipCname, setCertificateConfigured]);
+
+  const handleCheckCname = useCallback(async () => {
+    setCnameCheck({ ...NO_CNAME_CHECK, status: 'loading' });
+    const { current } = selection;
+    try {
+      const result = await checkAcmeCname();
+      if (current !== selection.current) return;
+      setCnameCheck({ status: result.status ? 'success' : 'error', found: result.found, resolved: result.resolved });
+    } catch {
+      if (current !== selection.current) return;
+      setCnameCheck({ status: 'error', found: [], resolved: false });
+    }
+  }, []);
 
   const handleUpload = useCallback(async () => {
     if (!certFile || !keyFile) return;
     setStatus('loading');
+    const { current } = selection;
     const result = await uploadCertificate(certFile, keyFile);
+    if (current !== selection.current) return;
     if (result.status) {
       setStatus('success');
       setCertificateConfigured(true);
@@ -117,8 +154,8 @@ const CertificateForm = () => {
     }
   }, [certFile, keyFile, setCertificateConfigured]);
 
-  const getStatusIcon = () => {
-    if (status === 'loading') {
+  const getStatusIcon = (iconStatus: OperationStatus, title?: string) => {
+    if (iconStatus === 'loading') {
       return (
         <FontAwesomeIcon
           icon={faSpinner}
@@ -127,7 +164,7 @@ const CertificateForm = () => {
         />
       );
     }
-    if (status === 'success') {
+    if (iconStatus === 'success') {
       return (
         <FontAwesomeIcon
           icon={faCircleCheck}
@@ -135,19 +172,19 @@ const CertificateForm = () => {
         />
       );
     }
-    if (status === 'error') {
+    if (iconStatus === 'error') {
       return (
         <FontAwesomeIcon
           icon={faCircleXmark}
           className="text-red-500"
-          title={errorMessage}
+          title={title}
         />
       );
     }
     return null;
   };
 
-  const statusIcon = getStatusIcon();
+  const statusIcon = getStatusIcon(status, errorMessage);
 
   return (
     <div className="flex flex-col gap-4">
@@ -249,17 +286,6 @@ const CertificateForm = () => {
       {certType === 'letsencrypt' && (
         <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
           <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
-            <span className="text-sm text-gray-600">{t('certificateForm.dnsProvider')}</span>
-            <select
-              value={dnsProvider}
-              onChange={(e) => {
-                setDnsProvider(e.target.value);
-                resetStatus();
-              }}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800"
-            >
-              <option value="netzint-dns">Netzint DNS</option>
-            </select>
             <span className="text-sm text-gray-600">{t('common.domain')}</span>
             <Input
               variant="login"
@@ -322,6 +348,44 @@ const CertificateForm = () => {
                 </table>
               </div>
               <p className="mt-1 text-xs text-blue-600">{t('certificateForm.acmeTraefikNote')}</p>
+              <div className="mt-2 flex items-center gap-3">
+                <Button
+                  variant="btn-outline"
+                  size="md"
+                  onClick={() => {
+                    void handleCheckCname();
+                  }}
+                  disabled={cnameCheck.status === 'loading'}
+                >
+                  {t('certificateForm.checkCname')}
+                </Button>
+                {getStatusIcon(cnameCheck.status)}
+              </div>
+              {cnameCheck.status === 'success' && (
+                <p className="text-sm text-green-800">{t('certificateForm.cnameFound')}</p>
+              )}
+              {cnameCheck.status === 'error' && (
+                <p className="text-sm text-red-800">
+                  {cnameCheck.resolved ? t('certificateForm.cnameMissing') : t('certificateForm.cnameUnchecked')}
+                  {cnameCheck.found.length > 0 &&
+                    ` ${t('certificateForm.cnameOther', { found: cnameCheck.found.join(', ') })}`}
+                </p>
+              )}
+              {cnameCheck.status !== 'success' && (
+                <label
+                  htmlFor="cname_skip"
+                  className="flex cursor-pointer items-start gap-2 text-sm text-blue-800"
+                >
+                  <input
+                    id="cname_skip"
+                    type="checkbox"
+                    checked={skipCname}
+                    onChange={(e) => setSkipCname(e.target.checked)}
+                    className="mt-0.5 accent-primary"
+                  />
+                  {t('certificateForm.cnameSkip')}
+                </label>
+              )}
             </div>
           )}
         </div>

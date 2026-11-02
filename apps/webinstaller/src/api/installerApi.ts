@@ -28,7 +28,6 @@ interface SsCertificateRequest {
 
 interface LeCertificateRequest {
   email: string;
-  dns_provider: string;
 }
 
 export interface AcmeDnsRegistration {
@@ -41,6 +40,12 @@ export interface AcmeDnsRegistration {
 
 interface LeCertificateResponse extends StatusResponse {
   registration?: AcmeDnsRegistration;
+}
+
+interface AcmeCnameResponse {
+  status: boolean;
+  found: string[];
+  resolved: boolean;
 }
 
 const apiFetch = async <T>(
@@ -100,6 +105,8 @@ export const createLeCertificate = (data: LeCertificateRequest): Promise<LeCerti
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+
+export const checkAcmeCname = (): Promise<AcmeCnameResponse> => apiFetch<AcmeCnameResponse>('/api/check-acme-cname');
 
 export const uploadCertificate = (certFile: File, keyFile: File): Promise<StatusResponse> => {
   const formData = new FormData();

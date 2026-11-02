@@ -146,7 +146,6 @@ services:
       - ./traefik.yml:/etc/traefik/traefik.yml
       - ./data/traefik/config:/etc/traefik/dynamic
       - ./data/traefik/ssl:/etc/traefik/ssl
-      - ./data/letsencrypt:/letsencrypt
     healthcheck:
       test: [ "CMD", "traefik", "healthcheck", "--ping" ]
       interval: 5s
