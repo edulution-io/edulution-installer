@@ -926,12 +926,11 @@ def openPrivate(path, mode="w"):
 
 
 def envValue(value):
-    # The file is read by docker compose and sourced by the shell installer; single quotes are literal in both.
-    # Compose reads a trailing \ as escaping the closing quote, so such values take double quotes, where
-    # Compose keeps the backslash before a backtick: only a value with ` that needs double quotes changes.
+    # Docker Compose takes single-quoted values literally, except a trailing \ escaping the closing quote.
+    # In double quotes it unescapes \\, \" and \$ but keeps a backslash before anything else, such as `.
     if "'" not in value and not value.endswith("\\"):
         return f"'{value}'"
-    return '"' + re.sub(r'([\\"$`])', r'\\\1', value) + '"'
+    return '"' + re.sub(r'([\\"$])', r'\\\1', value) + '"'
 
 
 def createEdulutionEnvFile(data: Data):
@@ -1025,8 +1024,8 @@ MONGODB_USERNAME=root
 MONGODB_PASSWORD={mongodb_secret}
 MONGODB_AUTH_SOURCE=admin
 # directConnection=true skips replica set discovery, the single node set only
-# advertises its container name. Quoted because this file is also sourced by
-# the shell installer, where the unquoted "&" would split the assignment.
+# advertises its container name. Quoted because installer scripts up to 2.0
+# source this file, where the unquoted "&" would split the assignment.
 MONGODB_SERVER_URL="mongodb://root:{mongodb_secret}@edu-db:27017/?replicaSet=rs0&directConnection=true"
 
 KEYCLOAK_EDU_UI_SECRET={keycloak_eduui_secret}
