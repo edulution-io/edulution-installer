@@ -118,8 +118,8 @@
     # lmn_repo_distribution/lmn_prepare_version are derived from it with set_fact
     # (can be overridden with -e; another lmn-appliance version also needs
     # lmn_prepare_commit and lmn_appliance_sha256).
-    # lmn-appliance is loaded by the commit of the tag and checked against the checksum;
-    # a new tag needs both values again.
+    # lmn-appliance is downloaded at the tag's commit and checked against the checksum;
+    # a new tag needs both values updated.
     lmn_version_map:
       '26':
         distribution: 'lmn74'
@@ -415,7 +415,7 @@
         mode: '0644'
       when: not lmn_repo_sources_before.stat.exists
 
-    - name: Remove the duplicate linuxmuster source before adding the repository
+    - name: Remove the duplicate linuxmuster source before lmn-appliance
       ansible.builtin.file:
         path: '{{ lmn_repo_list }}'
         state: absent
@@ -540,7 +540,7 @@
             - '{{ lmn_repo_list }}'
             - '{{ lmn_repo_sources }}'
 
-        - name: Stop after an unexpected linuxmuster key
+        - name: 'Stop: unexpected linuxmuster key'
           ansible.builtin.fail:
             msg: >-
               After lmn-appliance the linuxmuster key is missing or a different one is present;
@@ -928,7 +928,7 @@
           edulution bind user: CN=edulutionui-binduser,OU=Management,OU=GLOBAL,{{ edulution_dc_parts }}
 
           Services were restarted selectively (reboot replacement, without the network).
-          {{ 'NOTE: The kernel was updated - a real reboot is needed!'
+          {{ 'WARNING: The kernel was updated - a real reboot is needed!'
              if (lmn_kernel_reboot_required | default(false) | bool)
              else 'No kernel reboot needed - the service restarts are sufficient.' }}
 
