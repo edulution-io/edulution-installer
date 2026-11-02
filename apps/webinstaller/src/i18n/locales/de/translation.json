@@ -14,7 +14,8 @@
   "footer": {
     "infoText": "Alle Informationen auf",
     "orInThe": "oder in der",
-    "documentation": "Dokumentation"
+    "documentation": "Dokumentation",
+    "version": "Installer-Version {{version}}"
   },
   "start": {
     "welcome": "Herzlich Willkommen!",

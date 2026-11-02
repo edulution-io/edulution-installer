@@ -76,6 +76,8 @@ export const submitConfiguration = (config: ConfigurationRequest): Promise<Statu
     body: JSON.stringify(config),
   });
 
+export const getInstallerVersion = (): Promise<{ version: string }> => apiFetch<{ version: string }>('/api/version');
+
 export const checkApiStatus = (): Promise<StatusResponse> => apiFetch<StatusResponse>('/api/check-api-status');
 
 export const checkWebDavStatus = (): Promise<StatusResponse> => apiFetch<StatusResponse>('/api/check-webdav-status');

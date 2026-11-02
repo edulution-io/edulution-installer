@@ -71,6 +71,13 @@ if [ "${status}" != "401" ]; then
 fi
 log "API without a session: 401"
 
+version=$(api GET /api/version | jq -r '.version')
+if [ "${version}" != "${INSTALLER_TAG}" ]; then
+    echo "[e2e] The web installer reports version ${version}, expected ${INSTALLER_TAG}." >&2
+    exit 1
+fi
+log "Web installer version: ${version}"
+
 log "Submitting configuration (deploymentTarget=generic) ..."
 response=$(api POST /api/configure -H 'Content-Type: application/json' -d @- <<JSON
 {
