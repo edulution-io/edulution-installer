@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@edulution-io/ui-kit';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner, faCircleCheck, faCircleXmark, faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
-import useInstallerStore from '../store/useInstallerStore';
+import useInstallerStore, { lmnLdapHost } from '../store/useInstallerStore';
 import {
   startLmnPlaybook,
   createLmnWebSocket,
@@ -173,9 +173,7 @@ const LmnInstallPage = () => {
         lmnBinduserPw: currentStore.lmnBinduserPw,
         lmnLdapSchema: currentStore.lmnLdapSchema,
         lmnLdapPort: currentStore.lmnLdapPort,
-        // Keycloak checks the LDAP host against the server certificate, which names the server IP but not the
-        // docker gateway used in "same machine" mode. Other services keep the gateway.
-        lmnLdapHost: currentStore.lmnLocalInstall ? currentStore.lmnServerIp : '',
+        lmnLdapHost: lmnLdapHost(currentStore),
         lmnCaCertificate: currentStore.lmnCaCertificate,
         edulutionExternalDomain: currentStore.edulutionExternalDomain,
         lmnLocalInstall: currentStore.lmnLocalInstall,

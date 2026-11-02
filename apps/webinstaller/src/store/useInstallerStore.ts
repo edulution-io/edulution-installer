@@ -69,7 +69,7 @@ interface InstallerState {
     lmnBinduserPw: string;
     lmnLdapSchema: 'ldap' | 'ldaps';
     lmnLdapPort: number;
-    lmnCaCertificate: string;
+    lmnCaCertificate?: string;
     edulutionExternalDomain: string;
   }) => void;
   setCheckResult: (check: CheckKey, result: CheckResult) => void;
@@ -231,5 +231,9 @@ const useInstallerStore = create<InstallerState>()(
     },
   ),
 );
+
+// Keycloak checks the LDAP host against the server certificate, which names the server IP but not the
+// docker gateway used in "same machine" mode. Other services keep the gateway.
+export const lmnLdapHost = (state: InstallerState) => (state.lmnLocalInstall ? state.lmnServerIp : '');
 
 export default useInstallerStore;
