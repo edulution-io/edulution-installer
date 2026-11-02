@@ -784,11 +784,6 @@
       changed_when: false
       no_log: true
 
-    - name: Binduser-Passwort als Fakt setzen
-      ansible.builtin.set_fact:
-        edulution_binduser_password: '{{ binduser_pw_result.stdout | trim }}'
-      no_log: true
-
     - name: Edulution-Konfigurationsverzeichnis erstellen
       ansible.builtin.file:
         path: /var/lib/edulution
@@ -797,11 +792,12 @@
 
     - name: Edulution Binduser-Konfiguration schreiben
       ansible.builtin.copy:
+        # One expression: a password assigned as its own template would become a list or bool under ansible-core 2.16.
         content: |
-          {
-            "binduser_dn": "CN=edulutionui-binduser,OU=Management,OU=GLOBAL,{{ edulution_dc_parts }}",
-            "binduser_password": "{{ edulution_binduser_password }}"
-          }
+          {{ {
+            'binduser_dn': 'CN=edulutionui-binduser,OU=Management,OU=GLOBAL,' ~ edulution_dc_parts,
+            'binduser_password': binduser_pw_result.stdout | trim,
+          } | to_nice_json }}
         dest: /var/lib/edulution/binduser-config.json
         mode: '0600'
       no_log: true

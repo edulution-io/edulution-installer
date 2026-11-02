@@ -925,6 +925,14 @@ def openPrivate(path, mode="w"):
     return os.fdopen(fd, mode)
 
 
+def envValue(value):
+    # The file is read by docker compose and sourced by the shell installer; single quotes are literal in both.
+    # Compose keeps the backslash before a backtick, so only a value with both ' and ` changes.
+    if "'" not in value:
+        return f"'{value}'"
+    return '"' + re.sub(r'([\\"$`])', r'\\\1', value) + '"'
+
+
 def createEdulutionEnvFile(data: Data):
     root_dn = re.search(r"(DC=.*$)", data.DATA_LMN_BINDUSER_DN).group(1)
 
@@ -1025,10 +1033,10 @@ KEYCLOAK_EDU_API_CLIENT_SECRET={keycloak_eduapi_secret}
 
 LMN_API_BASE_URL=https://{data.DATA_LMN_EXTERNAL_DOMAIN}:8001/v1/
 
-LDAP_EDULUTION_BINDUSER_DN="{data.DATA_LMN_BINDUSER_DN}"
-LDAP_EDULUTION_BINDUSER_PASSWORD="{data.DATA_LMN_BINDUSER_PW}"
+LDAP_EDULUTION_BINDUSER_DN={envValue(data.DATA_LMN_BINDUSER_DN)}
+LDAP_EDULUTION_BINDUSER_PASSWORD={envValue(data.DATA_LMN_BINDUSER_PW)}
 
-EDUI_INITIAL_ADMIN_GROUP="{data.DATA_INITIAL_ADMIN_GROUP or ""}"
+EDUI_INITIAL_ADMIN_GROUP={envValue(data.DATA_INITIAL_ADMIN_GROUP or "")}
 
 # edulution-db
 
