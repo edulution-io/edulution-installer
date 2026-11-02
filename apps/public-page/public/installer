@@ -402,14 +402,12 @@ docker run -d \
   -e KC_DB=postgres \
   -e KC_DB_URL_DATABASE=keycloak \
   -e KC_DB_SCHEMA=public \
-  -e KC_PROXY=edge \
   -e KC_HOSTNAME_STRICT=false \
-  -e KC_HOSTNAME_STRICT_HTTPS=false \
   -e KC_HTTP_RELATIVE_PATH=/auth \
   -p 127.0.0.1:8080:8080 \
   --network edulution-prepare \
   "${BOOTSTRAP_KEYCLOAK_IMAGE}" \
-  start-dev \
+  start --http-enabled=true \
   --import-realm 2>&1 > /dev/zero
 
 attempt=0
