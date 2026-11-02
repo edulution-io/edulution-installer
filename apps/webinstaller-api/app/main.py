@@ -925,6 +925,14 @@ def openPrivate(path, mode="w"):
     return os.fdopen(fd, mode)
 
 
+def envValue(value):
+    # Docker Compose takes single-quoted values literally, except a trailing \ escaping the closing quote.
+    # In double quotes it unescapes \\, \" and \$ but keeps a backslash before anything else, such as `.
+    if "'" not in value and not value.endswith("\\"):
+        return f"'{value}'"
+    return '"' + re.sub(r'([\\"$])', r'\\\1', value) + '"'
+
+
 def createEdulutionEnvFile(data: Data):
     root_dn = re.search(r"(DC=.*$)", data.DATA_LMN_BINDUSER_DN).group(1)
 
@@ -1016,8 +1024,8 @@ MONGODB_USERNAME=root
 MONGODB_PASSWORD={mongodb_secret}
 MONGODB_AUTH_SOURCE=admin
 # directConnection=true skips replica set discovery, the single node set only
-# advertises its container name. Quoted because this file is also sourced by
-# the shell installer, where the unquoted "&" would split the assignment.
+# advertises its container name. Quoted because installer scripts up to 2.0
+# source this file, where the unquoted "&" would split the assignment.
 MONGODB_SERVER_URL="mongodb://root:{mongodb_secret}@edu-db:27017/?replicaSet=rs0&directConnection=true"
 
 KEYCLOAK_EDU_UI_SECRET={keycloak_eduui_secret}
@@ -1025,10 +1033,10 @@ KEYCLOAK_EDU_API_CLIENT_SECRET={keycloak_eduapi_secret}
 
 LMN_API_BASE_URL=https://{data.DATA_LMN_EXTERNAL_DOMAIN}:8001/v1/
 
-LDAP_EDULUTION_BINDUSER_DN="{data.DATA_LMN_BINDUSER_DN}"
-LDAP_EDULUTION_BINDUSER_PASSWORD="{data.DATA_LMN_BINDUSER_PW}"
+LDAP_EDULUTION_BINDUSER_DN={envValue(data.DATA_LMN_BINDUSER_DN)}
+LDAP_EDULUTION_BINDUSER_PASSWORD={envValue(data.DATA_LMN_BINDUSER_PW)}
 
-EDUI_INITIAL_ADMIN_GROUP="{data.DATA_INITIAL_ADMIN_GROUP or ""}"
+EDUI_INITIAL_ADMIN_GROUP={envValue(data.DATA_INITIAL_ADMIN_GROUP or "")}
 
 # edulution-db
 
