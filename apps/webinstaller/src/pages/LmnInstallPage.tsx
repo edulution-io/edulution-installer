@@ -145,7 +145,6 @@ const LmnInstallPage = () => {
           lmnLdapSchema: 'ldaps',
           lmnLdapPort: 636,
           lmnCaCertificate: edulutionConfig.ca_certificate,
-          edulutionExternalDomain: currentStore.edulutionExternalDomain,
         });
 
         // Shut down the LMN installer API to free port 8000
@@ -180,7 +179,7 @@ const LmnInstallPage = () => {
         lmnLdapPort: currentStore.lmnLdapPort,
         lmnLdapHost: lmnLdapHost(currentStore),
         lmnCaCertificate: currentStore.lmnCaCertificate,
-        edulutionExternalDomain: currentStore.edulutionExternalDomain,
+        edulutionExternalDomain,
         lmnLocalInstall: currentStore.lmnLocalInstall,
         lmnWebuiPort: currentStore.lmnWebuiPort,
       });
