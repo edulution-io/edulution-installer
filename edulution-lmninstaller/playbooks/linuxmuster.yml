@@ -935,9 +935,9 @@
           edulution bind user: CN=edulutionui-binduser,OU=Management,OU=GLOBAL,{{ edulution_dc_parts }}
 
           Services were restarted selectively (reboot replacement, without the network).
-          {{ 'WARNING: The kernel was updated - a real reboot is needed!'
+          {{ 'WARNING: The kernel was updated - reboot once the edulution installation has finished!'
              if (lmn_kernel_reboot_required | default(false) | bool)
-             else 'No kernel reboot needed - the service restarts are sufficient.' }}
+             else 'No kernel update. Reboot once the edulution installation has finished, so that the network configuration takes effect.' }}
 
           ====================================================================
 
