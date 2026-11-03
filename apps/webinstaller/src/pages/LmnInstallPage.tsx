@@ -220,7 +220,11 @@ const LmnInstallPage = () => {
         store.setLmnPlaybookStatus('completed');
         return;
       }
-      if (status !== 'running') store.clearLmnOutput();
+      if (status !== 'running') {
+        // A new run may target another server, so the configuration of an earlier run no longer applies.
+        store.clearLmnOutput();
+        store.clearLmnFetchedConfig();
+      }
       store.setLmnPlaybookStatus('running');
       connectOutput();
       if (status === 'running') {
