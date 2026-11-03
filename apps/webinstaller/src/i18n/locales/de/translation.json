@@ -165,6 +165,7 @@
     "success": "Installation erfolgreich abgeschlossen",
     "restartHint": "Der linuxmuster.net-Server muss neu gestartet werden, damit alle Änderungen wirksam werden.",
     "restartHintLocal": "Starten Sie den Server jetzt nicht neu, sonst bricht die edulution-Installation ab. Starten Sie ihn neu, sobald die edulution-Installation abgeschlossen ist.",
+    "sshHostKeyHint": "linuxmuster.net hat neue SSH-Host-Schlüssel erzeugt. Warnt Ihr SSH-Client beim nächsten Login (\"REMOTE HOST IDENTIFICATION HAS CHANGED\"), vergleichen Sie den Fingerprint am Ende des Protokolls oben und entfernen Sie den alten Eintrag mit 'ssh-keygen -R <Server>'.",
     "failed": "Installation fehlgeschlagen",
     "playbookError": "[ERROR] Playbook konnte nicht gestartet werden",
     "backToSetup": "Zurück zur Einrichtung",

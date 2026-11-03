@@ -3,7 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@edulution-io/ui-kit';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSpinner, faCircleCheck, faCircleXmark, faTriangleExclamation } from '@fortawesome/free-solid-svg-icons';
+import {
+  faSpinner,
+  faCircleCheck,
+  faCircleXmark,
+  faCircleInfo,
+  faTriangleExclamation,
+} from '@fortawesome/free-solid-svg-icons';
 import useInstallerStore, { lmnLdapHost } from '../store/useInstallerStore';
 import {
   startLmnPlaybook,
@@ -294,6 +300,13 @@ const LmnInstallPage = () => {
                   className="mt-0.5 text-amber-500"
                 />
                 {t(store.lmnLocalInstall ? 'lmnInstall.restartHintLocal' : 'lmnInstall.restartHint')}
+              </div>
+              <div className="flex items-start gap-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-800">
+                <FontAwesomeIcon
+                  icon={faCircleInfo}
+                  className="mt-0.5 text-blue-500"
+                />
+                {t('lmnInstall.sshHostKeyHint')}
               </div>
               <EdulutionDomainField
                 value={edulutionExternalDomain}

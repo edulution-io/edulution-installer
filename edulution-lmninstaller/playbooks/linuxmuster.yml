@@ -915,6 +915,15 @@
       ansible.builtin.set_fact:
         lmn_kernel_reboot_required: "{{ 'NEEDRESTART-KSTA: 3' in (needrestart_kernel.stdout | default('')) }}"
 
+    # linuxmuster-setup replaces the SSH host keys (ssh-keygen -A), so SSH
+    # clients that knew the server warn on their next login.
+    - name: Read the SSH host key fingerprints
+      ansible.builtin.shell: for key in /etc/ssh/ssh_host_*_key.pub; do ssh-keygen -lf "$key"; done
+      register: lmn_ssh_fingerprints
+      changed_when: false
+      failed_when: false
+      when: lmn_setup_result is changed
+
     # =========================================================================
     # FINAL MESSAGE
     # =========================================================================
@@ -940,6 +949,15 @@
              else 'No kernel update. Reboot once the edulution installation has finished, so that the network configuration takes effect.' }}
 
           ====================================================================
+
+    # A list prints one line per entry in the log, unlike the multi-line summary above.
+    - name: New SSH host keys
+      ansible.builtin.debug:
+        msg: >-
+          {{ ['linuxmuster-setup created new SSH host keys. SSH clients that knew this server warn once (REMOTE HOST IDENTIFICATION HAS CHANGED).',
+              'Compare a fingerprint, then remove the old entry with: ssh-keygen -R <server>']
+             + lmn_ssh_fingerprints.stdout_lines }}
+      when: lmn_setup_result is changed
 
   # ===========================================================================
   # HANDLERS
