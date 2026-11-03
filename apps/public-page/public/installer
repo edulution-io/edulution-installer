@@ -29,10 +29,10 @@ domain_error() {
     local domain="${1,,}"
     if [[ -z "$domain" ]]; then
         return
-    elif [[ "$domain" == localhost || "$domain" == *.localhost || "$domain" == 127.* || "$domain" == 0.0.0.0 || "$domain" == ::1 ]]; then
-        echo "Diese Adresse gilt nur auf dem Server selbst."
+    elif [[ "$domain" == localhost || "$domain" == *.localhost || "$domain" =~ ^127(\.[0-9]+){3}$ || "$domain" == 0.0.0.0 || "$domain" == ::1 ]]; then
+        echo "Diese Adresse ist nur auf dem Server selbst erreichbar."
     elif ! [[ "$domain" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$ ]]; then
-        echo "'${1}' ist kein gueltiger Domainname."
+        echo "'${1}' ist kein gültiger Domainname."
     fi
 }
 
@@ -118,6 +118,33 @@ fi
 if [ -f "${DIRECTORY}edulution.env" ]; then
   echo "[!] Die edulution UI scheint bereits installiert zu sein. Bitte prüfe das Verzeichnis '$DIRECTORY'!"
   exit 1
+fi
+
+# Das Skript laeuft meist als "curl ... | sudo bash"; stdin ist dann das Skript selbst, daher /dev/tty.
+# Gefragt wird nur im Vordergrund mit sichtbarer Ausgabe, sonst wartet das Skript unbemerkt auf eine Eingabe.
+if [ -z "${EDULUTION_DOMAIN}" ] && [ -t 2 ] && [[ "$(ps -o stat= -p $$)" == *+* ]] && (exec < /dev/tty) 2>/dev/null; then
+    while true; do
+        read -r -p "Domain für edulution (leer lassen zum Überspringen): " EDULUTION_DOMAIN < /dev/tty
+        EDULUTION_DOMAIN="${EDULUTION_DOMAIN,,}"
+        error=$(domain_error "${EDULUTION_DOMAIN}")
+        if [ -z "${EDULUTION_DOMAIN}" ] || [ -z "${error}" ]; then
+            break
+        fi
+        echo "[!] ${error}"
+    done
+    echo
+fi
+
+if [ -n "${EDULUTION_DOMAIN}" ]; then
+    domain_ips=$(getent ahosts "${EDULUTION_DOMAIN}" | awk '{print $1}' | sort -u)
+    if [ -z "${domain_ips}" ]; then
+        echo "[!] '${EDULUTION_DOMAIN}' lässt sich (noch) nicht auflösen. Die Installation läuft trotzdem weiter."
+    elif ! grep -qvE '^(127\.|::1$)' <<< "${domain_ips}"; then
+        echo "[!] '${EDULUTION_DOMAIN}' wird hier nur lokal (/etc/hosts) aufgelöst. Ob die Clients den Server darüber erreichen, lässt sich nicht prüfen."
+    elif ! grep -qxF -f <(hostname -I | tr ' ' '\n') <<< "${domain_ips}"; then
+        echo "[!] '${EDULUTION_DOMAIN}' zeigt auf $(echo ${domain_ips}) und damit nicht auf diesen Server."
+        echo "[!] Hinter NAT oder einem Reverse-Proxy ist das normal. Die Installation läuft weiter."
+    fi
 fi
 
 if ! command -v docker &> /dev/null; then
@@ -338,31 +365,6 @@ mkdir -p ${DIRECTORY}data/apps/desktopdeployment/edulution-guacamole/config
 chown 1001:1001 ${DIRECTORY}data/apps/desktopdeployment/edulution-guacamole/config
 
 mv ${DIRECTORY}edulution-default.yml ${DIRECTORY}data/traefik/config
-
-# Das Skript laeuft meist als "curl ... | sudo bash"; stdin ist dann das Skript selbst, daher /dev/tty.
-if [ -z "${EDULUTION_DOMAIN}" ] && (exec < /dev/tty) 2>/dev/null; then
-    echo
-    while true; do
-        read -r -p "Domain für edulution (leer lassen zum Überspringen): " EDULUTION_DOMAIN < /dev/tty
-        EDULUTION_DOMAIN="${EDULUTION_DOMAIN// /}"
-        EDULUTION_DOMAIN="${EDULUTION_DOMAIN,,}"
-        error=$(domain_error "${EDULUTION_DOMAIN}")
-        if [ -z "${EDULUTION_DOMAIN}" ] || [ -z "${error}" ]; then
-            break
-        fi
-        echo "[!] ${error}"
-    done
-fi
-
-if [ -n "${EDULUTION_DOMAIN}" ]; then
-    domain_ips=$(getent ahosts "${EDULUTION_DOMAIN}" | awk '{print $1}' | sort -u)
-    if [ -z "${domain_ips}" ]; then
-        echo "[!] '${EDULUTION_DOMAIN}' lässt sich (noch) nicht auflösen. Die Installation läuft trotzdem weiter."
-    elif ! grep -qxF -f <(hostname -I | tr ' ' '\n' | grep -v '^$') <<< "${domain_ips}"; then
-        echo "[!] '${EDULUTION_DOMAIN}' zeigt auf $(echo ${domain_ips}) und damit nicht auf diesen Server."
-        echo "[!] Hinter NAT oder einem Reverse-Proxy ist das normal. Die Installation läuft weiter."
-    fi
-fi
 
 echo "[*] Starte den edulution Web-Installer..."
 
