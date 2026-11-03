@@ -58,6 +58,9 @@ EDULUTION_DOMAIN = os.environ.get("EDULUTION_DOMAIN", "")
 
 # --- Pydantic Models ---
 
+HOST_NAME = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*")
+
+
 class Token(BaseModel):
     token: str
 
@@ -98,15 +101,17 @@ class ConfigurationRequest(BaseModel):
     @field_validator("edulutionExternalDomain")
     @classmethod
     def reachableDomain(cls, value: str) -> str:
+        # The address becomes https://<address>/, so it is a bare host name or IP without port or path.
         value = value.strip()
-        name = value.lower().strip("[]").rstrip(".")
+        name = value.lower().rstrip(".")
+        name = name[1:-1] if name.startswith("[") and name.endswith("]") else name
         try:
             address = ipaddress.ip_address(name)
-            loopback = address.is_loopback or address.is_unspecified
+            reachable = not (address.is_loopback or address.is_unspecified)
         except ValueError:
-            loopback = name == "localhost" or name.endswith(".localhost")
-        if not value or loopback:
-            raise ValueError("the edulution address must be reachable by clients")
+            reachable = bool(HOST_NAME.fullmatch(name)) and name != "localhost" and not name.endswith(".localhost")
+        if not reachable:
+            raise ValueError("the edulution address must be a host name or IP address that clients can reach")
         return value
 
 

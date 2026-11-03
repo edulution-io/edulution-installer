@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Input } from '@shared-ui';
-import { isLoopbackHost, isValidEdulutionDomain } from '../utils/edulutionDomain';
+import { edulutionDomainError, isValidEdulutionDomain } from '../utils/edulutionDomain';
 
 interface EdulutionDomainFieldProps {
   value: string;
@@ -24,9 +24,13 @@ const EdulutionDomainField = ({ value, onChange }: EdulutionDomainFieldProps) =>
         onChange={(e) => onChange(e.target.value.trim())}
         className={isValidEdulutionDomain(value) ? 'valid-input' : ''}
       />
-      {isLoopbackHost(value) ? (
+      {edulutionDomainError(value) === 'loopback' && (
         <p className="mt-1 text-xs text-red-400">{t('configure.externalDomainLoopback')}</p>
-      ) : (
+      )}
+      {edulutionDomainError(value) === 'invalid' && (
+        <p className="mt-1 text-xs text-red-400">{t('configure.externalDomainInvalid')}</p>
+      )}
+      {!edulutionDomainError(value) && (
         <p className="mt-1 text-xs text-muted-foreground">{t('configure.externalDomainEdulutionHint')}</p>
       )}
     </div>
