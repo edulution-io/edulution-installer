@@ -10,6 +10,7 @@ DIRECTORY="/srv/docker/edulution-ui/"
 EDULUTION_INSTALLER_IMAGE="ghcr.io/edulution-io/edulution-installer:latest"
 EDULUTION_INSTALLER_VERSION="dev"
 EDULUTION_INSTALLER_REF=""
+EDULUTION_DOMAIN=""
 
 use_version() {
     local version="${1#v}"
@@ -23,6 +24,28 @@ use_version() {
     echo "Version ${version} wird verwendet (Image ${EDULUTION_INSTALLER_IMAGE})."
 }
 
+# Gibt einen Fehlertext aus, wenn Clients den Server unter diesem Namen nicht erreichen koennen.
+domain_error() {
+    local domain="${1,,}"
+    if [[ -z "$domain" ]]; then
+        return
+    elif [[ "$domain" == localhost || "$domain" == *.localhost || "$domain" == 127.* || "$domain" == 0.0.0.0 || "$domain" == ::1 ]]; then
+        echo "Diese Adresse gilt nur auf dem Server selbst."
+    elif ! [[ "$domain" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$ ]]; then
+        echo "'${1}' ist kein gueltiger Domainname."
+    fi
+}
+
+use_domain() {
+    local error
+    error=$(domain_error "$1")
+    if [[ -z "$1" || -n "$error" ]]; then
+        echo "[!] --domain benötigt den Namen, unter dem die Clients den Server erreichen, z.B. --domain edulution.example.org.${error:+ ${error}}"
+        exit 1
+    fi
+    EDULUTION_DOMAIN="${1,,}"
+}
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -34,9 +57,17 @@ while [[ $# -gt 0 ]]; do
             use_version "${1#*=}"
             shift
             ;;
+        --domain)
+            use_domain "$2"
+            shift 2
+            ;;
+        --domain=*)
+            use_domain "${1#*=}"
+            shift
+            ;;
         *)
             echo "Unbekannter Parameter: $1"
-            echo "Verwendung: $0 [--version <X.Y.Z[-rc.N]>]"
+            echo "Verwendung: $0 [--version <X.Y.Z[-rc.N]>] [--domain <Domain>]"
             exit 1
             ;;
     esac
@@ -308,6 +339,31 @@ chown 1001:1001 ${DIRECTORY}data/apps/desktopdeployment/edulution-guacamole/conf
 
 mv ${DIRECTORY}edulution-default.yml ${DIRECTORY}data/traefik/config
 
+# Das Skript laeuft meist als "curl ... | sudo bash"; stdin ist dann das Skript selbst, daher /dev/tty.
+if [ -z "${EDULUTION_DOMAIN}" ] && (exec < /dev/tty) 2>/dev/null; then
+    echo
+    while true; do
+        read -r -p "Domain für edulution (leer lassen zum Überspringen): " EDULUTION_DOMAIN < /dev/tty
+        EDULUTION_DOMAIN="${EDULUTION_DOMAIN// /}"
+        EDULUTION_DOMAIN="${EDULUTION_DOMAIN,,}"
+        error=$(domain_error "${EDULUTION_DOMAIN}")
+        if [ -z "${EDULUTION_DOMAIN}" ] || [ -z "${error}" ]; then
+            break
+        fi
+        echo "[!] ${error}"
+    done
+fi
+
+if [ -n "${EDULUTION_DOMAIN}" ]; then
+    domain_ips=$(getent ahosts "${EDULUTION_DOMAIN}" | awk '{print $1}' | sort -u)
+    if [ -z "${domain_ips}" ]; then
+        echo "[!] '${EDULUTION_DOMAIN}' lässt sich (noch) nicht auflösen. Die Installation läuft trotzdem weiter."
+    elif ! grep -qxF -f <(hostname -I | tr ' ' '\n' | grep -v '^$') <<< "${domain_ips}"; then
+        echo "[!] '${EDULUTION_DOMAIN}' zeigt auf $(echo ${domain_ips}) und damit nicht auf diesen Server."
+        echo "[!] Hinter NAT oder einem Reverse-Proxy ist das normal. Die Installation läuft weiter."
+    fi
+fi
+
 echo "[*] Starte den edulution Web-Installer..."
 
 docker pull "${EDULUTION_INSTALLER_IMAGE}" 2>&1 > /dev/zero
@@ -319,6 +375,7 @@ INSTALLER_TOKEN=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
 # BOOTSTRAP_BRANCH nur bei --version: Images bis 2.0 laden bootstrap.sh noch von GitHub.
 INSTALLER_TOKEN="${INSTALLER_TOKEN}" docker run -d --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ \
     -e INSTALLER_TOKEN \
+    ${EDULUTION_DOMAIN:+-e EDULUTION_DOMAIN=${EDULUTION_DOMAIN}} \
     ${EDULUTION_INSTALLER_REF:+-e BOOTSTRAP_BRANCH=${EDULUTION_INSTALLER_REF}} \
     "${EDULUTION_INSTALLER_IMAGE}" 2>&1 > /dev/zero
 
@@ -347,8 +404,16 @@ cat <<EOF
     Sie erreichen die Oberfläche wie folgt:
 EOF
 
-echo "    https://$(hostname):443/?token=${INSTALLER_TOKEN}"
+if [ -n "${EDULUTION_DOMAIN}" ]; then
+    echo "    https://${EDULUTION_DOMAIN}/?token=${INSTALLER_TOKEN}"
+fi
+echo "    https://$(hostname -f 2>/dev/null || hostname):443/?token=${INSTALLER_TOKEN}"
 echo "    https://$(hostname -I | awk '{print $1}'):443/?token=${INSTALLER_TOKEN}"
+if [ -z "${EDULUTION_DOMAIN}" ]; then
+    echo
+    echo "    Über einen DNS-Namen, der auf diesen Server zeigt:"
+    echo "    https://<domain>/?token=${INSTALLER_TOKEN}"
+fi
 
 cat <<EOF
 

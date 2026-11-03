@@ -52,6 +52,8 @@ STATIC_PATH = BASE_PATH / "static"
 EDULUTION_DIRECTORY = "/edulution-ui"
 
 INSTALLER_VERSION = os.environ.get("INSTALLER_VERSION", "dev")
+# Entered in the installer script (--domain or its prompt); prefills the edulution address.
+EDULUTION_DOMAIN = os.environ.get("EDULUTION_DOMAIN", "")
 
 
 # --- Pydantic Models ---
@@ -296,6 +298,11 @@ api = APIRouter(prefix="/api")
 @api.get("/version")
 def getVersion():
     return {"version": INSTALLER_VERSION}
+
+
+@api.get("/edulution-domain")
+def getEdulutionDomain():
+    return {"domain": EDULUTION_DOMAIN}
 
 
 @api.post("/check-token")

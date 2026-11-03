@@ -14,7 +14,8 @@ import LmnConfigPage from './pages/LmnConfigPage';
 import LmnInstallPage from './pages/LmnInstallPage';
 import FinishPage from './pages/FinishPage';
 import LanguageSwitcher from './components/LanguageSwitcher';
-import { getInstallerVersion } from './api/installerApi';
+import { getEdulutionDomain, getInstallerVersion } from './api/installerApi';
+import useInstallerStore from './store/useInstallerStore';
 
 const App = () => {
   const { t } = useTranslation();
@@ -23,6 +24,12 @@ const App = () => {
   useEffect(() => {
     getInstallerVersion()
       .then((result) => setVersion(result.version))
+      .catch(() => {});
+    getEdulutionDomain()
+      .then(({ domain }) => {
+        const store = useInstallerStore.getState();
+        if (domain && !store.edulutionExternalDomain) store.setEdulutionExternalDomain(domain);
+      })
       .catch(() => {});
   }, []);
 
