@@ -15,6 +15,7 @@ import {
   startLmnPlaybook,
   createLmnWebSocket,
   getEdulutionConfig,
+  getLmnPlaybookStatus,
   submitConfiguration,
   shutdownLmnInstaller,
 } from '../api/installerApi';
@@ -26,8 +27,9 @@ const LmnInstallPage = () => {
   const { t } = useTranslation();
   const store = useInstallerStore();
   const logRef = useRef<HTMLDivElement>(null);
-  const [started, setStarted] = useState(false);
-  const [configFetched, setConfigFetched] = useState(false);
+  // The bind password is kept in memory only, so it marks a configuration fetched in this session.
+  const configFetched =
+    store.lmnPlaybookStatus === 'completed' && store.lmnBinduserPw !== '' && store.lmnCaCertificate !== '';
   const [configuring, setConfiguring] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -38,6 +40,7 @@ const LmnInstallPage = () => {
   const wsRef = useRef<WebSocket | null>(null);
   const wsOpenedRef = useRef(false);
   const finalStatusRef = useRef(false);
+  const statusPollRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (logRef.current) {
@@ -45,13 +48,7 @@ const LmnInstallPage = () => {
     }
   }, [store.lmnOutputLog]);
 
-  const startInstallation = useCallback(async () => {
-    if (started) return;
-    setStarted(true);
-    store.clearLmnOutput();
-    store.setLmnPlaybookStatus('running');
-
-    // Connect WebSocket first
+  const connectOutput = useCallback(() => {
     const ws = createLmnWebSocket();
     wsRef.current = ws;
     wsOpenedRef.current = false;
@@ -102,8 +99,27 @@ const LmnInstallPage = () => {
       store.appendLmnOutput(`[ERROR] ${message}`);
       store.setLmnPlaybookStatus('failed');
     };
+  }, [store, t]);
 
-    // Start the playbook
+  // The output stream only carries messages sent after it connects, so a run that ends while attaching is
+  // noticed through the job status instead.
+  const followStatus = useCallback(() => {
+    statusPollRef.current = window.setInterval(() => {
+      void getLmnPlaybookStatus()
+        .then(({ status }) => {
+          if (finalStatusRef.current) {
+            window.clearInterval(statusPollRef.current);
+          } else if (status === 'completed' || status === 'failed') {
+            finalStatusRef.current = true;
+            window.clearInterval(statusPollRef.current);
+            store.setLmnPlaybookStatus(status);
+          }
+        })
+        .catch(() => {});
+    }, 5000);
+  }, [store]);
+
+  const startPlaybook = useCallback(async () => {
     try {
       const currentStore = useInstallerStore.getState();
       await startLmnPlaybook('linuxmuster.yml', {
@@ -127,7 +143,7 @@ const LmnInstallPage = () => {
       store.appendLmnOutput(`${t('lmnInstall.playbookError')}: ${(error as Error).message}`);
       store.setLmnPlaybookStatus('failed');
     }
-  }, [started, store]);
+  }, [store, t]);
 
   // Auto-fetch config from LMN API as soon as playbook completes
   useEffect(() => {
@@ -157,8 +173,6 @@ const LmnInstallPage = () => {
         void shutdownLmnInstaller().catch(() => {
           // May fail if API already terminated
         });
-
-        setConfigFetched(true);
       } catch {
         setConfigError(t('lmnInstall.configError'));
       } finally {
@@ -198,11 +212,40 @@ const LmnInstallPage = () => {
   }, [navigate, store, edulutionExternalDomain]);
 
   useEffect(() => {
-    void startInstallation();
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
+    let active = true;
+    const run = async () => {
+      // Opening the page again (history, reload) must not run linuxmuster-setup a second time.
+      const serverStatus = await getLmnPlaybookStatus()
+        .then((result) => result.status)
+        .catch(() => null);
+      if (!active) return;
+      // Once the installer API has been shut down after a successful run, only the store knows the result.
+      const status =
+        serverStatus ?? (useInstallerStore.getState().lmnPlaybookStatus === 'completed' ? 'completed' : null);
+      if (status === 'completed') {
+        store.setLmnPlaybookStatus('completed');
+        return;
       }
+      if (status !== 'running') {
+        // A new run may target another server, so the configuration of an earlier run no longer applies.
+        store.clearLmnOutput();
+        store.clearLmnFetchedConfig();
+      }
+      store.setLmnPlaybookStatus('running');
+      connectOutput();
+      if (status === 'running') {
+        followStatus();
+      } else {
+        await startPlaybook();
+      }
+    };
+    void run();
+    return () => {
+      active = false;
+      window.clearInterval(statusPollRef.current);
+      // Leaving the page is not a lost connection.
+      finalStatusRef.current = true;
+      wsRef.current?.close();
     };
   }, []);
 
