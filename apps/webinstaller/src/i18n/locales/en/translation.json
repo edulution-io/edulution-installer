@@ -165,6 +165,7 @@
     "success": "Installation completed successfully",
     "restartHint": "The linuxmuster.net server must be restarted for all changes to take effect.",
     "restartHintLocal": "Do not restart the server now, or the edulution installation stops. Restart it once the edulution installation has finished.",
+    "sshHostKeyHint": "linuxmuster.net created new SSH host keys. If your SSH client warns on the next login (\"REMOTE HOST IDENTIFICATION HAS CHANGED\"), compare the fingerprint at the end of the log above and remove the old entry with 'ssh-keygen -R <server name or IP>'.",
     "failed": "Installation failed",
     "playbookError": "[ERROR] Playbook could not be started",
     "backToSetup": "Back to setup",
