@@ -80,6 +80,8 @@ export const submitConfiguration = (config: ConfigurationRequest): Promise<Statu
 
 export const getInstallerVersion = (): Promise<{ version: string }> => apiFetch<{ version: string }>('/api/version');
 
+export const getEdulutionDomain = (): Promise<{ domain: string }> => apiFetch<{ domain: string }>('/api/edulution-domain');
+
 export const checkApiStatus = (): Promise<StatusResponse> => apiFetch<StatusResponse>('/api/check-api-status');
 
 export const checkWebDavStatus = (): Promise<StatusResponse> => apiFetch<StatusResponse>('/api/check-webdav-status');

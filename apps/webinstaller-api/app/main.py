@@ -52,11 +52,14 @@ STATIC_PATH = BASE_PATH / "static"
 EDULUTION_DIRECTORY = "/edulution-ui"
 
 INSTALLER_VERSION = os.environ.get("INSTALLER_VERSION", "dev")
+# Entered in the installer script (--domain or its prompt); prefills the edulution address.
+EDULUTION_DOMAIN = os.environ.get("EDULUTION_DOMAIN", "")
 
 
 # --- Pydantic Models ---
 
 HOST_NAME = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*")
+NUMERIC_LABEL = re.compile(r"0x[0-9a-f]*|[0-9]+")
 
 
 class Token(BaseModel):
@@ -107,7 +110,13 @@ class ConfigurationRequest(BaseModel):
             address = ipaddress.ip_address(name)
             reachable = not (address.is_loopback or address.is_unspecified)
         except ValueError:
-            reachable = bool(HOST_NAME.fullmatch(name)) and name != "localhost" and not name.endswith(".localhost")
+            # Browsers read a numeric last label as IPv4 (127.1, 2130706433), so only the usual form passes above.
+            reachable = (
+                bool(HOST_NAME.fullmatch(name))
+                and not NUMERIC_LABEL.fullmatch(name.rsplit(".", 1)[-1])
+                and name != "localhost"
+                and not name.endswith(".localhost")
+            )
         if not reachable:
             raise ValueError("the edulution address must be a host name or IP address that clients can reach")
         return value
@@ -301,6 +310,11 @@ api = APIRouter(prefix="/api")
 @api.get("/version")
 def getVersion():
     return {"version": INSTALLER_VERSION}
+
+
+@api.get("/edulution-domain")
+def getEdulutionDomain():
+    return {"domain": EDULUTION_DOMAIN}
 
 
 @api.post("/check-token")

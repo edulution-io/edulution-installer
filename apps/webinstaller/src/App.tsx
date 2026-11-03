@@ -14,16 +14,26 @@ import LmnConfigPage from './pages/LmnConfigPage';
 import LmnInstallPage from './pages/LmnInstallPage';
 import FinishPage from './pages/FinishPage';
 import LanguageSwitcher from './components/LanguageSwitcher';
-import { getInstallerVersion } from './api/installerApi';
+import { getEdulutionDomain, getInstallerVersion } from './api/installerApi';
+import useInstallerStore from './store/useInstallerStore';
 
 const App = () => {
   const { t } = useTranslation();
   const [version, setVersion] = useState('');
+  // The pages read the prefilled address when they mount, so they wait for it.
+  const [domainLoaded, setDomainLoaded] = useState(false);
 
   useEffect(() => {
     getInstallerVersion()
       .then((result) => setVersion(result.version))
       .catch(() => {});
+    getEdulutionDomain()
+      .then(({ domain }) => {
+        const store = useInstallerStore.getState();
+        if (domain && !store.edulutionExternalDomain) store.setEdulutionExternalDomain(domain);
+      })
+      .catch(() => {})
+      .finally(() => setDomainLoaded(true));
   }, []);
 
   return (
@@ -44,56 +54,58 @@ const App = () => {
             </a>
           </div>
 
-          <Routes>
-            <Route
-              path="/"
-              element={<StartPage />}
-            />
-            <Route
-              path="/organization"
-              element={<OrganizationPage />}
-            />
-            <Route
-              path="/token"
-              element={<TokenPage />}
-            />
-            <Route
-              path="/configure"
-              element={<ConfigurePage />}
-            />
-            <Route
-              path="/check"
-              element={<CheckPage />}
-            />
-            <Route
-              path="/admin-group"
-              element={<AdminGroupPage />}
-            />
-            <Route
-              path="/certificate"
-              element={<CertificatePage />}
-            />
-            <Route
-              path="/lmn-setup"
-              element={<LmnSetupPage />}
-            />
-            <Route
-              path="/lmn-config"
-              element={<LmnConfigPage />}
-            />
-            <Route
-              path="/lmn-install"
-              element={<LmnInstallPage />}
-            />
-            <Route
-              path="/finish"
-              element={<FinishPage />}
-            />
-            <Route
-              path="*"
-              element={<Navigate to="/" />}
-            />
-          </Routes>
+          {domainLoaded && (
+            <Routes>
+              <Route
+                path="/"
+                element={<StartPage />}
+              />
+              <Route
+                path="/organization"
+                element={<OrganizationPage />}
+              />
+              <Route
+                path="/token"
+                element={<TokenPage />}
+              />
+              <Route
+                path="/configure"
+                element={<ConfigurePage />}
+              />
+              <Route
+                path="/check"
+                element={<CheckPage />}
+              />
+              <Route
+                path="/admin-group"
+                element={<AdminGroupPage />}
+              />
+              <Route
+                path="/certificate"
+                element={<CertificatePage />}
+              />
+              <Route
+                path="/lmn-setup"
+                element={<LmnSetupPage />}
+              />
+              <Route
+                path="/lmn-config"
+                element={<LmnConfigPage />}
+              />
+              <Route
+                path="/lmn-install"
+                element={<LmnInstallPage />}
+              />
+              <Route
+                path="/finish"
+                element={<FinishPage />}
+              />
+              <Route
+                path="*"
+                element={<Navigate to="/" />}
+              />
+            </Routes>
+          )}
 
           <div className="footer-section">
             {t('footer.infoText')}{' '}
