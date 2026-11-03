@@ -341,13 +341,16 @@ const LmnInstallPage = () => {
                 />
                 {t(store.lmnLocalInstall ? 'lmnInstall.configFetchedLocal' : 'lmnInstall.configFetched')}
               </div>
-              <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-                <FontAwesomeIcon
-                  icon={faTriangleExclamation}
-                  className="mt-0.5 text-amber-500"
-                />
-                {t(store.lmnLocalInstall ? 'lmnInstall.restartHintLocal' : 'lmnInstall.restartHint')}
-              </div>
+              {/* On the same machine a restart now would stop the installer script; it recommends one at its end. */}
+              {!store.lmnLocalInstall && (
+                <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                  <FontAwesomeIcon
+                    icon={faTriangleExclamation}
+                    className="mt-0.5 text-amber-500"
+                  />
+                  {t('lmnInstall.restartHint')}
+                </div>
+              )}
               {newSshHostKeys && (
                 <div className="flex items-start gap-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-800">
                   <FontAwesomeIcon
