@@ -3,28 +3,8 @@
 @tailwind utilities;
 
 html {
-  @apply text-background;
+  @apply text-foreground;
   font-family: "Lato", sans-serif;
-}
-
-:root {
-  --background: #000000;
-  --foreground: #f8fafc;
-  --card: rgba(255, 255, 255, 1);
-  --card-foreground: #2d3748;
-  --primary: #0081c6;
-  --primary-foreground: #ffffff;
-  --secondary: #d1d5db;
-  --secondary-foreground: #2d2d30;
-  --muted: #2d3748;
-  --muted-transparent: #2d374850;
-  --accent: #2d2d30;
-  --accent-light: #3c3f45;
-  --border: #cbd4e4;
-  --ring: #8ca4b6;
-  --radius: 0.25rem;
-  --ci-light-green: #8fc046;
-  --ci-dark-blue: #0081c6;
 }
 
 * {
@@ -70,21 +50,21 @@ body {
 .footer-section {
   text-align: center;
   padding: 20px 0 0 0;
-  color: #718096;
+  color: rgb(var(--muted-foreground));
   font-size: 14px;
   border-top: 1px solid #e2e8f0;
   margin-top: 30px;
 }
 
 .footer-section a {
-  color: var(--primary);
+  color: rgb(var(--primary));
   text-decoration: none;
   font-weight: 600;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .footer-section a:hover {
-  color: var(--secondary);
+  color: rgb(var(--secondary));
   text-decoration: underline;
 }
 

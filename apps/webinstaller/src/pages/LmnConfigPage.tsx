@@ -106,7 +106,7 @@ const LmnConfigPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-lg font-bold text-gray-800">{t('lmnConfig.title', { step })}</h3>
+      <h3 className="text-lg font-bold text-foreground">{t('lmnConfig.title', { step })}</h3>
 
       {step === 1 && (
         <>
@@ -118,12 +118,12 @@ const LmnConfigPage = () => {
           )}
           {!isLocal && (
             <>
-              <h4 className="text-sm font-bold text-gray-600">{t('lmnConfig.network')}</h4>
+              <h4 className="text-sm font-bold text-muted-foreground">{t('lmnConfig.network')}</h4>
               <div className="grid grid-cols-3 gap-3">
             <div>
               <label
                 htmlFor="lmn_server_ip"
-                className="mb-1 block text-sm font-bold text-gray-800"
+                className="mb-1 block text-sm font-bold text-foreground"
               >
                 {t('lmnConfig.serverIp')}
               </label>
@@ -138,7 +138,7 @@ const LmnConfigPage = () => {
             <div>
               <label
                 htmlFor="lmn_netmask"
-                className="mb-1 block text-sm font-bold text-gray-800"
+                className="mb-1 block text-sm font-bold text-foreground"
               >
                 {t('lmnConfig.subnetMask')}
               </label>
@@ -153,7 +153,7 @@ const LmnConfigPage = () => {
             <div>
               <label
                 htmlFor="lmn_gateway"
-                className="mb-1 block text-sm font-bold text-gray-800"
+                className="mb-1 block text-sm font-bold text-foreground"
               >
                 {t('lmnConfig.gateway')}
               </label>
@@ -170,12 +170,12 @@ const LmnConfigPage = () => {
           )}
 
           {/* Server */}
-          <h4 className="text-sm font-bold text-gray-600">{t('lmnConfig.server')}</h4>
+          <h4 className="text-sm font-bold text-muted-foreground">{t('lmnConfig.server')}</h4>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label
                 htmlFor="lmn_servername"
-                className="mb-1 block text-sm font-bold text-gray-800"
+                className="mb-1 block text-sm font-bold text-foreground"
               >
                 {t('lmnConfig.hostname')}
               </label>
@@ -189,7 +189,7 @@ const LmnConfigPage = () => {
             <div>
               <label
                 htmlFor="lmn_domainname"
-                className="mb-1 block text-sm font-bold text-gray-800"
+                className="mb-1 block text-sm font-bold text-foreground"
               >
                 {t('common.domain')}
               </label>
@@ -203,11 +203,11 @@ const LmnConfigPage = () => {
           </div>
 
           {/* DHCP */}
-          <h4 className="text-sm font-bold text-gray-600">{t('lmnConfig.dhcp')}</h4>
+          <h4 className="text-sm font-bold text-muted-foreground">{t('lmnConfig.dhcp')}</h4>
           <div>
             <label
               htmlFor="lmn_dhcprange"
-              className="mb-1 block text-sm font-bold text-gray-800"
+              className="mb-1 block text-sm font-bold text-foreground"
             >
               {t('lmnConfig.dhcpRange')}
             </label>
@@ -217,16 +217,16 @@ const LmnConfigPage = () => {
               value={dhcprange}
               onChange={(e) => setDhcprange(e.target.value)}
             />
-            <p className="mt-1 text-xs text-gray-500">{t('lmnConfig.dhcpFormat')}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t('lmnConfig.dhcpFormat')}</p>
           </div>
 
           {/* System */}
-          <h4 className="text-sm font-bold text-gray-600">{t('lmnConfig.system')}</h4>
+          <h4 className="text-sm font-bold text-muted-foreground">{t('lmnConfig.system')}</h4>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label
                 htmlFor="lmn_timezone"
-                className="mb-1 block text-sm font-bold text-gray-800"
+                className="mb-1 block text-sm font-bold text-foreground"
               >
                 {t('lmnConfig.timezone')}
               </label>
@@ -249,7 +249,7 @@ const LmnConfigPage = () => {
             <div>
               <label
                 htmlFor="lmn_locale"
-                className="mb-1 block text-sm font-bold text-gray-800"
+                className="mb-1 block text-sm font-bold text-foreground"
               >
                 {t('lmnConfig.locale')}
               </label>
@@ -295,11 +295,11 @@ const LmnConfigPage = () => {
       {step === 2 && (
         <>
           {/* Schule */}
-          <h4 className="text-sm font-bold text-gray-600">{t('lmnConfig.school')}</h4>
+          <h4 className="text-sm font-bold text-muted-foreground">{t('lmnConfig.school')}</h4>
           <div>
             <label
               htmlFor="lmn_schoolname"
-              className="mb-1 block text-sm font-bold text-gray-800"
+              className="mb-1 block text-sm font-bold text-foreground"
             >
               {t('lmnConfig.schoolName')}
             </label>
@@ -314,7 +314,7 @@ const LmnConfigPage = () => {
             <div>
               <label
                 htmlFor="lmn_location"
-                className="mb-1 block text-sm font-bold text-gray-800"
+                className="mb-1 block text-sm font-bold text-foreground"
               >
                 {t('lmnConfig.location')}
               </label>
@@ -328,7 +328,7 @@ const LmnConfigPage = () => {
             <div>
               <label
                 htmlFor="lmn_country"
-                className="mb-1 block text-sm font-bold text-gray-800"
+                className="mb-1 block text-sm font-bold text-foreground"
               >
                 {t('lmnConfig.country')}
               </label>
@@ -342,7 +342,7 @@ const LmnConfigPage = () => {
             <div>
               <label
                 htmlFor="lmn_state"
-                className="mb-1 block text-sm font-bold text-gray-800"
+                className="mb-1 block text-sm font-bold text-foreground"
               >
                 {t('common.state')}
               </label>
@@ -356,11 +356,11 @@ const LmnConfigPage = () => {
           </div>
 
           {/* Admin-Passwort */}
-          <h4 className="text-sm font-bold text-gray-600">{t('lmnConfig.adminPassword')}</h4>
+          <h4 className="text-sm font-bold text-muted-foreground">{t('lmnConfig.adminPassword')}</h4>
           <div>
             <label
               htmlFor="lmn_adminpw"
-              className="mb-1 block text-sm font-bold text-gray-800"
+              className="mb-1 block text-sm font-bold text-foreground"
             >
               {t('common.password')}
             </label>
@@ -375,7 +375,7 @@ const LmnConfigPage = () => {
           <div>
             <label
               htmlFor="lmn_adminpw_confirm"
-              className="mb-1 block text-sm font-bold text-gray-800"
+              className="mb-1 block text-sm font-bold text-foreground"
             >
               {t('lmnConfig.confirmPassword')}
             </label>
@@ -389,13 +389,13 @@ const LmnConfigPage = () => {
             />
           </div>
           {adminpw && pwErrors.length > 0 && (
-            <ul className="list-inside list-disc text-xs text-red-600">
+            <ul className="list-inside list-disc text-xs text-red-400">
               {pwErrors.map((err) => (
                 <li key={err}>{err}</li>
               ))}
             </ul>
           )}
-          {adminpwConfirm && !pwMatch && <p className="text-xs text-red-600">{t('lmnConfig.passwordMismatch')}</p>}
+          {adminpwConfirm && !pwMatch && <p className="text-xs text-red-400">{t('lmnConfig.passwordMismatch')}</p>}
 
           <Button
             variant="btn-security"

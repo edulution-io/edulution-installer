@@ -97,7 +97,7 @@ const TokenPage = () => {
         <div>
           <label
             htmlFor="adType"
-            className="mb-1 block text-sm font-bold text-gray-800"
+            className="mb-1 block text-sm font-bold text-foreground"
           >
             {t('token.bindDirectory')}
           </label>
@@ -120,7 +120,7 @@ const TokenPage = () => {
 
         {adType === 'existing' && (
           <div>
-            <span className="mb-2 block text-sm font-bold text-gray-800">
+            <span className="mb-2 block text-sm font-bold text-foreground">
               {t('token.whichDirectory')}
             </span>
             <div className="grid grid-cols-2 gap-3">
@@ -159,10 +159,10 @@ const TokenPage = () => {
         )}
 
         {adType === 'new' && (
-          <div className="rounded-lg bg-gray-50 p-3">
+          <div className="rounded-lg bg-accent p-3">
             <label
               htmlFor="lmnLocalInstall"
-              className="flex cursor-pointer items-start gap-2 text-sm font-bold text-gray-800"
+              className="flex cursor-pointer items-start gap-2 text-sm font-bold text-foreground"
             >
               <input
                 id="lmnLocalInstall"
@@ -173,17 +173,17 @@ const TokenPage = () => {
               />
               {t('token.localInstall')}
             </label>
-            <p className="mt-1 pl-6 text-xs text-gray-500">{t('token.localInstallHint')}</p>
+            <p className="mt-1 pl-6 text-xs text-muted-foreground">{t('token.localInstallHint')}</p>
           </div>
         )}
 
         {adType !== 'new' &&
           (target === 'linuxmuster' ? (
-            <p className="mt-2 text-sm text-gray-600">
+            <p className="mt-2 text-sm text-muted-foreground">
               {t('token.descriptionLinuxmuster')}
             </p>
           ) : (
-            <p className="mt-2 text-sm text-gray-600">
+            <p className="mt-2 text-sm text-muted-foreground">
               {t('token.descriptionGeneric')}
             </p>
           ))}
@@ -216,7 +216,7 @@ const TokenPage = () => {
       <div>
         <label
           htmlFor="edulutionsetuptoken"
-          className="mb-1 block text-sm font-bold text-gray-800"
+          className="mb-1 block text-sm font-bold text-foreground"
         >
           {t('token.enterToken')}
         </label>
@@ -241,8 +241,8 @@ const TokenPage = () => {
         </Button>
       </div>
 
-      <div className="mt-2 border-t border-gray-200 pt-4">
-        <span className="mb-2 block text-sm font-bold text-gray-800">{t('token.manualEntryLabel')}</span>
+      <div className="mt-2 border-t border-accent-light pt-4">
+        <span className="mb-2 block text-sm font-bold text-foreground">{t('token.manualEntryLabel')}</span>
         <Button
           variant="btn-outline"
           size="lg"

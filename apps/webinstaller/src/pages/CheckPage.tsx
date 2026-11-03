@@ -54,7 +54,7 @@ const CheckPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-lg font-bold text-gray-800">{t('check.title')}</h3>
+      <h3 className="text-lg font-bold text-foreground">{t('check.title')}</h3>
 
       <div className="flex flex-col gap-2">
         <StatusCard

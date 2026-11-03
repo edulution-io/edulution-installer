@@ -85,14 +85,14 @@ const FinishPage = () => {
 
   return (
     <div className="flex flex-col items-center gap-6">
-      <h3 className="text-lg font-bold text-gray-800">{t('finish.title')}</h3>
+      <h3 className="text-lg font-bold text-foreground">{t('finish.title')}</h3>
       <FontAwesomeIcon
         icon={faSpinner}
         spin
-        className="text-4xl text-gray-500"
+        className="text-4xl text-muted-foreground"
       />
-      <p className="text-center text-gray-600">{t('finish.installing')}</p>
-      <p className="text-center text-sm text-gray-500">
+      <p className="text-center text-muted-foreground">{t('finish.installing')}</p>
+      <p className="text-center text-sm text-muted-foreground">
         {t('finish.redirect')}
       </p>
       {showManualLink && (

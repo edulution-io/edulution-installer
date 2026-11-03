@@ -36,7 +36,7 @@ const AdminGroupPage = () => {
       <div>
         <label
           htmlFor="set_admin_group"
-          className="mb-1 block text-sm font-bold text-gray-800"
+          className="mb-1 block text-sm font-bold text-foreground"
         >
           {t('adminGroup.label')}
         </label>
@@ -47,11 +47,11 @@ const AdminGroupPage = () => {
           value={adminGroup}
           onChange={(e) => setAdminGroup(e.target.value)}
         />
-        <p className="mt-2 text-sm text-gray-600">
+        <p className="mt-2 text-sm text-muted-foreground">
           {t('adminGroup.hint')}
         </p>
         {isGeneric && !adminGroup.trim() && (
-          <p className="mt-1 text-sm font-bold text-red-600">
+          <p className="mt-1 text-sm font-bold text-red-400">
             {t('adminGroup.requiredError')}
           </p>
         )}

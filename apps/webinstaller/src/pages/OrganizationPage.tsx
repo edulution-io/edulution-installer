@@ -22,7 +22,7 @@ const OrganizationPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <span className="mb-1 block text-sm font-bold text-gray-800">{t('organization.label')}</span>
+      <span className="mb-1 block text-sm font-bold text-foreground">{t('organization.label')}</span>
 
       <div className="grid grid-cols-3 gap-3">
         {options.map((opt) => (
