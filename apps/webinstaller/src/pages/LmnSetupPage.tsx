@@ -112,7 +112,7 @@ const LmnSetupPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-lg font-bold text-gray-800">{t('lmnSetup.title')}</h3>
+      <h3 className="text-lg font-bold text-foreground">{t('lmnSetup.title')}</h3>
 
       <div className="flex gap-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-800">
         <FontAwesomeIcon
@@ -132,7 +132,7 @@ const LmnSetupPage = () => {
       <div>
         <label
           htmlFor="ssh_host"
-          className="mb-1 block text-sm font-bold text-gray-800"
+          className="mb-1 block text-sm font-bold text-foreground"
         >
           {t('lmnSetup.sshHost')}
         </label>
@@ -145,7 +145,7 @@ const LmnSetupPage = () => {
           disabled={bootstrapRunning || store.lmnLocalInstall}
         />
         {store.lmnLocalInstall && (
-          <p className="mt-1 text-xs text-gray-500">{t('lmnSetup.localInstallHostHint')}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t('lmnSetup.localInstallHostHint')}</p>
         )}
       </div>
 
@@ -153,7 +153,7 @@ const LmnSetupPage = () => {
         <div>
           <label
             htmlFor="ssh_port"
-            className="mb-1 block text-sm font-bold text-gray-800"
+            className="mb-1 block text-sm font-bold text-foreground"
           >
             {t('lmnSetup.sshPort')}
           </label>
@@ -172,7 +172,7 @@ const LmnSetupPage = () => {
         <div>
           <label
             htmlFor="ssh_user"
-            className="mb-1 block text-sm font-bold text-gray-800"
+            className="mb-1 block text-sm font-bold text-foreground"
           >
             {t('lmnSetup.sshUser')}
           </label>
@@ -189,7 +189,7 @@ const LmnSetupPage = () => {
       <div>
         <label
           htmlFor="ssh_password"
-          className="mb-1 block text-sm font-bold text-gray-800"
+          className="mb-1 block text-sm font-bold text-foreground"
         >
           {t('lmnSetup.sshPassword')}
         </label>
@@ -316,7 +316,7 @@ const LmnSetupPage = () => {
 
       {requirements && (
         <div className="flex flex-col gap-2">
-          <h4 className="text-sm font-bold text-gray-800">{t('lmnSetup.systemRequirements')}</h4>
+          <h4 className="text-sm font-bold text-foreground">{t('lmnSetup.systemRequirements')}</h4>
           {requirements.checks.map((check) => (
             <StatusCard
               key={check.name}

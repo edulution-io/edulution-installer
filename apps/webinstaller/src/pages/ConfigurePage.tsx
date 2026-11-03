@@ -100,7 +100,7 @@ const ConfigurePage = () => {
       <div>
         <label
           htmlFor="lmn_external_domain"
-          className="mb-1 block text-sm font-bold text-gray-800"
+          className="mb-1 block text-sm font-bold text-foreground"
         >
           {store.deploymentTarget === 'linuxmuster'
             ? t('configure.externalDomainLmn')
@@ -118,7 +118,7 @@ const ConfigurePage = () => {
       <div>
         <label
           htmlFor="lmn_binduser_dn"
-          className="mb-1 block text-sm font-bold text-gray-800"
+          className="mb-1 block text-sm font-bold text-foreground"
         >
           {t('configure.ldapUser')}
         </label>
@@ -134,7 +134,7 @@ const ConfigurePage = () => {
       <div>
         <label
           htmlFor="lmn_binduser_pw"
-          className="mb-1 block text-sm font-bold text-gray-800"
+          className="mb-1 block text-sm font-bold text-foreground"
         >
           {t('configure.ldapPassword')}
         </label>
@@ -152,7 +152,7 @@ const ConfigurePage = () => {
         <div>
           <label
             htmlFor="lmn_ldap_schema"
-            className="mb-1 block text-sm font-bold text-gray-800"
+            className="mb-1 block text-sm font-bold text-foreground"
           >
             {t('configure.ldapSchema')}
           </label>
@@ -170,7 +170,7 @@ const ConfigurePage = () => {
         <div>
           <label
             htmlFor="lmn_ldap_port"
-            className="mb-1 block text-sm font-bold text-gray-800"
+            className="mb-1 block text-sm font-bold text-foreground"
           >
             {t('configure.ldapPort')}
           </label>
@@ -190,7 +190,7 @@ const ConfigurePage = () => {
       <div>
         <label
           htmlFor="edulutionui_external_domain"
-          className="mb-1 block text-sm font-bold text-gray-800"
+          className="mb-1 block text-sm font-bold text-foreground"
         >
           {t('configure.externalDomainEdulution')}
         </label>

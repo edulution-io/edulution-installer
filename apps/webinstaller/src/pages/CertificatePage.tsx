@@ -30,7 +30,7 @@ const CertificatePage = () => {
   if (loading) {
     return (
       <div className="flex flex-col items-center gap-4">
-        <p className="text-gray-600">{t('certificate.checkingNetwork')}</p>
+        <p className="text-muted-foreground">{t('certificate.checkingNetwork')}</p>
       </div>
     );
   }
@@ -38,7 +38,7 @@ const CertificatePage = () => {
   if (proxyDetected) {
     return (
       <div className="flex flex-col gap-4">
-        <h3 className="text-lg font-bold text-gray-800">{t('certificate.title')}</h3>
+        <h3 className="text-lg font-bold text-foreground">{t('certificate.title')}</h3>
         <div className="rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800">
           {t('certificate.proxyWarning')}
         </div>
@@ -56,7 +56,7 @@ const CertificatePage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-lg font-bold text-gray-800">{t('certificate.title')}</h3>
+      <h3 className="text-lg font-bold text-foreground">{t('certificate.title')}</h3>
 
       <CertificateForm />
 

@@ -8,8 +8,8 @@ const StartPage = () => {
 
   return (
     <div className="flex flex-col items-center gap-6">
-      <h2 className="text-2xl font-bold text-gray-800">{t('start.welcome')}</h2>
-      <p className="text-center text-gray-600">
+      <h2 className="text-2xl font-bold text-foreground">{t('start.welcome')}</h2>
+      <p className="text-center text-muted-foreground">
         {t('start.description')}
       </p>
       <Button

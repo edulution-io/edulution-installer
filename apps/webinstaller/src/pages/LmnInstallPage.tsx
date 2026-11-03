@@ -202,15 +202,15 @@ const LmnInstallPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-lg font-bold text-gray-800">{t('lmnInstall.title')}</h3>
+      <h3 className="text-lg font-bold text-foreground">{t('lmnInstall.title')}</h3>
 
-      <div className="flex items-center gap-2 text-sm text-gray-600">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
         {isRunning && (
           <>
             <FontAwesomeIcon
               icon={faSpinner}
               spin
-              className="text-gray-500"
+              className="text-muted-foreground"
             />
             {t('lmnInstall.running')}
           </>
@@ -221,7 +221,7 @@ const LmnInstallPage = () => {
               icon={faCircleCheck}
               className="text-green-500"
             />
-            <span className="text-green-700">{t('lmnInstall.success')}</span>
+            <span className="text-green-400">{t('lmnInstall.success')}</span>
           </>
         )}
         {isFailed && (
@@ -230,7 +230,7 @@ const LmnInstallPage = () => {
               icon={faCircleXmark}
               className="text-red-500"
             />
-            <span className="text-red-700">{t('lmnInstall.failed')}</span>
+            <span className="text-red-400">{t('lmnInstall.failed')}</span>
           </>
         )}
       </div>
@@ -257,17 +257,17 @@ const LmnInstallPage = () => {
             {line.text}
           </div>
         ))}
-        {isRunning && <div className="animate-pulse text-gray-500">_</div>}
+        {isRunning && <div className="animate-pulse text-muted-foreground">_</div>}
       </div>
 
       {isCompleted && (
         <>
           {configuring && (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <FontAwesomeIcon
                 icon={faSpinner}
                 spin
-                className="text-gray-500"
+                className="text-muted-foreground"
               />
               {t('lmnInstall.configuringEdulution')}
             </div>

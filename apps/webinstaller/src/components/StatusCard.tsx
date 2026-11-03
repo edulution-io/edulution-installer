@@ -13,13 +13,13 @@ interface StatusCardProps {
 const StatusCard = ({ label, status, loading, onRetry }: StatusCardProps) => {
   const { t } = useTranslation();
   return (
-  <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+  <div className="flex items-center gap-3 rounded-lg border border-accent-light bg-accent p-3 shadow-sm">
     <div className="flex w-8 items-center justify-center text-xl">
       {loading && (
         <FontAwesomeIcon
           icon={faSpinner}
           spin
-          className="text-gray-500"
+          className="text-muted-foreground"
         />
       )}
       {!loading && status?.status === true && (
@@ -37,7 +37,7 @@ const StatusCard = ({ label, status, loading, onRetry }: StatusCardProps) => {
       )}
     </div>
 
-    <div className="flex-1 text-sm text-gray-800">{label}</div>
+    <div className="flex-1 text-sm text-foreground">{label}</div>
 
     {!loading && status !== null && !status.status && (
       <Button

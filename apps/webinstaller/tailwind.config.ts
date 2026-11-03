@@ -11,14 +11,8 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        ciLightGreen: 'var(--ci-light-green)',
-        ciDarkBlue: 'var(--ci-dark-blue)',
         ciRed: '#dc2626',
         ciDarkGrey: '#2D2D30',
-        ciGrey: '#848493',
-      },
-      backgroundImage: {
-        ciGreenToBlue: 'linear-gradient(45deg, var(--ci-light-green), var(--ci-dark-blue))',
       },
     },
   },

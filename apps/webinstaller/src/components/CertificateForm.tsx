@@ -160,7 +160,7 @@ const CertificateForm = () => {
         <FontAwesomeIcon
           icon={faSpinner}
           spin
-          className="text-gray-500"
+          className="text-muted-foreground"
         />
       );
     }
@@ -193,7 +193,7 @@ const CertificateForm = () => {
       {/* Self-Signed */}
       <label
         htmlFor="cert_type_self_signed"
-        className="flex cursor-pointer items-center gap-2 text-sm font-bold text-gray-800"
+        className="flex cursor-pointer items-center gap-2 text-sm font-bold text-foreground"
       >
         <input
           id="cert_type_self_signed"
@@ -206,43 +206,43 @@ const CertificateForm = () => {
         {t('certificateForm.selfSigned')}
       </label>
       {certType === 'self-signed' && (
-        <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+        <div className="flex flex-col gap-3 rounded-lg border border-accent-light bg-accent p-4">
           <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
-            <span className="text-sm text-gray-600">{t('common.domain')}</span>
+            <span className="text-sm text-muted-foreground">{t('common.domain')}</span>
             <Input
               variant="login"
               value={edulutionExternalDomain}
               readOnly
             />
-            <span className="text-sm text-gray-600">{t('certificateForm.countryCode')}</span>
+            <span className="text-sm text-muted-foreground">{t('certificateForm.countryCode')}</span>
             <Input
               variant="login"
               value={countryCode}
               onChange={(e) => setCountryCode(e.target.value)}
               className={countryCode.trim() ? 'valid-input' : ''}
             />
-            <span className="text-sm text-gray-600">{t('common.state')}</span>
+            <span className="text-sm text-muted-foreground">{t('common.state')}</span>
             <Input
               variant="login"
               value={state}
               onChange={(e) => setState(e.target.value)}
               className={state.trim() ? 'valid-input' : ''}
             />
-            <span className="text-sm text-gray-600">{t('certificateForm.city')}</span>
+            <span className="text-sm text-muted-foreground">{t('certificateForm.city')}</span>
             <Input
               variant="login"
               value={city}
               onChange={(e) => setCity(e.target.value)}
               className={city.trim() ? 'valid-input' : ''}
             />
-            <span className="text-sm text-gray-600">{t('certificateForm.organization')}</span>
+            <span className="text-sm text-muted-foreground">{t('certificateForm.organization')}</span>
             <Input
               variant="login"
               value={organization}
               onChange={(e) => setOrganization(e.target.value)}
               className={organization.trim() ? 'valid-input' : ''}
             />
-            <span className="text-sm text-gray-600">{t('certificateForm.validDays')}</span>
+            <span className="text-sm text-muted-foreground">{t('certificateForm.validDays')}</span>
             <Input
               variant="login"
               type="number"
@@ -271,7 +271,7 @@ const CertificateForm = () => {
       {/* Let's Encrypt */}
       <label
         htmlFor="cert_type_letsencrypt"
-        className="flex cursor-pointer items-center gap-2 text-sm font-bold text-gray-800"
+        className="flex cursor-pointer items-center gap-2 text-sm font-bold text-foreground"
       >
         <input
           id="cert_type_letsencrypt"
@@ -284,15 +284,15 @@ const CertificateForm = () => {
         {t('certificateForm.letsEncrypt')}
       </label>
       {certType === 'letsencrypt' && (
-        <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+        <div className="flex flex-col gap-3 rounded-lg border border-accent-light bg-accent p-4">
           <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
-            <span className="text-sm text-gray-600">{t('common.domain')}</span>
+            <span className="text-sm text-muted-foreground">{t('common.domain')}</span>
             <Input
               variant="login"
               value={edulutionExternalDomain}
               readOnly
             />
-            <span className="text-sm text-gray-600">{t('certificateForm.email')}</span>
+            <span className="text-sm text-muted-foreground">{t('certificateForm.email')}</span>
             <Input
               variant="login"
               type="email"
@@ -352,6 +352,7 @@ const CertificateForm = () => {
                 <Button
                   variant="btn-outline"
                   size="md"
+                  className="text-blue-800 hover:bg-blue-100"
                   onClick={() => {
                     void handleCheckCname();
                   }}
@@ -394,7 +395,7 @@ const CertificateForm = () => {
       {/* Upload */}
       <label
         htmlFor="cert_type_upload"
-        className="flex cursor-pointer items-center gap-2 text-sm font-bold text-gray-800"
+        className="flex cursor-pointer items-center gap-2 text-sm font-bold text-foreground"
       >
         <input
           id="cert_type_upload"
@@ -407,16 +408,16 @@ const CertificateForm = () => {
         {t('certificateForm.uploadCertificate')}
       </label>
       {certType === 'upload' && (
-        <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+        <div className="flex flex-col gap-3 rounded-lg border border-accent-light bg-accent p-4">
           <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
-            <span className="text-sm text-gray-600">{t('certificateForm.certFile')}</span>
+            <span className="text-sm text-muted-foreground">{t('certificateForm.certFile')}</span>
             <input
               type="file"
               accept=".crt,.pem,.cer,.cert"
               onChange={(e) => setCertFile(e.target.files?.[0] ?? null)}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800"
             />
-            <span className="text-sm text-gray-600">{t('certificateForm.certKey')}</span>
+            <span className="text-sm text-muted-foreground">{t('certificateForm.certKey')}</span>
             <input
               type="file"
               accept=".key,.pem"
