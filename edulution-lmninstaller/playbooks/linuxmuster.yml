@@ -665,8 +665,8 @@
       args:
         executable: /bin/bash
         creates: /var/lib/linuxmuster/.setup.done
+      # No changed_when on rc: a run skipped by creates also returns rc 0, but only a real run is changed.
       register: lmn_setup_result
-      changed_when: lmn_setup_result.rc == 0
       async: 3600
       poll: 30
 
@@ -950,12 +950,12 @@
 
           ====================================================================
 
-    # A list prints one line per entry in the log, unlike the multi-line summary above.
+    # A list keeps the entries readable; a multi-line string shows as escaped \n in the log.
     - name: New SSH host keys
       ansible.builtin.debug:
         msg: >-
           {{ ['linuxmuster-setup created new SSH host keys. SSH clients that knew this server warn once (REMOTE HOST IDENTIFICATION HAS CHANGED).',
-              'Compare a fingerprint, then remove the old entry with: ssh-keygen -R <server>']
+              'Compare a fingerprint, then remove the old entry with: ssh-keygen -R <server name or IP>']
              + lmn_ssh_fingerprints.stdout_lines }}
       when: lmn_setup_result is changed
 

@@ -209,6 +209,10 @@ const LmnInstallPage = () => {
   const isRunning = store.lmnPlaybookStatus === 'running';
   const isCompleted = store.lmnPlaybookStatus === 'completed';
   const isFailed = store.lmnPlaybookStatus === 'failed';
+  // The playbook prints this only when linuxmuster-setup ran, and thereby replaced the host keys.
+  const newSshHostKeys = store.lmnOutputLog.some((line) =>
+    line.text.includes('linuxmuster-setup created new SSH host keys'),
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -262,7 +266,7 @@ const LmnInstallPage = () => {
         {store.lmnOutputLog.map((line) => (
           <div
             key={line.id}
-            className={line.text.includes('[ERROR]') || line.text.includes('FAILED') ? 'text-red-400' : ''}
+            className={`whitespace-pre-wrap ${line.text.includes('[ERROR]') || line.text.includes('FAILED') ? 'text-red-400' : ''}`}
           >
             {line.text}
           </div>
@@ -301,13 +305,15 @@ const LmnInstallPage = () => {
                 />
                 {t(store.lmnLocalInstall ? 'lmnInstall.restartHintLocal' : 'lmnInstall.restartHint')}
               </div>
-              <div className="flex items-start gap-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-800">
-                <FontAwesomeIcon
-                  icon={faCircleInfo}
-                  className="mt-0.5 text-blue-500"
-                />
-                {t('lmnInstall.sshHostKeyHint')}
-              </div>
+              {newSshHostKeys && (
+                <div className="flex items-start gap-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-800">
+                  <FontAwesomeIcon
+                    icon={faCircleInfo}
+                    className="mt-0.5 text-blue-500"
+                  />
+                  {t('lmnInstall.sshHostKeyHint')}
+                </div>
+              )}
               <EdulutionDomainField
                 value={edulutionExternalDomain}
                 onChange={setEdulutionExternalDomain}
