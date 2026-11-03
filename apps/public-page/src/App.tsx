@@ -94,6 +94,15 @@ const App = () => {
             >
               Dokumentation
             </a>
+            <p className="mt-2">
+              <a
+                href="https://docs.edulution.io/docs/edulution-plattform/installation/einrichtung/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Anleitung zur Installation
+              </a>
+            </p>
           </div>
         </CardContent>
       </Card>

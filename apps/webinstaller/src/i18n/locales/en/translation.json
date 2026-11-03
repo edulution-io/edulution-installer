@@ -15,6 +15,7 @@
     "infoText": "All information at",
     "orInThe": "or in the",
     "documentation": "Documentation",
+    "installationGuide": "Installation guide",
     "version": "Installer version {{version}}"
   },
   "start": {
