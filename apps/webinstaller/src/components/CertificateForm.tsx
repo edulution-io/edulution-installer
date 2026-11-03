@@ -352,6 +352,7 @@ const CertificateForm = () => {
                 <Button
                   variant="btn-outline"
                   size="md"
+                  className="text-blue-800 hover:bg-blue-100"
                   onClick={() => {
                     void handleCheckCname();
                   }}

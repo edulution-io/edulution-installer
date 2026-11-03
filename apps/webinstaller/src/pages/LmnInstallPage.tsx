@@ -221,7 +221,7 @@ const LmnInstallPage = () => {
               icon={faCircleCheck}
               className="text-green-500"
             />
-            <span className="text-green-700">{t('lmnInstall.success')}</span>
+            <span className="text-green-400">{t('lmnInstall.success')}</span>
           </>
         )}
         {isFailed && (
@@ -230,7 +230,7 @@ const LmnInstallPage = () => {
               icon={faCircleXmark}
               className="text-red-500"
             />
-            <span className="text-red-700">{t('lmnInstall.failed')}</span>
+            <span className="text-red-400">{t('lmnInstall.failed')}</span>
           </>
         )}
       </div>

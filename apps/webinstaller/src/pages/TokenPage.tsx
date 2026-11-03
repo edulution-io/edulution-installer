@@ -133,8 +133,7 @@ const TokenPage = () => {
                   <img
                     src="/img/edu_Linuxmuster.svg"
                     alt="linuxmuster.net Logo"
-                    className="h-12 w-12 dark:invert-0"
-                    style={{ filter: 'brightness(0)' }}
+                    className="h-12 w-12 brightness-0 invert"
                   />
                   <span className="text-sm font-medium">linuxmuster.net</span>
                 </CardContent>
