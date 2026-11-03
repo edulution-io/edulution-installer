@@ -10,6 +10,8 @@ DIRECTORY="/srv/docker/edulution-ui/"
 EDULUTION_INSTALLER_IMAGE="ghcr.io/edulution-io/edulution-installer:latest"
 EDULUTION_INSTALLER_VERSION="dev"
 EDULUTION_INSTALLER_REF=""
+# Vorlagen des neuesten Releases; --version nimmt die seines Tags, EDULUTION_TEMPLATE_URL ueberschreibt beides (E2E).
+TEMPLATE_URL="https://get.edulution.io/download"
 EDULUTION_DOMAIN=""
 
 use_version() {
@@ -21,6 +23,7 @@ use_version() {
     EDULUTION_INSTALLER_IMAGE="ghcr.io/edulution-io/edulution-installer:${version}"
     EDULUTION_INSTALLER_VERSION="${version}"
     EDULUTION_INSTALLER_REF="v${version}"
+    TEMPLATE_URL="https://raw.githubusercontent.com/edulution-io/edulution-installer/v${version}/apps/public-page/public/download"
     echo "Version ${version} wird verwendet (Image ${EDULUTION_INSTALLER_IMAGE})."
 }
 
@@ -80,6 +83,8 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+TEMPLATE_URL="${EDULUTION_TEMPLATE_URL:-${TEMPLATE_URL}}"
 
 clear
 
@@ -280,7 +285,7 @@ echo "[*] Erstelle Ordner für die edulution installation..."
 mkdir -p $DIRECTORY
 cd $DIRECTORY
 
-# Laedt eine Vorlage von get.edulution.io herunter.
+# Laedt eine Vorlage von TEMPLATE_URL herunter.
 #
 # Die fruehere Fassung pruefte nur mit [ -f ], ob die Datei existiert. Das war
 # in beide Richtungen unbrauchbar: curl legt die Datei auch bei HTTP 404 an und
@@ -291,7 +296,9 @@ cd $DIRECTORY
 # gegen sporadische Aussetzer und der curl-Exitcode in der Fehlermeldung.
 download_template() {
     local file="$1"
-    local url="https://get.edulution.io/download/${file}.template"
+    local url="${TEMPLATE_URL}/${file}.template"
+    local host="${url#*://}"
+    host="${host%%/*}"
     local target="${DIRECTORY}${file}"
     local rc
 
@@ -312,13 +319,16 @@ download_template() {
 
         case $rc in
             6)
-                echo "[!] 'get.edulution.io' konnte nicht aufgeloest werden - bitte DNS pruefen."
+                echo "[!] '${host}' konnte nicht aufgeloest werden - bitte DNS pruefen."
                 ;;
             7)
                 echo "[!] Es kam keine Verbindung zustande - bitte Firewall oder Proxy pruefen."
                 ;;
             22)
                 echo "[!] Der Server antwortete mit einem HTTP-Fehlercode."
+                if [ -n "${EDULUTION_INSTALLER_REF}" ]; then
+                    echo "[!] Gibt es das Release ${EDULUTION_INSTALLER_REF}? Siehe https://github.com/edulution-io/edulution-installer/releases"
+                fi
                 ;;
             28)
                 echo "[!] Zeitueberschreitung - die Gegenstelle war nicht erreichbar."
@@ -343,7 +353,7 @@ download_template() {
     # liefert HTML aus. Keine der Vorlagen beginnt mit '<'.
     if [ "$(head -c 1 "${target}")" = "<" ]; then
         echo "[!] Datei '$file' enthaelt HTML statt der erwarteten Konfiguration!"
-        echo "[!] Vermutlich antwortet ein Proxy oder Portal anstelle von get.edulution.io."
+        echo "[!] Vermutlich antwortet ein Proxy oder Portal anstelle von ${host}."
         rm -f "${target}"
         return 1
     fi
@@ -460,9 +470,26 @@ echo "[*] Starte den Authentifizierungserver um die Einstellungen festzulegen...
 
 docker network create edulution-prepare 2>&1 > /dev/zero
 
-# Dependabot erfasst diese Pins nicht; sie werden von Hand angehoben.
+# Image eines Dienstes aus der heruntergeladenen Compose-Vorlage.
+compose_image() {
+    awk -v service="  $1:" '$0 == service {found=1; next} /^  [^ ]/ {found=0} found && $1 == "image:" {print $2; exit}' \
+        "${DIRECTORY}docker-compose.yml"
+}
+
+# Keycloak migriert seine Datenbank nur vorwaerts, daher nimmt der Bootstrap die Version der Vorlage (auch bei --version).
+BOOTSTRAP_KEYCLOAK_IMAGE=$(compose_image edu-keycloak)
+if [ -z "${BOOTSTRAP_KEYCLOAK_IMAGE}" ]; then
+    echo "[!] Das Keycloak-Image steht nicht in der docker-compose.yml!"
+    exit 1
+fi
+
+# Dependabot erfasst diesen Pin nicht; er wird von Hand angehoben.
 BOOTSTRAP_POSTGRES_IMAGE="postgres:16.15@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d"
-BOOTSTRAP_KEYCLOAK_IMAGE="quay.io/keycloak/keycloak:26.7.3"
+# Ein anderes Major-Release uebernimmt das Datenverzeichnis nicht; dann gilt das Image der Vorlage.
+template_postgres_image=$(compose_image edu-keycloak-db)
+if [ -n "${template_postgres_image}" ] && [ "${template_postgres_image%%.*}" != "${BOOTSTRAP_POSTGRES_IMAGE%%.*}" ]; then
+    BOOTSTRAP_POSTGRES_IMAGE="${template_postgres_image}"
+fi
 
 docker pull "${BOOTSTRAP_POSTGRES_IMAGE}" 2>&1 > /dev/zero
 docker pull "${BOOTSTRAP_KEYCLOAK_IMAGE}" 2>&1 > /dev/zero
