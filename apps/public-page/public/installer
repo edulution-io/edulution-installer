@@ -10,6 +10,8 @@ DIRECTORY="/srv/docker/edulution-ui/"
 EDULUTION_INSTALLER_IMAGE="ghcr.io/edulution-io/edulution-installer:latest"
 EDULUTION_INSTALLER_VERSION="dev"
 EDULUTION_INSTALLER_REF=""
+# Vorlagen des neuesten Releases; --version nimmt die seines Tags, EDULUTION_TEMPLATE_URL ueberschreibt beides (E2E).
+TEMPLATE_URL="https://get.edulution.io/download"
 EDULUTION_DOMAIN=""
 
 use_version() {
@@ -21,6 +23,7 @@ use_version() {
     EDULUTION_INSTALLER_IMAGE="ghcr.io/edulution-io/edulution-installer:${version}"
     EDULUTION_INSTALLER_VERSION="${version}"
     EDULUTION_INSTALLER_REF="v${version}"
+    TEMPLATE_URL="https://raw.githubusercontent.com/edulution-io/edulution-installer/v${version}/apps/public-page/public/download"
     echo "Version ${version} wird verwendet (Image ${EDULUTION_INSTALLER_IMAGE})."
 }
 
@@ -80,6 +83,8 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+TEMPLATE_URL="${EDULUTION_TEMPLATE_URL:-${TEMPLATE_URL}}"
 
 clear
 
@@ -280,7 +285,7 @@ echo "[*] Erstelle Ordner für die edulution installation..."
 mkdir -p $DIRECTORY
 cd $DIRECTORY
 
-# Laedt eine Vorlage von get.edulution.io herunter.
+# Laedt eine Vorlage von TEMPLATE_URL herunter.
 #
 # Die fruehere Fassung pruefte nur mit [ -f ], ob die Datei existiert. Das war
 # in beide Richtungen unbrauchbar: curl legt die Datei auch bei HTTP 404 an und
@@ -291,7 +296,9 @@ cd $DIRECTORY
 # gegen sporadische Aussetzer und der curl-Exitcode in der Fehlermeldung.
 download_template() {
     local file="$1"
-    local url="https://get.edulution.io/download/${file}.template"
+    local url="${TEMPLATE_URL}/${file}.template"
+    local host="${url#*://}"
+    host="${host%%/*}"
     local target="${DIRECTORY}${file}"
     local rc
 
@@ -312,13 +319,16 @@ download_template() {
 
         case $rc in
             6)
-                echo "[!] 'get.edulution.io' konnte nicht aufgeloest werden - bitte DNS pruefen."
+                echo "[!] '${host}' konnte nicht aufgeloest werden - bitte DNS pruefen."
                 ;;
             7)
                 echo "[!] Es kam keine Verbindung zustande - bitte Firewall oder Proxy pruefen."
                 ;;
             22)
                 echo "[!] Der Server antwortete mit einem HTTP-Fehlercode."
+                if [ -n "${EDULUTION_INSTALLER_REF}" ]; then
+                    echo "[!] Gibt es das Release ${EDULUTION_INSTALLER_REF}? Siehe https://github.com/edulution-io/edulution-installer/releases"
+                fi
                 ;;
             28)
                 echo "[!] Zeitueberschreitung - die Gegenstelle war nicht erreichbar."
@@ -343,7 +353,7 @@ download_template() {
     # liefert HTML aus. Keine der Vorlagen beginnt mit '<'.
     if [ "$(head -c 1 "${target}")" = "<" ]; then
         echo "[!] Datei '$file' enthaelt HTML statt der erwarteten Konfiguration!"
-        echo "[!] Vermutlich antwortet ein Proxy oder Portal anstelle von get.edulution.io."
+        echo "[!] Vermutlich antwortet ein Proxy oder Portal anstelle von ${host}."
         rm -f "${target}"
         return 1
     fi
