@@ -6,7 +6,11 @@ const parseHost = (value: string) => {
   try {
     const url = new URL(`http://${literal}`);
     if (url.port || url.username || url.pathname !== '/' || url.search || url.hash) return null;
-    return url.hostname.replace(/\.$/, '');
+    const name = url.hostname.replace(/\.$/, '');
+    // A numeric last label is read as IPv4 (127.1, 2130706433), so only the usual form passes, as in the API.
+    const typed = host.toLowerCase().replace(/\.$/, '');
+    if (/^(0x[0-9a-f]*|\d+)$/.test(typed.split('.').pop() ?? '') && typed !== name) return null;
+    return name;
   } catch {
     return null;
   }
