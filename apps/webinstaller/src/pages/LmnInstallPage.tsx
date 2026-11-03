@@ -9,6 +9,7 @@ import {
   startLmnPlaybook,
   createLmnWebSocket,
   getEdulutionConfig,
+  getLmnPlaybookStatus,
   submitConfiguration,
   shutdownLmnInstaller,
 } from '../api/installerApi';
@@ -21,7 +22,10 @@ const LmnInstallPage = () => {
   const store = useInstallerStore();
   const logRef = useRef<HTMLDivElement>(null);
   const [started, setStarted] = useState(false);
-  const [configFetched, setConfigFetched] = useState(false);
+  const [configFetched, setConfigFetched] = useState(() => {
+    const state = useInstallerStore.getState();
+    return state.lmnPlaybookStatus === 'completed' && state.lmnCaCertificate !== '';
+  });
   const [configuring, setConfiguring] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -39,13 +43,7 @@ const LmnInstallPage = () => {
     }
   }, [store.lmnOutputLog]);
 
-  const startInstallation = useCallback(async () => {
-    if (started) return;
-    setStarted(true);
-    store.clearLmnOutput();
-    store.setLmnPlaybookStatus('running');
-
-    // Connect WebSocket first
+  const connectOutput = useCallback(() => {
     const ws = createLmnWebSocket();
     wsRef.current = ws;
     wsOpenedRef.current = false;
@@ -96,8 +94,33 @@ const LmnInstallPage = () => {
       store.appendLmnOutput(`[ERROR] ${message}`);
       store.setLmnPlaybookStatus('failed');
     };
+  }, [store, t]);
 
-    // Start the playbook
+  const startInstallation = useCallback(async () => {
+    if (started) return;
+    setStarted(true);
+
+    // Opening the page again (history, reload) must not run linuxmuster-setup a second time.
+    const serverStatus = await getLmnPlaybookStatus()
+      .then((result) => result.status)
+      .catch(() => null);
+    if (
+      serverStatus === 'completed' ||
+      (serverStatus === null && useInstallerStore.getState().lmnPlaybookStatus === 'completed')
+    ) {
+      store.setLmnPlaybookStatus('completed');
+      return;
+    }
+    if (serverStatus === 'running') {
+      store.setLmnPlaybookStatus('running');
+      connectOutput();
+      return;
+    }
+
+    store.clearLmnOutput();
+    store.setLmnPlaybookStatus('running');
+    connectOutput();
+
     try {
       const currentStore = useInstallerStore.getState();
       await startLmnPlaybook('linuxmuster.yml', {
@@ -121,7 +144,7 @@ const LmnInstallPage = () => {
       store.appendLmnOutput(`${t('lmnInstall.playbookError')}: ${(error as Error).message}`);
       store.setLmnPlaybookStatus('failed');
     }
-  }, [started, store]);
+  }, [started, store, connectOutput]);
 
   // Auto-fetch config from LMN API as soon as playbook completes
   useEffect(() => {

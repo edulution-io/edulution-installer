@@ -294,6 +294,9 @@ export interface LmnNetworkInfo {
 export const getLmnNetworkInfo = (): Promise<LmnNetworkInfo> =>
   apiFetch<LmnNetworkInfo>('/api/lmn/network-info');
 
+export const getLmnPlaybookStatus = (): Promise<{ status: 'idle' | 'running' | 'completed' | 'failed' }> =>
+  apiFetch<{ status: 'idle' | 'running' | 'completed' | 'failed' }>('/api/lmn/status');
+
 export const shutdownLmnInstaller = (): Promise<StatusResponse> =>
   apiFetch<StatusResponse>('/api/lmn/shutdown', { method: 'POST' });
 
