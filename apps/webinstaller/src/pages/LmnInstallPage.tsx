@@ -287,14 +287,14 @@ const LmnInstallPage = () => {
                   icon={faCircleCheck}
                   className="text-green-500"
                 />
-                {t('lmnInstall.configFetched')}
+                {t(store.lmnLocalInstall ? 'lmnInstall.configFetchedLocal' : 'lmnInstall.configFetched')}
               </div>
               <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
                 <FontAwesomeIcon
                   icon={faTriangleExclamation}
                   className="mt-0.5 text-amber-500"
                 />
-                {t('lmnInstall.restartHint')}
+                {t(store.lmnLocalInstall ? 'lmnInstall.restartHintLocal' : 'lmnInstall.restartHint')}
               </div>
               <EdulutionDomainField
                 value={edulutionExternalDomain}

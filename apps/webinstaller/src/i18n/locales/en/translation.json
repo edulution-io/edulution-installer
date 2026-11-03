@@ -163,11 +163,13 @@
     "running": "Installation running...",
     "success": "Installation completed successfully",
     "restartHint": "The linuxmuster.net server must be restarted for all changes to take effect.",
+    "restartHintLocal": "Do not restart the server now, or the edulution installation stops. Restart it once the edulution installation has finished.",
     "failed": "Installation failed",
     "playbookError": "[ERROR] Playbook could not be started",
     "backToSetup": "Back to setup",
     "configuringEdulution": "Fetching edulution configuration...",
     "configFetched": "Configuration fetched successfully. You can now restart the linuxmuster.net server and then click 'Next'.",
+    "configFetchedLocal": "Configuration fetched successfully. Check the edulution address and click 'Next'.",
     "configError": "Failed to fetch edulution configuration. Please check if the linuxmuster.net server is accessible.",
     "wsConnectionFailed": "Could not connect to the linuxmuster.net installer. Please check that the server is reachable and the installer API is running.",
     "wsConnectionLost": "Connection to the linuxmuster.net installer was lost. The installation could not be fully monitored."

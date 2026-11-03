@@ -163,11 +163,13 @@
     "running": "Installation läuft...",
     "success": "Installation erfolgreich abgeschlossen",
     "restartHint": "Der linuxmuster.net-Server muss neu gestartet werden, damit alle Änderungen wirksam werden.",
+    "restartHintLocal": "Starten Sie den Server jetzt nicht neu, sonst bricht die edulution-Installation ab. Starten Sie ihn neu, sobald die edulution-Installation abgeschlossen ist.",
     "failed": "Installation fehlgeschlagen",
     "playbookError": "[ERROR] Playbook konnte nicht gestartet werden",
     "backToSetup": "Zurück zur Einrichtung",
     "configuringEdulution": "Edulution-Konfiguration wird abgerufen...",
     "configFetched": "Konfiguration erfolgreich abgerufen. Sie können den linuxmuster.net-Server jetzt neu starten und anschließend auf 'Weiter' klicken.",
+    "configFetchedLocal": "Konfiguration erfolgreich abgerufen. Prüfen Sie die Adresse von edulution und klicken Sie auf 'Weiter'.",
     "configError": "Edulution-Konfiguration konnte nicht abgerufen werden. Bitte prüfen Sie, ob der linuxmuster.net-Server erreichbar ist.",
     "wsConnectionFailed": "Verbindung zum linuxmuster.net-Installer konnte nicht aufgebaut werden. Bitte prüfen Sie, ob der Server erreichbar ist und die Installer-API läuft.",
     "wsConnectionLost": "Verbindung zum linuxmuster.net-Installer wurde unterbrochen. Die Installation konnte nicht vollständig überwacht werden."
