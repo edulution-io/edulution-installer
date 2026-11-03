@@ -25,10 +25,10 @@ const EdulutionDomainField = ({ value, onChange }: EdulutionDomainFieldProps) =>
         className={isValidEdulutionDomain(value) ? 'valid-input' : ''}
       />
       {edulutionDomainError(value) === 'loopback' && (
-        <p className="mt-1 text-xs text-red-400">{t('configure.externalDomainLoopback')}</p>
+        <p className="mt-1 text-xs text-red-600">{t('configure.externalDomainLoopback')}</p>
       )}
       {edulutionDomainError(value) === 'invalid' && (
-        <p className="mt-1 text-xs text-red-400">{t('configure.externalDomainInvalid')}</p>
+        <p className="mt-1 text-xs text-red-600">{t('configure.externalDomainInvalid')}</p>
       )}
       {!edulutionDomainError(value) && (
         <p className="mt-1 text-xs text-muted-foreground">{t('configure.externalDomainEdulutionHint')}</p>

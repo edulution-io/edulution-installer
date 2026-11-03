@@ -38,7 +38,8 @@ const App = () => {
 
   return (
     <div className="page-wrapper">
-      <Card className="w-full max-w-[600px] border-4 border-white shadow-[0_20px_60px_rgba(0,0,0,0.3)]">
+      {/* Light like the get.edulution.io card, whatever the colour scheme; .light switches the ui-kit tokens. */}
+      <Card className="light w-full max-w-[600px] border-4 border-white bg-white shadow-[0_20px_60px_rgba(0,0,0,0.3)]">
         <CardContent className="p-10 max-sm:p-6 max-[480px]:p-4">
           <div className="mb-8 flex justify-center">
             <a
@@ -47,7 +48,7 @@ const App = () => {
               rel="noopener noreferrer"
             >
               <img
-                src="/img/edulution.io_INSTALLER_white.svg"
+                src="/img/edulution.io_INSTALLER.svg"
                 alt="edulution.io Logo"
                 className="logo"
               />

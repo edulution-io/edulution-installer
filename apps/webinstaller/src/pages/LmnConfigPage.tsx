@@ -389,13 +389,13 @@ const LmnConfigPage = () => {
             />
           </div>
           {adminpw && pwErrors.length > 0 && (
-            <ul className="list-inside list-disc text-xs text-red-400">
+            <ul className="list-inside list-disc text-xs text-red-600">
               {pwErrors.map((err) => (
                 <li key={err}>{err}</li>
               ))}
             </ul>
           )}
-          {adminpwConfirm && !pwMatch && <p className="text-xs text-red-400">{t('lmnConfig.passwordMismatch')}</p>}
+          {adminpwConfirm && !pwMatch && <p className="text-xs text-red-600">{t('lmnConfig.passwordMismatch')}</p>}
 
           <Button
             variant="btn-security"

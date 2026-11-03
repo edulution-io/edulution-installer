@@ -206,7 +206,7 @@ const CertificateForm = () => {
         {t('certificateForm.selfSigned')}
       </label>
       {certType === 'self-signed' && (
-        <div className="flex flex-col gap-3 rounded-lg border border-accent-light bg-accent p-4">
+        <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
           <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
             <span className="text-sm text-muted-foreground">{t('common.domain')}</span>
             <Input
@@ -284,7 +284,7 @@ const CertificateForm = () => {
         {t('certificateForm.letsEncrypt')}
       </label>
       {certType === 'letsencrypt' && (
-        <div className="flex flex-col gap-3 rounded-lg border border-accent-light bg-accent p-4">
+        <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
           <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
             <span className="text-sm text-muted-foreground">{t('common.domain')}</span>
             <Input
@@ -408,7 +408,7 @@ const CertificateForm = () => {
         {t('certificateForm.uploadCertificate')}
       </label>
       {certType === 'upload' && (
-        <div className="flex flex-col gap-3 rounded-lg border border-accent-light bg-accent p-4">
+        <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
           <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
             <span className="text-sm text-muted-foreground">{t('certificateForm.certFile')}</span>
             <input
