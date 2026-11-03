@@ -51,7 +51,7 @@ const AdminGroupPage = () => {
           {t('adminGroup.hint')}
         </p>
         {isGeneric && !adminGroup.trim() && (
-          <p className="mt-1 text-sm font-bold text-red-400">
+          <p className="mt-1 text-sm font-bold text-red-600">
             {t('adminGroup.requiredError')}
           </p>
         )}

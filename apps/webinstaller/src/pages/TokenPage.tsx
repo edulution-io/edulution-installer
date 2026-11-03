@@ -133,7 +133,7 @@ const TokenPage = () => {
                   <img
                     src="/img/edu_Linuxmuster.svg"
                     alt="linuxmuster.net Logo"
-                    className="h-12 w-12 brightness-0 invert"
+                    className="h-12 w-12 brightness-0"
                   />
                   <span className="text-sm font-medium">linuxmuster.net</span>
                 </CardContent>
@@ -158,7 +158,7 @@ const TokenPage = () => {
         )}
 
         {adType === 'new' && (
-          <div className="rounded-lg bg-accent p-3">
+          <div className="rounded-lg bg-gray-50 p-3">
             <label
               htmlFor="lmnLocalInstall"
               className="flex cursor-pointer items-start gap-2 text-sm font-bold text-foreground"
@@ -240,7 +240,7 @@ const TokenPage = () => {
         </Button>
       </div>
 
-      <div className="mt-2 border-t border-accent-light pt-4">
+      <div className="mt-2 border-t border-gray-200 pt-4">
         <span className="mb-2 block text-sm font-bold text-foreground">{t('token.manualEntryLabel')}</span>
         <Button
           variant="btn-outline"
