@@ -588,3 +588,9 @@ cat <<EOF
 ########################################################
 
 EOF
+
+# Bei linuxmuster.net auf demselben Server wurde der Neustart nach dessen Setup bis hierher aufgeschoben.
+if [ -d /etc/linuxmuster ] || [ -f /var/run/reboot-required ]; then
+    echo "[!] Bitte starten Sie den Server jetzt neu, damit alle Änderungen wirksam werden: sudo reboot"
+    echo
+fi
