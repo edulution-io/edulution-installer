@@ -53,7 +53,7 @@
     "externalDomainEdulution": "Address of edulution UI (domain or IP):",
     "externalDomainEdulutionHint": "IP address or name under which clients reach the server.",
     "externalDomainLoopback": "This address only works on the server itself. Enter the IP address or name under which clients reach the server.",
-    "externalDomainInvalid": "Enter only the name or IP address, without https://, port or path.",
+    "externalDomainInvalid": "Enter a valid name or an IP address such as 10.0.0.5, without https://, port or path.",
     "verifying": "Verifying..."
   },
   "check": {
