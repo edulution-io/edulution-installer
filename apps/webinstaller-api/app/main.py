@@ -99,7 +99,7 @@ class ConfigurationRequest(BaseModel):
     @classmethod
     def reachableDomain(cls, value: str) -> str:
         value = value.strip()
-        name = value.lower().strip("[]")
+        name = value.lower().strip("[]").rstrip(".")
         try:
             address = ipaddress.ip_address(name)
             loopback = address.is_loopback or address.is_unspecified

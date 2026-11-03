@@ -1,15 +1,25 @@
+// Normalised like location.hostname, so that IPv6 forms and a trailing dot are compared correctly.
+const normalizedHost = (value: string) => {
+  const host = value.trim();
+  const literal = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+  try {
+    return new URL(`http://${literal}`).hostname.replace(/\.$/, '');
+  } catch {
+    return host.toLowerCase();
+  }
+};
+
 // Clients cannot reach the server under a loopback name, so it must not become the edulution address.
-export const isLoopbackHost = (host: string) => {
-  const name = host
-    .trim()
-    .toLowerCase()
-    .replace(/^\[(.*)\]$/, '$1');
+export const isLoopbackHost = (value: string) => {
+  const name = normalizedHost(value);
   return (
     name === 'localhost' ||
     name.endsWith('.localhost') ||
-    name.startsWith('127.') ||
-    name === '::1' ||
-    name === '0.0.0.0'
+    /^127(\.\d+){3}$/.test(name) ||
+    name === '0.0.0.0' ||
+    name === '[::1]' ||
+    name === '[::]' ||
+    name.startsWith('[::ffff:7f')
   );
 };
 
