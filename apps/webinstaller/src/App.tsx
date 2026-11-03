@@ -124,6 +124,15 @@ const App = () => {
             >
               {t('footer.documentation')}
             </a>
+            <p className="mt-2">
+              <a
+                href="https://docs.edulution.io/docs/edulution-plattform/installation/einrichtung/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {t('footer.installationGuide')}
+              </a>
+            </p>
             <LanguageSwitcher />
             {version && <p className="mt-2 text-xs">{t('footer.version', { version })}</p>}
           </div>

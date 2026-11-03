@@ -434,6 +434,8 @@ if [ -z "${EDULUTION_DOMAIN}" ]; then
     echo "    Über einen DNS-Namen, der auf diesen Server zeigt:"
     echo "    https://<domain>/?token=${INSTALLER_TOKEN}"
 fi
+echo
+echo "    Anleitung zur Installation: https://docs.edulution.io/docs/edulution-plattform/installation/einrichtung/"
 
 cat <<EOF
 
