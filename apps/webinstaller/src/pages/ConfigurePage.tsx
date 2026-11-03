@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@edulution-io/ui-kit';
 import { Input } from '@shared-ui';
 import useInstallerStore, { lmnLdapHost } from '../store/useInstallerStore';
 import { submitConfiguration } from '../api/installerApi';
+import EdulutionDomainField from '../components/EdulutionDomainField';
+import { defaultEdulutionDomain, isValidEdulutionDomain } from '../utils/edulutionDomain';
 
 const ConfigurePage = () => {
   const navigate = useNavigate();
@@ -16,14 +18,10 @@ const ConfigurePage = () => {
   const [lmnBinduserPw, setLmnBinduserPw] = useState(store.lmnBinduserPw);
   const [lmnLdapSchema, setLmnLdapSchema] = useState<'ldap' | 'ldaps'>(store.lmnLdapSchema);
   const [lmnLdapPort, setLmnLdapPort] = useState(store.lmnLdapPort);
-  const [edulutionExternalDomain, setEdulutionExternalDomain] = useState(store.edulutionExternalDomain);
+  const [edulutionExternalDomain, setEdulutionExternalDomain] = useState(
+    store.edulutionExternalDomain || defaultEdulutionDomain(),
+  );
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (!edulutionExternalDomain) {
-      setEdulutionExternalDomain(window.location.hostname);
-    }
-  }, [edulutionExternalDomain]);
 
   const handleSchemaChange = useCallback(
     (value: string) => {
@@ -45,7 +43,7 @@ const ConfigurePage = () => {
     lmnBinduserPw.trim() !== '' &&
     lmnLdapPort > 0 &&
     lmnLdapPort <= 65535 &&
-    edulutionExternalDomain.trim() !== '';
+    isValidEdulutionDomain(edulutionExternalDomain);
 
   const handleSubmit = useCallback(async () => {
     if (!isValid || !store.deploymentTarget || !store.organizationType) return;
@@ -187,21 +185,10 @@ const ConfigurePage = () => {
         </div>
       </div>
 
-      <div>
-        <label
-          htmlFor="edulutionui_external_domain"
-          className="mb-1 block text-sm font-bold text-foreground"
-        >
-          {t('configure.externalDomainEdulution')}
-        </label>
-        <Input
-          id="edulutionui_external_domain"
-          variant="login"
-          value={edulutionExternalDomain}
-          onChange={(e) => setEdulutionExternalDomain(e.target.value)}
-          className={edulutionExternalDomain.trim() ? 'valid-input' : ''}
-        />
-      </div>
+      <EdulutionDomainField
+        value={edulutionExternalDomain}
+        onChange={setEdulutionExternalDomain}
+      />
 
       <Button
         variant="btn-security"

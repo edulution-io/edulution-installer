@@ -93,6 +93,20 @@ class ConfigurationRequest(BaseModel):
             x509.load_pem_x509_certificate(value.encode())
         return value
 
+    @field_validator("edulutionExternalDomain")
+    @classmethod
+    def reachableDomain(cls, value: str) -> str:
+        value = value.strip()
+        name = value.lower().strip("[]")
+        try:
+            address = ipaddress.ip_address(name)
+            loopback = address.is_loopback or address.is_unspecified
+        except ValueError:
+            loopback = name == "localhost" or name.endswith(".localhost")
+        if not value or loopback:
+            raise ValueError("the edulution address must be reachable by clients")
+        return value
+
 
 class AdminGroupRequest(BaseModel):
     admin_group: str

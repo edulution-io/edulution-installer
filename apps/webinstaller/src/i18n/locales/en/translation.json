@@ -51,6 +51,8 @@
     "ldapSchema": "LDAP Schema:",
     "ldapPort": "LDAP Port:",
     "externalDomainEdulution": "External domain of edulution UI:",
+    "externalDomainEdulutionHint": "IP address or name under which clients reach the server.",
+    "externalDomainLoopback": "This address only works on the server itself. Enter the IP address or name under which clients reach the server.",
     "verifying": "Verifying..."
   },
   "check": {

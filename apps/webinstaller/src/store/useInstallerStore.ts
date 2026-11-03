@@ -72,6 +72,7 @@ interface InstallerState {
     lmnCaCertificate?: string;
     edulutionExternalDomain: string;
   }) => void;
+  setEdulutionExternalDomain: (domain: string) => void;
   setCheckResult: (check: CheckKey, result: CheckResult) => void;
   resetChecks: () => void;
   setInitialAdminGroup: (group: string) => void;
@@ -168,6 +169,8 @@ const useInstallerStore = create<InstallerState>()(
         }),
 
       setConfiguration: (config) => set(config),
+
+      setEdulutionExternalDomain: (domain) => set({ edulutionExternalDomain: domain }),
 
       setCheckResult: (check, result) =>
         set((state) => ({
