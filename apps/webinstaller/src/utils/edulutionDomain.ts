@@ -1,28 +1,37 @@
-// Normalised like location.hostname, so that IPv6 forms and a trailing dot are compared correctly.
-const normalizedHost = (value: string) => {
+// Parsed like location.hostname, so that IPv6 forms and a trailing dot are compared correctly.
+// The address becomes https://<address>/, so a port, scheme or path makes it invalid (null).
+const parseHost = (value: string) => {
   const host = value.trim();
   const literal = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
   try {
-    return new URL(`http://${literal}`).hostname.replace(/\.$/, '');
+    const url = new URL(`http://${literal}`);
+    if (url.port || url.username || url.pathname !== '/' || url.search || url.hash) return null;
+    return url.hostname.replace(/\.$/, '');
   } catch {
-    return host.toLowerCase();
+    return null;
   }
 };
 
 // Clients cannot reach the server under a loopback name, so it must not become the edulution address.
-export const isLoopbackHost = (value: string) => {
-  const name = normalizedHost(value);
-  return (
-    name === 'localhost' ||
-    name.endsWith('.localhost') ||
-    /^127(\.\d+){3}$/.test(name) ||
-    name === '0.0.0.0' ||
-    name === '[::1]' ||
-    name === '[::]' ||
-    name.startsWith('[::ffff:7f')
-  );
+const isLoopbackName = (name: string) =>
+  name === 'localhost' ||
+  name.endsWith('.localhost') ||
+  /^127(\.\d+){3}$/.test(name) ||
+  name === '0.0.0.0' ||
+  name === '[::1]' ||
+  name === '[::]' ||
+  name.startsWith('[::ffff:7f');
+
+export type EdulutionDomainError = 'loopback' | 'invalid';
+
+export const edulutionDomainError = (value: string): EdulutionDomainError | null => {
+  if (value.trim() === '') return null;
+  const name = parseHost(value);
+  if (name === null) return 'invalid';
+  return isLoopbackName(name) ? 'loopback' : null;
 };
 
-export const isValidEdulutionDomain = (host: string) => host.trim() !== '' && !isLoopbackHost(host);
+export const isValidEdulutionDomain = (value: string) => value.trim() !== '' && edulutionDomainError(value) === null;
 
-export const defaultEdulutionDomain = () => (isLoopbackHost(window.location.hostname) ? '' : window.location.hostname);
+export const defaultEdulutionDomain = () =>
+  edulutionDomainError(window.location.hostname) ? '' : window.location.hostname;
