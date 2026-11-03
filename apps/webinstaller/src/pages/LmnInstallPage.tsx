@@ -12,6 +12,8 @@ import {
   submitConfiguration,
   shutdownLmnInstaller,
 } from '../api/installerApi';
+import EdulutionDomainField from '../components/EdulutionDomainField';
+import { defaultEdulutionDomain, isValidEdulutionDomain } from '../utils/edulutionDomain';
 
 const LmnInstallPage = () => {
   const navigate = useNavigate();
@@ -23,6 +25,9 @@ const LmnInstallPage = () => {
   const [configuring, setConfiguring] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [edulutionExternalDomain, setEdulutionExternalDomain] = useState(
+    store.edulutionExternalDomain || defaultEdulutionDomain(),
+  );
   const [wsError, setWsError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const wsOpenedRef = useRef(false);
@@ -132,7 +137,6 @@ const LmnInstallPage = () => {
 
         const currentStore = useInstallerStore.getState();
         const lmnExternalDomain = currentStore.lmnSshHost;
-        const edulutionExternalDomain = window.location.hostname;
 
         store.setConfiguration({
           lmnExternalDomain,
@@ -141,7 +145,6 @@ const LmnInstallPage = () => {
           lmnLdapSchema: 'ldaps',
           lmnLdapPort: 636,
           lmnCaCertificate: edulutionConfig.ca_certificate,
-          edulutionExternalDomain,
         });
 
         // Shut down the LMN installer API to free port 8000
@@ -163,6 +166,7 @@ const LmnInstallPage = () => {
   // "Next" button: submit config to webinstaller API and navigate
   const handleContinue = useCallback(async () => {
     setSubmitting(true);
+    store.setEdulutionExternalDomain(edulutionExternalDomain);
     try {
       const currentStore = useInstallerStore.getState();
       await submitConfiguration({
@@ -175,7 +179,7 @@ const LmnInstallPage = () => {
         lmnLdapPort: currentStore.lmnLdapPort,
         lmnLdapHost: lmnLdapHost(currentStore),
         lmnCaCertificate: currentStore.lmnCaCertificate,
-        edulutionExternalDomain: currentStore.edulutionExternalDomain,
+        edulutionExternalDomain,
         lmnLocalInstall: currentStore.lmnLocalInstall,
         lmnWebuiPort: currentStore.lmnWebuiPort,
       });
@@ -185,7 +189,7 @@ const LmnInstallPage = () => {
       setSubmitting(false);
     }
     void navigate('/check');
-  }, [navigate]);
+  }, [navigate, store, edulutionExternalDomain]);
 
   useEffect(() => {
     void startInstallation();
@@ -291,6 +295,10 @@ const LmnInstallPage = () => {
                 />
                 {t('lmnInstall.restartHint')}
               </div>
+              <EdulutionDomainField
+                value={edulutionExternalDomain}
+                onChange={setEdulutionExternalDomain}
+              />
               <Button
                 variant="btn-security"
                 size="lg"
@@ -298,7 +306,7 @@ const LmnInstallPage = () => {
                 onClick={() => {
                   void handleContinue();
                 }}
-                disabled={submitting}
+                disabled={submitting || !isValidEdulutionDomain(edulutionExternalDomain)}
               >
                 {submitting ? t('lmnInstall.configuringEdulution') : t('common.next')}
               </Button>

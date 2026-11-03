@@ -56,6 +56,9 @@ INSTALLER_VERSION = os.environ.get("INSTALLER_VERSION", "dev")
 
 # --- Pydantic Models ---
 
+HOST_NAME = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*")
+
+
 class Token(BaseModel):
     token: str
 
@@ -91,6 +94,22 @@ class ConfigurationRequest(BaseModel):
     def pemCertificate(cls, value: str) -> str:
         if value:
             x509.load_pem_x509_certificate(value.encode())
+        return value
+
+    @field_validator("edulutionExternalDomain")
+    @classmethod
+    def reachableDomain(cls, value: str) -> str:
+        # The address becomes https://<address>/, so it is a bare host name or IP without port or path.
+        value = value.strip()
+        name = value.lower().rstrip(".")
+        name = name[1:-1] if name.startswith("[") and name.endswith("]") else name
+        try:
+            address = ipaddress.ip_address(name)
+            reachable = not (address.is_loopback or address.is_unspecified)
+        except ValueError:
+            reachable = bool(HOST_NAME.fullmatch(name)) and name != "localhost" and not name.endswith(".localhost")
+        if not reachable:
+            raise ValueError("the edulution address must be a host name or IP address that clients can reach")
         return value
 
 

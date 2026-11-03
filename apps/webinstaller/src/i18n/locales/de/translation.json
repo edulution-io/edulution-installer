@@ -50,7 +50,10 @@
     "ldapPassword": "LDAP Passwort:",
     "ldapSchema": "LDAP-Schema:",
     "ldapPort": "LDAP-Port:",
-    "externalDomainEdulution": "Externe Domain der edulutionUI:",
+    "externalDomainEdulution": "Adresse der edulutionUI (Domain oder IP):",
+    "externalDomainEdulutionHint": "IP-Adresse oder Name, unter dem die Clients den Server erreichen.",
+    "externalDomainLoopback": "Diese Adresse ist nur auf dem Server selbst erreichbar. Gib die IP-Adresse oder den Namen ein, unter dem die Clients den Server erreichen.",
+    "externalDomainInvalid": "Bitte nur den Namen oder die IP-Adresse eingeben, ohne https://, Port oder Pfad.",
     "verifying": "Wird überprüft..."
   },
   "check": {
