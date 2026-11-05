@@ -1,0 +1,118 @@
+import os
+
+from update.drift import check, exit_code, fingerprint, to_json
+from update.migrations import Migration
+from update.templates import sha256
+
+TARGET = "2.2.0"
+
+
+def run(root, target_text, history=frozenset(), registry=None):
+    kwargs = {} if registry is None else {"registry": registry}
+    return check(root, target_text, TARGET, history, **kwargs)
+
+
+def test_current(make_installation, target_text, all_applied):
+    root = make_installation(header=TARGET, state=all_applied)
+    report = run(root, target_text)
+    assert report.status == "current"
+    assert report.header_current
+    assert report.installed_version == TARGET
+    assert report.diff == ""
+    assert report.expect == fingerprint(root)
+    assert exit_code(report) == 0
+
+
+def test_header_only_behind(make_installation, target_text, all_applied):
+    root = make_installation(header="2.1.0", state=all_applied)
+    report = run(root, target_text)
+    assert report.status == "current"
+    assert not report.header_current
+    assert report.installed_version == "2.1.0"
+    assert exit_code(report) == 10
+
+
+def test_outdated(make_installation, target_text, all_applied):
+    old = target_text.replace("edu-api", "edu-api-old", 1)
+    root = make_installation(body=old, header="2.1.0", state=all_applied)
+    report = run(root, target_text, history=frozenset({sha256(old)}))
+    assert report.status == "outdated"
+    assert exit_code(report) == 10
+
+
+def test_modified(make_installation, target_text, all_applied):
+    edited = target_text + "# local edit\n"
+    root = make_installation(body=edited, header=TARGET, state=all_applied)
+    report = run(root, target_text)
+    assert report.status == "modified"
+    assert "-# local edit" in report.diff
+    assert "docker-compose.yml (2.2.0)" in report.diff
+    assert exit_code(report) == 20
+
+
+def test_unknown(make_installation, target_text, all_applied):
+    root = make_installation(body=target_text + "# local edit\n", state=all_applied)
+    report = run(root, target_text)
+    assert report.status == "unknown"
+    assert report.installed_version == all_applied.template_version
+    assert exit_code(report) == 20
+
+
+def test_line_endings_count_as_differences(make_installation, target_text, all_applied):
+    root = make_installation(body=target_text.replace("\n", "\r\n"), header=TARGET, state=all_applied)
+    assert run(root, target_text).status == "modified"
+
+
+def test_pending_migration_counts(make_installation, target_text):
+    root = make_installation(header=TARGET)
+    report = run(root, target_text)
+    assert report.status == "current"
+    assert report.installed_version == TARGET
+    assert [m.id for m in report.pending]
+    assert report.recreate == ["edu-db", "edu-api"]
+    assert exit_code(report) == 10
+
+
+def test_blocked(make_installation, target_text, all_applied):
+    gate = Migration("0099-gate", "major", (), lambda c: True, lambda c: None, gates_template=True)
+    root = make_installation(header=TARGET, state=all_applied)
+    report = run(root, target_text, registry=(gate,))
+    assert report.blocked_by == [gate]
+    assert report.available_majors == [gate]
+    assert exit_code(report) == 30
+
+
+def test_check_never_writes(make_installation, target_text):
+    root = make_installation(header=TARGET)
+
+    def snapshot():
+        return {
+            str(p): (p.read_bytes(), p.stat().st_mtime_ns)
+            for p in sorted(root.rglob("*"))
+            if p.is_file()
+        } | {"dirs": sorted(str(p) for p in root.rglob("*"))}
+
+    before = snapshot()
+    run(root, target_text)
+    assert snapshot() == before
+
+
+def test_fingerprint_missing_env(make_installation):
+    root = make_installation(header=TARGET)
+    os.unlink(root / "edulution.env")
+    compose, env = fingerprint(root).split(":")
+    assert env == "-"
+    assert len(compose) == 64
+
+
+def test_json_shape(make_installation, target_text):
+    root = make_installation(header=TARGET)
+    data = to_json(run(root, target_text))
+    assert set(data) == {
+        "status", "installedVersion", "targetVersion", "pendingMigrations",
+        "blockedBy", "availableMajorMigrations", "recreate", "expect", "diff",
+    }
+    assert data["pendingMigrations"][0]["recreate"] == ["edu-db", "edu-api"]
+    assert set(data["pendingMigrations"][0]) == {"id", "kind", "recreate"}
+    assert data["installedVersion"] == TARGET
+    assert data["targetVersion"] == TARGET
