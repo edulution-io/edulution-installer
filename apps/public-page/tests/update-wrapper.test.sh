@@ -13,7 +13,7 @@ cat > "$WORK/bin/docker" <<'STUB'
 #!/bin/bash
 echo "$*" >> "$STUB_LOG"
 case $1 in
-    pull) exit "${STUB_PULL_RC:-0}" ;;
+    pull) echo "pull progress"; exit "${STUB_PULL_RC:-0}" ;;
     image) exit "${STUB_INSPECT_RC:-0}" ;;
     compose) exit "${STUB_COMPOSE_RC:-0}" ;;
     run)
@@ -42,6 +42,15 @@ run_wrapper() {
     RC=0
     PATH="$WORK/bin:$PATH" STUB_LOG="$LOG" EDULUTION_UPDATE_DIR="$WORK/dir" \
         EDULUTION_UPDATE_SKIP_ROOT_CHECK=1 bash "$WRAPPER" "$@" > "$WORK/out" 2>&1 || RC=$?
+}
+
+# run_split <wrapper args...>: like run_wrapper, but keeps stdout apart in $WORK/stdout.
+run_split() {
+    : > "$LOG"
+    RC=0
+    PATH="$WORK/bin:$PATH" STUB_LOG="$LOG" EDULUTION_UPDATE_DIR="$WORK/dir" \
+        EDULUTION_UPDATE_SKIP_ROOT_CHECK=1 bash "$WRAPPER" "$@" > "$WORK/stdout" 2> "$WORK/stderr" || RC=$?
+    cat "$WORK/stdout" "$WORK/stderr" > "$WORK/out"
 }
 
 # expect_case <name> <condition...>: runs the condition and prints one line.
@@ -140,6 +149,10 @@ expect_case "--check returns the check code" check_code
 check_json() { rc_is 10 && logged "update check --json"; }
 run_wrapper --check --json
 expect_case "--check --json passes --json" check_json
+
+json_stdout() { rc_is 10 && [[ "$(cat "$WORK/stdout")" == report ]] && grep -q "pull progress" "$WORK/stderr"; }
+STUB_PULL_RC=1 run_split --version 2.2.0 --check --json
+expect_case "--check --json prints only the container's stdout on stdout" json_stdout
 
 restart_failed() { rc_is 1 && grep -q "docker-compose-backups" "$WORK/out"; }
 STUB_COMPOSE_RC=1 run_wrapper --yes
