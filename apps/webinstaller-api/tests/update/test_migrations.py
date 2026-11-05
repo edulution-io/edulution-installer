@@ -66,6 +66,12 @@ def test_migration_on_pre_july_env(tmp_path):
     assert env.render() == before
 
 
+def test_migration_url_with_inline_comment(tmp_path):
+    env = EnvFile.parse(f"MONGODB_AUTH_SOURCE=admin\nMONGODB_SERVER_URL={BASE} # set by hand\n")
+    MIGRATION.apply(Context(tmp_path, env))
+    assert env.get("MONGODB_SERVER_URL") == BASE + WANTED
+
+
 def test_migration_on_current_env(tmp_path):
     env = EnvFile.parse(
         "MONGODB_PASSWORD=pw\n"

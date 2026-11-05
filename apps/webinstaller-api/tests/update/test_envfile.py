@@ -103,3 +103,24 @@ def test_only_newlines_split_lines():
     assert env.render() == text + "\nN='v'"
     env.set_if_absent("M", "v", after="K")
     assert env.render().startswith("K=a b\nM='v'\nZ=")
+
+
+def test_get_stops_unquoted_value_at_inline_comment():
+    env = EnvFile.parse("U=mongodb://edu-db:27017/ # x\nT=a\t# y\nH=a#b\nS=v #\n")
+    assert env.get("U") == "mongodb://edu-db:27017/"
+    assert env.get("T") == "a"
+    assert env.get("H") == "a#b"
+    assert env.get("S") == "v"
+
+
+def test_get_quoted_value_with_trailing_comment():
+    env = EnvFile.parse("D=\"a # b\" # c\nS='x # y' # z\n")
+    assert env.get("D") == "a # b"
+    assert env.get("S") == "x # y"
+
+
+def test_replace_on_line_with_inline_comment():
+    env = EnvFile.parse("U=mongodb://edu-db:27017/ # x\n")
+    url = env.get("U")
+    assert env.replace("U", url + "?replicaSet=rs0") is True
+    assert env.render() == "U='mongodb://edu-db:27017/?replicaSet=rs0'\n"

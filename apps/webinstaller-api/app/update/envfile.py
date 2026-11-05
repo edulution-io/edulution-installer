@@ -5,6 +5,7 @@ from envtools import envValue
 _KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)[ \t]*=")
 _DOUBLE_QUOTED = re.compile(r'"((?:\\.|[^"\\])*)"')
 _ESCAPE = re.compile(r'\\([\\"$])')
+_INLINE_COMMENT = re.compile(r"[ \t]#.*")
 
 
 def _eol(line):
@@ -23,7 +24,8 @@ def _unquote(raw):
         match = _DOUBLE_QUOTED.match(raw)
         if match:
             return _ESCAPE.sub(r"\1", match.group(1))
-    return raw.rstrip(" \t")
+    # Compose ends an unquoted value at whitespace followed by "#".
+    return _INLINE_COMMENT.sub("", raw, count=1).rstrip(" \t")
 
 
 class EnvFile:
