@@ -142,8 +142,7 @@ jobs:
       - name: Check the fresh install is marked for updates
         run: |
           sudo head -n 1 /srv/docker/edulution-ui/docker-compose.yml | grep -qxF "# edulution-installer template ${INSTALLER_TAG}"
-          sudo docker run --rm -v /srv/docker/edulution-ui:/edulution-ui \
-            "ghcr.io/edulution-io/edulution-installer:${INSTALLER_TAG}" python -m update check
+          sudo bash apps/public-page/public/update --version "${INSTALLER_TAG}" --check
 
       - name: Installer output
         if: always()

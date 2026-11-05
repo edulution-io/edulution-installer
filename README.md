@@ -6,6 +6,42 @@
 bash <(curl -s https://get.edulution.io/installer)
 ```
 
+## Update an installation
+
+Check whether an installation is current (read-only, the exit code tells the result):
+
+```bash
+curl -fsSL https://get.edulution.io/update | sudo bash -s -- --check
+```
+
+Apply the update. The script shows what changes, asks for confirmation on the terminal, replaces `docker-compose.yml` with the release's template and then pulls the images and restarts the stack:
+
+```bash
+curl -fsSL https://get.edulution.io/update | sudo bash -s --
+```
+
+Declining changes nothing. For unattended runs (for example by the edulution-manager) use `--yes`; `--compose-only` updates the files without pulling or restarting:
+
+```bash
+curl -fsSL https://get.edulution.io/update | sudo bash -s -- --compose-only --yes
+```
+
+Other options: `--version X.Y.Z` (update to that release), `--check --json` (machine-readable report), `--discard-local-changes` (replace a locally modified `docker-compose.yml`) and `--migration ID` (run a major migration listed in the check output).
+
+Keep local changes in `docker-compose.override.yml`, not in `docker-compose.yml`: the update replaces `docker-compose.yml` as a whole. Before every change the previous files are copied to `/srv/docker/edulution-ui/docker-compose-backups/`.
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Nothing to do |
+| 10 | Update available |
+| 20 | `docker-compose.yml` has local modifications |
+| 30 | Blocked by a major migration (`--migration ID`) |
+| 1 | Error |
+| 2 | Usage error or confirmation missing (no terminal and no `--yes`) |
+| 3 | Another update is running |
+| 4 | Files changed since the check |
+| 5 | Downgrade refused |
+
 ## Project Structure
 
 This is an Nx monorepo containing:

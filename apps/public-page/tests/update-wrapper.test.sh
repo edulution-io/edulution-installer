@@ -1,0 +1,154 @@
+#!/bin/bash
+# Runs public/update against a stub docker. Usage: bash update-wrapper.test.sh
+set -u
+
+HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+WRAPPER="$HERE/../public/update"
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+mkdir "$WORK/bin" "$WORK/dir"
+touch "$WORK/dir/edulution.env"
+cat > "$WORK/bin/docker" <<'STUB'
+#!/bin/bash
+echo "$*" >> "$STUB_LOG"
+case $1 in
+    pull) exit "${STUB_PULL_RC:-0}" ;;
+    image) exit "${STUB_INSPECT_RC:-0}" ;;
+    compose) exit "${STUB_COMPOSE_RC:-0}" ;;
+    run)
+        while [[ $1 != update ]]; do shift; done
+        shift
+        case $1 in
+            check) echo "report"; exit "${STUB_CHECK_RC:-10}" ;;
+            expect) echo "${STUB_EXPECT:-a:b}"; exit 0 ;;
+            apply) exit "${STUB_APPLY_RC:-0}" ;;
+            migrate) exit "${STUB_MIGRATE_RC:-0}" ;;
+        esac
+        ;;
+esac
+exit 99
+STUB
+chmod +x "$WORK/bin/docker"
+
+fails=0
+LOG="$WORK/log"
+RC=0
+
+# run_wrapper <wrapper args...>; the environment of the case is set by the caller.
+run_wrapper() {
+    : > "$LOG"
+    RC=0
+    PATH="$WORK/bin:$PATH" STUB_LOG="$LOG" EDULUTION_UPDATE_DIR="$WORK/dir/" \
+        EDULUTION_UPDATE_SKIP_ROOT_CHECK=1 bash "$WRAPPER" "$@" > "$WORK/out" 2>&1 || RC=$?
+}
+
+# expect_case <name> <condition...>: runs the condition and prints one line.
+expect_case() {
+    local name=$1
+    shift
+    if "$@"; then
+        echo "ok   $name"
+    else
+        echo "FAIL $name"
+        sed 's/^/     /' "$WORK/out" "$LOG"
+        fails=$((fails + 1))
+    fi
+}
+
+logged() { grep -q -- "$1" "$LOG"; }
+not_logged() { ! grep -q -- "$1" "$LOG"; }
+rc_is() { [[ $RC -eq $1 ]]; }
+
+answer() { printf '%s\n' "$@" > "$WORK/tty"; export EDULUTION_UPDATE_TTY="$WORK/tty"; }
+
+declined() { rc_is 1 && not_logged "update apply" && not_logged "compose"; }
+answer n
+run_wrapper
+expect_case "answer n changes nothing" declined
+
+accepted() {
+    rc_is 0 && logged "update apply --yes --expect=a:b" && logged "compose --project-directory $WORK/dir/ pull" \
+        && logged "compose --project-directory $WORK/dir/ up -d"
+}
+answer j
+run_wrapper
+expect_case "answer j applies, pulls and restarts" accepted
+
+compose_only() { rc_is 0 && logged "update apply --yes --expect=a:b" && not_logged "compose"; }
+run_wrapper --compose-only --yes
+expect_case "--compose-only --yes skips compose" compose_only
+
+modified_no_discard() { rc_is 20 && not_logged "update apply"; }
+STUB_CHECK_RC=20 run_wrapper --yes
+expect_case "check 20 with --yes needs --discard-local-changes" modified_no_discard
+
+modified_discard() { rc_is 0 && logged "update apply --yes --expect=a:b --discard-local-changes"; }
+STUB_CHECK_RC=20 run_wrapper --yes --discard-local-changes
+expect_case "check 20 with --yes --discard-local-changes applies" modified_discard
+
+discard_question() { rc_is 0 && logged "--discard-local-changes"; }
+answer j j
+STUB_CHECK_RC=20 run_wrapper
+expect_case "check 20 asks the second question" discard_question
+
+discard_declined() { rc_is 1 && not_logged "update apply"; }
+answer j n
+STUB_CHECK_RC=20 run_wrapper
+expect_case "declining the discard question changes nothing" discard_declined
+
+pull_failed() { rc_is 0 && logged "update apply"; }
+STUB_PULL_RC=1 run_wrapper --yes
+expect_case "failed pull continues with the local image" pull_failed
+
+no_image() { rc_is 1 && not_logged "run "; }
+STUB_PULL_RC=1 STUB_INSPECT_RC=1 run_wrapper --yes
+expect_case "failed pull without local image aborts" no_image
+
+blocked() { rc_is 30 && not_logged "update apply" && grep -q -- "--migration" "$WORK/out"; }
+STUB_CHECK_RC=30 run_wrapper --yes
+expect_case "check 30 names --migration and exits 30" blocked
+
+current() { rc_is 0 && not_logged "update apply"; }
+STUB_CHECK_RC=0 run_wrapper --yes
+expect_case "check 0 exits 0 without apply" current
+
+migrate_blocked() {
+    rc_is 0 && logged "update migrate --id X --yes --expect=a:b" && logged "-v /var/run/docker.sock:/var/run/docker.sock .* python -m update migrate"
+}
+STUB_CHECK_RC=30 run_wrapper --migration X --yes
+expect_case "--migration X --yes at check 30 migrates with the socket" migrate_blocked
+
+no_socket() { ! grep -q "docker.sock.*update \(check\|expect\|apply\)" "$LOG"; }
+expect_case "the socket is mounted for migrate only" no_socket
+
+token_dash() { rc_is 0 && logged "--expect=-:-"; }
+STUB_EXPECT="-:-" run_wrapper --yes
+expect_case "a token starting with a dash is passed with =" token_dash
+
+no_tty() { rc_is 2 && not_logged "update apply" && not_logged "compose"; }
+export EDULUTION_UPDATE_TTY="$WORK/missing"
+run_wrapper
+expect_case "unreadable TTY without --yes exits 2" no_tty
+
+check_code() { rc_is 20 && logged "update check"; }
+STUB_CHECK_RC=20 run_wrapper --check
+expect_case "--check returns the check code" check_code
+
+check_json() { rc_is 10 && logged "update check --json"; }
+run_wrapper --check --json
+expect_case "--check --json passes --json" check_json
+
+restart_failed() { rc_is 1 && grep -q "docker-compose-backups" "$WORK/out"; }
+STUB_COMPOSE_RC=1 run_wrapper --yes
+expect_case "failed restart exits 1 and names the backups" restart_failed
+
+apply_failed() { rc_is 4 && not_logged "compose"; }
+STUB_APPLY_RC=4 run_wrapper --yes
+expect_case "apply errors pass through" apply_failed
+
+if [[ $fails -ne 0 ]]; then
+    echo "$fails case(s) failed"
+    exit 1
+fi
+echo "all cases passed"
