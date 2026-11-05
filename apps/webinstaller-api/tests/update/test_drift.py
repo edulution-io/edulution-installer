@@ -136,3 +136,21 @@ def test_downgrade_comes_first(make_installation, target_text):
     gate = Migration("0099-gate", "major", (), lambda c: True, lambda c: None, gates_template=True)
     root = make_installation(body=target_text + "# local\n", header="2.3.0", state=State("2.3.0", []))
     assert exit_code(run(root, target_text, registry=(*MIGRATIONS, gate))) == 5
+
+
+IDLE = Migration("0001-idle", "normal", ("idle-svc",), lambda c: False, lambda c: None)
+BUSY = Migration("0002-busy", "normal", ("busy-svc",), lambda c: c.env.get("A") == "1", lambda c: None)
+
+
+def test_recreate_lists_only_needed_migrations(make_installation, target_text):
+    root = make_installation(header=TARGET)
+    report = run(root, target_text, registry=(IDLE, BUSY))
+    assert [m.id for m in report.pending] == [IDLE.id, BUSY.id]
+    assert report.recreate == ["busy-svc"]
+    assert exit_code(report) == 10
+
+
+def test_recreate_without_env_counts_as_needed(make_installation, target_text):
+    root = make_installation(header=TARGET)
+    os.unlink(root / "edulution.env")
+    assert run(root, target_text, registry=(IDLE, BUSY)).recreate == ["idle-svc", "busy-svc"]

@@ -1,7 +1,7 @@
 import fcntl
 import os
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -35,6 +35,7 @@ class Outcome:
     report: Report
     applied: list[str]  # ids recorded in this run, in order
     template_installed: bool
+    recreate: list[str] = field(default_factory=list)  # services of the migrations that changed something
 
 
 @contextmanager
@@ -76,10 +77,15 @@ def _guard_expect(root: Path, expect: str) -> None:
         raise UpdateError(4, "Die Dateien haben sich seit der Prüfung geändert.")
 
 
-def _run_migration(migration, ctx: Context, state: State) -> None:
+def _run_migration(migration, ctx: Context, state: State, ran: list) -> None:
     if migration.needed(ctx):
         migration.apply(ctx)
+        ran.append(migration)
     state.applied.append(migration.id)
+
+
+def _services(migrations) -> list[str]:
+    return list(dict.fromkeys(name for m in migrations for name in m.recreate))
 
 
 def _commit(
@@ -101,10 +107,10 @@ def _commit(
     save_state(root, state)
 
 
-def _install_template(root, env, state, target_text, target_version, registry) -> str:
+def _install_template(root, env, state, target_text, target_version, registry, ran) -> str:
     ctx = Context(root, env)
     for migration in pending_normal(state, registry):
-        _run_migration(migration, ctx, state)
+        _run_migration(migration, ctx, state, ran)
     state.template_version = target_version
     return with_header(target_text, target_version)
 
@@ -135,9 +141,11 @@ def apply(
         original_env = env.render()
         state = load_state(root)
         recorded = len(state.applied)
-        compose = _install_template(root, env, state, target_text, target_version, registry)
+        ran = []
+        compose = _install_template(root, env, state, target_text, target_version, registry, ran)
         _commit(root, env, original_env, compose, state, now)
-        return Outcome(check(root, target_text, target_version, history, registry), state.applied[recorded:], True)
+        report = check(root, target_text, target_version, history, registry)
+        return Outcome(report, state.applied[recorded:], True, _services(ran))
 
 
 def migrate(
@@ -176,13 +184,14 @@ def migrate(
         env = _read_env(root)
         original_env = env.render()
         recorded = len(state.applied)
-        _run_migration(migration, Context(root, env), state)
+        ran = []
+        _run_migration(migration, Context(root, env), state, ran)
         compose = None
         if installs_template:
-            compose = _install_template(root, env, state, target_text, target_version, registry)
+            compose = _install_template(root, env, state, target_text, target_version, registry, ran)
         _commit(root, env, original_env, compose, state, now)
         report = check(root, target_text, target_version, history, registry)
-        return Outcome(report, state.applied[recorded:], installs_template)
+        return Outcome(report, state.applied[recorded:], installs_template, _services(ran))
 
 
 def init(root: Path, *, target_version: str, registry=MIGRATIONS) -> None:

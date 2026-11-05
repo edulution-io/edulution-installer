@@ -324,9 +324,12 @@ def test_apply_enforces_env_mode_without_content_change(outdated, target_text):
 
 def test_pending_migration_not_needed_is_recorded(outdated, target_text):
     root, history = outdated
-    idle = Migration("0001-idle", "normal", (), lambda c: False, lambda c: pytest.fail("applied"))
-    run_apply(root, target_text, history, registry=(idle,))
-    assert load_state(root).applied == ["0001-idle"]
+    idle = Migration("0001-idle", "normal", ("idle-svc",), lambda c: False, lambda c: pytest.fail("applied"))
+    busy = Migration("0002-busy", "normal", ("busy-svc",), lambda c: True, lambda c: None)
+    outcome = run_apply(root, target_text, history, registry=(idle, busy))
+    assert load_state(root).applied == ["0001-idle", "0002-busy"]
+    assert outcome.applied == ["0001-idle", "0002-busy"]
+    assert outcome.recreate == ["busy-svc"]
 
 
 def test_init_keeps_existing_header(make_installation, target_text):

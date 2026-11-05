@@ -4,9 +4,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from update.envfile import EnvFile
 from update.installation import COMPOSE, ENV, load_state, read_header, strip_header
 from update.migrations import (
     MIGRATIONS,
+    Context,
     Migration,
     available_majors,
     blocking_majors,
@@ -42,6 +44,15 @@ def fingerprint(root: Path) -> str:
     return f"{_file_hash(root / COMPOSE)}:{_file_hash(root / ENV)}"
 
 
+def _needed(root: Path, pending: list[Migration]) -> list[Migration]:
+    try:
+        env = EnvFile.parse((root / ENV).read_bytes().decode("utf-8"))
+    except FileNotFoundError:
+        return pending  # apply refuses without the env file; until then nothing is known
+    ctx = Context(root, env)
+    return [m for m in pending if m.needed(ctx)]
+
+
 def check(
     root: Path,
     target_text: str,
@@ -63,7 +74,7 @@ def check(
         status = "modified" if header is not None else "unknown"
 
     pending = pending_normal(state, registry)
-    recreate = list(dict.fromkeys(name for m in pending for name in m.recreate))
+    recreate = list(dict.fromkeys(name for m in _needed(root, pending) for name in m.recreate))
     diff = "" if body == target_text else "".join(
         difflib.unified_diff(
             body.splitlines(keepends=True),

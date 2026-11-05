@@ -136,6 +136,18 @@ def test_apply_summary_outdated(outdated, capsys):
     assert f"Vorlage {TARGET} installiert." in out and MONGO in out and "Bereits aktuell" not in out
 
 
+def test_apply_summary_skips_services_of_unneeded_migrations(outdated, capsys):
+    (outdated / "edulution.env").write_text(
+        "MONGODB_PASSWORD=pw\nMONGODB_AUTH_SOURCE=admin\n"
+        "MONGODB_SERVER_URL='mongodb://root:pw@edu-db:27017/?replicaSet=rs0&directConnection=true'\n"
+    )
+    main(["--dir", str(outdated), "check"])
+    assert "Neu zu erstellende Dienste" not in capsys.readouterr().out
+    assert main(["--dir", str(outdated), "apply", "--yes", "--expect", token(outdated, capsys)]) == 0
+    out = capsys.readouterr().out
+    assert MONGO in out and "Neu zu erstellende Dienste" not in out
+
+
 def test_apply_summary_noop(make_installation, target_text, all_applied, capsys):
     root = make_installation(header=TARGET, state=all_applied)
     assert main(["--dir", str(root), "apply", "--yes", "--expect", token(root, capsys)]) == 0

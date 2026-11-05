@@ -47,12 +47,8 @@ def _summary(outcome) -> None:
         print(f"Vorlage {outcome.report.target_version} installiert.")
     if outcome.applied:
         print("Ausgeführte Migrationen: " + ", ".join(outcome.applied))
-    by_id = {m.id: m for m in MIGRATIONS}
-    services = list(dict.fromkeys(
-        svc for mid in outcome.applied if mid in by_id for svc in by_id[mid].recreate
-    ))
-    if services:
-        print("Neu zu erstellende Dienste: " + ", ".join(services))
+    if outcome.recreate:
+        print("Neu zu erstellende Dienste: " + ", ".join(outcome.recreate))
     if outcome.report.blocked_by:
         print("Weitere Migration nötig: " + ", ".join(m.id for m in outcome.report.blocked_by))
     elif exit_code(outcome.report) != 0:
