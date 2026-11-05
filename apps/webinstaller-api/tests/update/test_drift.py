@@ -154,3 +154,20 @@ def test_recreate_without_env_counts_as_needed(make_installation, target_text):
     root = make_installation(header=TARGET)
     os.unlink(root / "edulution.env")
     assert run(root, target_text, registry=(IDLE, BUSY)).recreate == ["idle-svc", "busy-svc"]
+
+
+def test_json_major_ids(make_installation, target_text, all_applied):
+    gate = Migration("0099-gate", "major", (), lambda c: True, lambda c: None, gates_template=True)
+    later = Migration("0100-next", "major", (), lambda c: True, lambda c: None, requires=(gate.id,))
+    root = make_installation(header=TARGET, state=all_applied)
+    data = to_json(run(root, target_text, registry=(gate, later)))
+    assert data["blockedBy"] == [gate.id]
+    assert data["availableMajorMigrations"] == [gate.id]
+
+
+def test_headerless_current_body(make_installation, target_text, all_applied):
+    root = make_installation(state=all_applied)
+    report = run(root, target_text)
+    assert report.status == "current"
+    assert not report.header_current
+    assert exit_code(report) == 10
