@@ -154,6 +154,14 @@ json_stdout() { rc_is 10 && [[ "$(cat "$WORK/stdout")" == report ]] && grep -q "
 STUB_PULL_RC=1 run_split --version 2.2.0 --check --json
 expect_case "--check --json prints only the container's stdout on stdout" json_stdout
 
+# Backups are named after the local time.
+localtime() {
+    rc_is 0 && { [[ ! -e /etc/localtime ]] \
+        || [[ $(grep -c "^run .*-v /etc/localtime:/etc/localtime:ro .*python -m update" "$LOG") -eq 3 ]]; }
+}
+run_wrapper --yes --compose-only
+expect_case "the container gets the host's local time" localtime
+
 restart_failed() { rc_is 1 && grep -q "docker-compose-backups" "$WORK/out"; }
 STUB_COMPOSE_RC=1 run_wrapper --yes
 expect_case "failed restart exits 1 and names the backups" restart_failed

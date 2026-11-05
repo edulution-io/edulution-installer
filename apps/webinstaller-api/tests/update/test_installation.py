@@ -7,6 +7,7 @@ from update.installation import (
     BACKUP_DIR,
     COMPOSE,
     ENV,
+    STATE,
     State,
     atomic_write,
     backup,
@@ -79,3 +80,16 @@ def test_backup_names(tmp_path):
     assert first[0].read_bytes() == b"compose\r\n"
     assert first[1].read_bytes() == b"A=1\n"
     assert stat.S_IMODE(first[1].stat().st_mode) == 0o600
+
+
+def test_backup_keeps_source_mode_capped(tmp_path):
+    (tmp_path / COMPOSE).write_text("c")
+    (tmp_path / COMPOSE).chmod(0o600)
+    (tmp_path / STATE).write_text("{}")
+    (tmp_path / STATE).chmod(0o775)
+    (tmp_path / ENV).write_text("A=1\n")
+    (tmp_path / ENV).chmod(0o644)
+    compose, state, env = backup(tmp_path, [COMPOSE, STATE, ENV], NOW)
+    assert stat.S_IMODE(compose.stat().st_mode) == 0o600
+    assert stat.S_IMODE(state.stat().st_mode) == 0o644
+    assert stat.S_IMODE(env.stat().st_mode) == 0o600

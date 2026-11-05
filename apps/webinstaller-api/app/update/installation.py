@@ -1,5 +1,6 @@
 import json
 import os
+import stat
 import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -78,7 +79,7 @@ def backup(root: Path, names: list[str], now: datetime | None = None) -> list[Pa
         if not source.exists():
             continue
         data = source.read_bytes()
-        mode = 0o600 if name == ENV else 0o644
+        mode = 0o600 if name == ENV else stat.S_IMODE(source.stat().st_mode) & 0o644
         suffix = 0
         while True:
             tag = stamp if suffix == 0 else f"{stamp}-{suffix}"

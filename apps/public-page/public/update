@@ -40,6 +40,10 @@ usage() {
 # The Docker socket is mounted only for migrate, which controls containers.
 run_update() {
     local mounts=(-v "${DIRECTORY}:/edulution-ui")
+    # Backups are named after the local time; without the file the container runs on UTC.
+    if [[ -e /etc/localtime ]]; then
+        mounts+=(-v /etc/localtime:/etc/localtime:ro)
+    fi
     if [[ -n "$MIGRATION" && "${1:-}" == migrate ]]; then
         mounts+=(-v /var/run/docker.sock:/var/run/docker.sock)
     fi
