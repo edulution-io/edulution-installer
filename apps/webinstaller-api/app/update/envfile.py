@@ -2,17 +2,19 @@ import re
 
 from envtools import envValue
 
-_KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=")
+_KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)[ \t]*=")
 _DOUBLE_QUOTED = re.compile(r'"((?:\\.|[^"\\])*)"')
 _ESCAPE = re.compile(r'\\([\\"$])')
 
 
 def _eol(line):
-    return line[len(line.rstrip("\r\n")):]
+    if line.endswith("\r\n"):
+        return "\r\n"
+    return "\n" if line.endswith("\n") else ""
 
 
 def _unquote(raw):
-    raw = raw.lstrip()
+    raw = raw.lstrip(" \t")
     if raw.startswith("'"):
         end = raw.find("'", 1)
         if end != -1:
@@ -21,7 +23,7 @@ def _unquote(raw):
         match = _DOUBLE_QUOTED.match(raw)
         if match:
             return _ESCAPE.sub(r"\1", match.group(1))
-    return raw.rstrip()
+    return raw.rstrip(" \t")
 
 
 class EnvFile:
@@ -32,7 +34,8 @@ class EnvFile:
 
     @classmethod
     def parse(cls, text):
-        return cls(text.splitlines(keepends=True))
+        # str.splitlines would also split on U+2028, \x85 and a bare \r.
+        return cls(re.findall(r"[^\n]*\n|[^\n]+", text))
 
     def _find(self, key):
         for index, line in enumerate(self._lines):
@@ -49,7 +52,8 @@ class EnvFile:
         if index is None:
             return None
         line = self._lines[index]
-        return _unquote(line[_KEY.match(line).end():].rstrip("\r\n"))
+        body = line[: len(line) - len(_eol(line))]
+        return _unquote(body[_KEY.match(body).end():])
 
     def set_if_absent(self, key, value, after=None):
         if self._find(key) is not None:

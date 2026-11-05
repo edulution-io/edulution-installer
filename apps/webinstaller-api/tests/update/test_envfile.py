@@ -90,3 +90,16 @@ def test_replace_keeps_line_ending_and_missing_newline():
     env.replace("A", "x")
     env.replace("B", "y")
     assert env.render() == "A='x'\r\nB='y'"
+
+
+def test_only_newlines_split_lines():
+    text = 'K=a b\nZ="x\x85y"\nR=a\rb\nQ=c\x85'
+    env = EnvFile.parse(text)
+    assert env.render() == text
+    assert env.get("K") == "a b"
+    assert env.get("Z") == "x\x85y"
+    assert env.get("R") == "a\rb"
+    assert env.set_if_absent("N", "v", after="Q") is True
+    assert env.render() == text + "\nN='v'"
+    env.set_if_absent("M", "v", after="K")
+    assert env.render().startswith("K=a b\nM='v'\nZ=")
