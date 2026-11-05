@@ -141,8 +141,16 @@ jobs:
 
       - name: Check the fresh install is marked for updates
         run: |
-          sudo head -n 1 /srv/docker/edulution-ui/docker-compose.yml | grep -qxF "# edulution-installer template ${INSTALLER_TAG}"
-          sudo bash apps/public-page/public/update --version "${INSTALLER_TAG}" --check
+          if ! sudo head -n 1 /srv/docker/edulution-ui/docker-compose.yml | grep -qxF "# edulution-installer template ${INSTALLER_TAG}"; then
+            echo "::error::docker-compose.yml does not start with the template header for ${INSTALLER_TAG}."
+            exit 1
+          fi
+          rc=0
+          sudo bash apps/public-page/public/update --version "${INSTALLER_TAG}" --check || rc=$?
+          if [[ $rc -ne 0 ]]; then
+            echo "::error::update --check exits ${rc} on the fresh install, expected 0."
+            exit 1
+          fi
 
       - name: Installer output
         if: always()

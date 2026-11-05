@@ -20,19 +20,21 @@ Apply the update. The script shows what changes, asks for confirmation on the te
 curl -fsSL https://get.edulution.io/update | sudo bash -s --
 ```
 
-Declining changes nothing and exits with code 2. For unattended runs (for example by the edulution-manager) use `--yes`; `--compose-only` updates the files without pulling or restarting:
+Declining changes nothing and exits with code 2. For unattended runs use `--yes`; `--compose-only` updates the files without pulling or restarting:
 
 ```bash
 curl -fsSL https://get.edulution.io/update | sudo bash -s -- --compose-only --yes
 ```
 
-Other options: `--version X.Y.Z` (update to that release), `--check --json` (machine-readable report), `--discard-local-changes` (replace a locally modified `docker-compose.yml`) and `--migration ID` (run a major migration listed in the check output).
+Other options: `--version X.Y.Z` (update to that release), `--check --json` (machine-readable report on stdout, the script's own messages go to stderr), `--discard-local-changes` (replace a locally modified `docker-compose.yml`) and `--migration ID` (run a major migration listed in the check output).
+
+Tools that run the installer image directly instead of this script get the same exit codes.
 
 Keep local changes in `docker-compose.override.yml`, not in `docker-compose.yml`: the update replaces `docker-compose.yml` as a whole. Before every change the previous files are copied to `/srv/docker/edulution-ui/docker-compose-backups/`.
 
 | Exit code | Meaning |
 | --- | --- |
-| 0 | Nothing to do |
+| 0 | Nothing to do (`--check`), or the update or migration succeeded |
 | 10 | Update available |
 | 20 | `docker-compose.yml` has local modifications |
 | 30 | Blocked by a major migration (`--migration ID`) |
@@ -40,7 +42,9 @@ Keep local changes in `docker-compose.override.yml`, not in `docker-compose.yml`
 | 2 | Usage error or confirmation missing (no terminal and no `--yes`) |
 | 3 | Another update is running |
 | 4 | Files changed since the check |
-| 5 | Downgrade refused |
+| 5 | Downgrade refused: the installation is newer than the target release (`--check` reports it before anything runs; pick the release with `--version`) |
+
+Any other non-zero code (for example Docker's 125 to 127) means the update container could not be started.
 
 ## Project Structure
 
