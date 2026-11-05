@@ -4,15 +4,24 @@ import sys
 from pathlib import Path
 
 from update.drift import check, exit_code, fingerprint, to_json
+from update.migrations import MIGRATIONS
 from update.runner import UpdateError, apply, init, migrate
 from update.templates import history, target_compose, target_version
 
 DEFAULT_DIR = "/edulution-ui"
 
 
+STATUS_DE = {
+    "current": "aktuell",
+    "outdated": "veraltet",
+    "modified": "lokal geändert",
+    "unknown": "unbekannt",
+}
+
+
 def _print_report(report) -> None:
     installed = report.installed_version or "unbekannt"
-    print(f"Status: {report.status}")
+    print(f"Status: {STATUS_DE.get(report.status, report.status)}")
     print(f"Installierte Version: {installed}")
     print(f"Zielversion: {report.target_version}")
     if report.pending:
@@ -30,19 +39,27 @@ def _print_report(report) -> None:
         print(report.diff)
 
 
-def _summary(before, after) -> None:
-    print(f"Aktualisiert auf Version {after.target_version}.")
-    if before.pending:
-        print("Ausgeführte Migrationen: " + ", ".join(m.id for m in before.pending))
-    if before.recreate:
-        print("Neu zu erstellende Dienste: " + ", ".join(before.recreate))
+def _summary(outcome) -> None:
+    if not outcome.applied and not outcome.template_installed:
+        print("Bereits aktuell, nichts geändert.")
+        return
+    if outcome.template_installed:
+        print(f"Vorlage {outcome.report.target_version} installiert.")
+    if outcome.applied:
+        print("Ausgeführte Migrationen: " + ", ".join(outcome.applied))
+    by_id = {m.id: m for m in MIGRATIONS}
+    services = list(dict.fromkeys(
+        svc for mid in outcome.applied if mid in by_id for svc in by_id[mid].recreate
+    ))
+    if services:
+        print("Neu zu erstellende Dienste: " + ", ".join(services))
 
 
 def _run(args) -> int:
     root = Path(args.dir)
     version = target_version()
     if args.command == "check":
-        report = check(root, target_compose(), version, history())
+        report = check(root, target_compose(), version, history(), MIGRATIONS)
         if args.json:
             print(json.dumps(to_json(report), ensure_ascii=False, indent=2))
         else:
@@ -52,7 +69,7 @@ def _run(args) -> int:
         print(fingerprint(root))
         return 0
     if args.command == "init":
-        init(root, target_version=version)
+        init(root, target_version=version, registry=MIGRATIONS)
         print(f"Installation für Updates vorbereitet (Version {version}).")
         return 0
 
@@ -61,18 +78,18 @@ def _run(args) -> int:
         return 2
     text = target_compose()
     hist = history()
-    before = check(root, text, version, hist)
     if args.command == "apply":
-        after = apply(
+        outcome = apply(
             root,
             expect=args.expect,
             discard_local_changes=args.discard_local_changes,
             target_text=text,
             target_version=version,
             history=hist,
+            registry=MIGRATIONS,
         )
     else:
-        after = migrate(
+        outcome = migrate(
             root,
             args.id,
             expect=args.expect,
@@ -80,9 +97,10 @@ def _run(args) -> int:
             target_version=version,
             history=hist,
             discard_local_changes=args.discard_local_changes,
+            registry=MIGRATIONS,
         )
-    _summary(before, after)
-    return exit_code(after)
+    _summary(outcome)
+    return exit_code(outcome.report)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -111,7 +129,10 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    try:
+        args = _parser().parse_args(argv)
+    except SystemExit as exc:
+        return exc.code if isinstance(exc.code, int) else 2
     try:
         return _run(args)
     except UpdateError as err:
@@ -122,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     except (UnicodeDecodeError, json.JSONDecodeError) as err:
         print(f"Datei ist nicht lesbar oder beschädigt: {err}", file=sys.stderr)
     except Exception as err:
-        print(f"Unerwarteter Fehler: {err}", file=sys.stderr)
+        print(f"Unerwarteter Fehler: {str(err) or type(err).__name__}", file=sys.stderr)
     return 1
 
 

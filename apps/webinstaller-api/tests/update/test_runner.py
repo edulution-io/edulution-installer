@@ -46,7 +46,7 @@ def outdated(make_installation, target_text):
 def test_apply_outdated(outdated, target_text):
     root, history = outdated
     before = snapshot(root)
-    report = run_apply(root, target_text, history)
+    report = run_apply(root, target_text, history).report
     assert backup_bytes(root, COMPOSE) == before[COMPOSE]
     assert backup_bytes(root, ENV) == before[ENV]
     assert backup_bytes(root, STATE) == before[STATE]
@@ -137,8 +137,9 @@ def test_apply_twice_is_fixed_point(outdated, target_text):
     run_apply(root, target_text, history)
     before = snapshot(root)
     backups = sorted(os.listdir(root / BACKUP_DIR))
-    report = run_apply(root, target_text, history)
-    assert exit_code(report) == 0
+    outcome = run_apply(root, target_text, history)
+    assert exit_code(outcome.report) == 0
+    assert (outcome.applied, outcome.template_installed) == ([], False)
     assert snapshot(root) == before
     assert sorted(os.listdir(root / BACKUP_DIR)) == backups
 
@@ -180,7 +181,10 @@ def test_migrate_gating_major(make_installation, target_text):
     registry = (*MIGRATIONS, GATE)
     before = snapshot(root)
     assert check(root, target_text, TARGET, frozenset(), registry).blocked_by == [GATE]
-    report = run_migrate(root, GATE.id, target_text, registry)
+    outcome = run_migrate(root, GATE.id, target_text, registry)
+    report = outcome.report
+    assert outcome.template_installed
+    assert outcome.applied == [GATE.id, MONGO_ID]
     env = EnvFile.parse((root / ENV).read_text())
     assert env.get("GATED") == "1"
     assert "replicaSet=rs0" in env.get("MONGODB_SERVER_URL")
@@ -230,11 +234,15 @@ def test_migrate_holds_template_for_remaining_gating_major(make_installation, ta
     registry = (*MIGRATIONS, first, second)
     root = make_installation(header="2.1.0", state=State("2.1.0", [MONGO_ID]))
     before = snapshot(root)
-    report = run_migrate(root, first.id, target_text, registry)
+    outcome = run_migrate(root, first.id, target_text, registry)
+    report = outcome.report
+    assert not outcome.template_installed and outcome.applied == [first.id]
     assert (root / COMPOSE).read_bytes() == before[COMPOSE]
     assert first.id in load_state(root).applied
     assert report.blocked_by == [second]
-    report = run_migrate(root, second.id, target_text, registry)
+    outcome = run_migrate(root, second.id, target_text, registry)
+    report = outcome.report
+    assert outcome.template_installed
     assert read_header((root / COMPOSE).read_text()) == TARGET
     assert report.blocked_by == []
     assert load_state(root).template_version == TARGET

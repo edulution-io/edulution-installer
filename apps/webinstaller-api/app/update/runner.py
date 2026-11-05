@@ -1,6 +1,7 @@
 import fcntl
 import os
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -28,6 +29,13 @@ class UpdateError(Exception):
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+@dataclass
+class Outcome:
+    report: Report
+    applied: list[str]  # ids recorded in this run, in order
+    template_installed: bool
 
 
 @contextmanager
@@ -110,7 +118,7 @@ def apply(
     history: frozenset[str],
     registry=MIGRATIONS,
     now: datetime | None = None,
-) -> Report:
+) -> Outcome:
     with locked(root):
         report = check(root, target_text, target_version, history, registry)
         if report.blocked_by:
@@ -119,14 +127,15 @@ def apply(
         _guard_expect(root, expect)
         _guard_template(report, target_version, discard_local_changes)
         if exit_code(report) == 0:
-            return report
+            return Outcome(report, [], False)
 
         env = _read_env(root)
         original_env = env.render()
         state = load_state(root)
+        recorded = len(state.applied)
         compose = _install_template(root, env, state, target_text, target_version, registry)
         _commit(root, env, original_env, compose, state, now)
-        return check(root, target_text, target_version, history, registry)
+        return Outcome(check(root, target_text, target_version, history, registry), state.applied[recorded:], True)
 
 
 def migrate(
@@ -140,7 +149,7 @@ def migrate(
     registry=MIGRATIONS,
     now: datetime | None = None,
     discard_local_changes: bool = False,
-) -> Report:
+) -> Outcome:
     with locked(root):
         migration = next((m for m in registry if m.id == migration_id), None)
         if migration is None or migration.kind != "major":
@@ -163,12 +172,14 @@ def migrate(
 
         env = _read_env(root)
         original_env = env.render()
+        recorded = len(state.applied)
         _run_migration(migration, Context(root, env), state)
         compose = None
         if installs_template:
             compose = _install_template(root, env, state, target_text, target_version, registry)
         _commit(root, env, original_env, compose, state, now)
-        return check(root, target_text, target_version, history, registry)
+        report = check(root, target_text, target_version, history, registry)
+        return Outcome(report, state.applied[recorded:], installs_template)
 
 
 def init(root: Path, *, target_version: str, registry=MIGRATIONS) -> None:
