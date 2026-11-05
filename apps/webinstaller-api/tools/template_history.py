@@ -11,6 +11,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 TEMPLATE = "apps/public-page/public/download/docker-compose.yml.template"
+# The file moved here in 28bab07; older installs were created from the previous path.
+PATHS = ("public/download/docker-compose.yml.template", TEMPLATE)
 OUTPUT = Path(__file__).resolve().parents[1] / "app" / "update" / "template_history.json"
 COMMAND = "python3 apps/webinstaller-api/tools/template_history.py"
 
@@ -20,14 +22,15 @@ def git(*args: str) -> subprocess.CompletedProcess:
 
 
 def digests() -> list[str]:
-    log = git("log", "--format=%H", "--", TEMPLATE)
-    if log.returncode != 0:
-        sys.exit(f"git log failed: {log.stderr.decode().strip()}")
     found = set()
-    for commit in log.stdout.decode().split():
-        shown = git("show", f"{commit}:{TEMPLATE}")
-        if shown.returncode == 0:
-            found.add(hashlib.sha256(shown.stdout).hexdigest())
+    for path in PATHS:
+        log = git("log", "--format=%H", "--", path)
+        if log.returncode != 0:
+            sys.exit(f"git log failed: {log.stderr.decode().strip()}")
+        for commit in log.stdout.decode().split():
+            shown = git("show", f"{commit}:{path}")
+            if shown.returncode == 0:
+                found.add(hashlib.sha256(shown.stdout).hexdigest())
     found.add(hashlib.sha256((REPO / TEMPLATE).read_bytes()).hexdigest())
     return sorted(found)
 
@@ -40,7 +43,7 @@ def main() -> int:
     content = render()
     if "--check" in sys.argv[1:]:
         if not OUTPUT.exists() or OUTPUT.read_text(encoding="utf-8") != content:
-            print(f"template_history.json is out of date; regenerate it with: {COMMAND}", file=sys.stderr)
+            print(f"template_history.json is out of date; regenerate it with: {COMMAND} (needs a full clone, not a shallow one)", file=sys.stderr)
             return 1
         return 0
     OUTPUT.write_text(content, encoding="utf-8")
