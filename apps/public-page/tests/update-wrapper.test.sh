@@ -17,7 +17,8 @@ case $1 in
     image) exit "${STUB_INSPECT_RC:-0}" ;;
     compose) exit "${STUB_COMPOSE_RC:-0}" ;;
     run)
-        while [[ $1 != update ]]; do shift; done
+        while [[ $# -gt 0 && $1 != update ]]; do shift; done
+        [[ $# -gt 0 ]] || exit 98
         shift
         case $1 in
             check) echo "report"; exit "${STUB_CHECK_RC:-10}" ;;
@@ -39,7 +40,7 @@ RC=0
 run_wrapper() {
     : > "$LOG"
     RC=0
-    PATH="$WORK/bin:$PATH" STUB_LOG="$LOG" EDULUTION_UPDATE_DIR="$WORK/dir/" \
+    PATH="$WORK/bin:$PATH" STUB_LOG="$LOG" EDULUTION_UPDATE_DIR="$WORK/dir" \
         EDULUTION_UPDATE_SKIP_ROOT_CHECK=1 bash "$WRAPPER" "$@" > "$WORK/out" 2>&1 || RC=$?
 }
 
@@ -62,7 +63,7 @@ rc_is() { [[ $RC -eq $1 ]]; }
 
 answer() { printf '%s\n' "$@" > "$WORK/tty"; export EDULUTION_UPDATE_TTY="$WORK/tty"; }
 
-declined() { rc_is 1 && not_logged "update apply" && not_logged "compose"; }
+declined() { rc_is 2 && not_logged "update apply" && not_logged "compose"; }
 answer n
 run_wrapper
 expect_case "answer n changes nothing" declined
@@ -92,12 +93,12 @@ answer j j
 STUB_CHECK_RC=20 run_wrapper
 expect_case "check 20 asks the second question" discard_question
 
-discard_declined() { rc_is 1 && not_logged "update apply"; }
+discard_declined() { rc_is 2 && not_logged "update apply"; }
 answer j n
 STUB_CHECK_RC=20 run_wrapper
 expect_case "declining the discard question changes nothing" discard_declined
 
-pull_failed() { rc_is 0 && logged "update apply"; }
+pull_failed() { rc_is 0 && logged "update apply" && logged "image inspect" && grep -q "lokale Image" "$WORK/out"; }
 STUB_PULL_RC=1 run_wrapper --yes
 expect_case "failed pull continues with the local image" pull_failed
 
@@ -119,7 +120,8 @@ migrate_blocked() {
 STUB_CHECK_RC=30 run_wrapper --migration X --yes
 expect_case "--migration X --yes at check 30 migrates with the socket" migrate_blocked
 
-no_socket() { ! grep -q "docker.sock.*update \(check\|expect\|apply\)" "$LOG"; }
+no_socket() { rc_is 0 && ! grep -q "docker.sock.*update \(check\|expect\|apply\)" "$LOG"; }
+run_wrapper --yes
 expect_case "the socket is mounted for migrate only" no_socket
 
 token_dash() { rc_is 0 && logged "--expect=-:-"; }
@@ -146,6 +148,42 @@ expect_case "failed restart exits 1 and names the backups" restart_failed
 apply_failed() { rc_is 4 && not_logged "compose"; }
 STUB_APPLY_RC=4 run_wrapper --yes
 expect_case "apply errors pass through" apply_failed
+
+for code in 1 3 4 5; do
+    check_error() { rc_is "$code" && not_logged "update apply" && not_logged "update expect"; }
+    STUB_CHECK_RC=$code run_wrapper --yes
+    expect_case "check $code aborts with that code" check_error
+done
+
+migrate_current() { rc_is 0 && logged "update migrate --id X --yes --expect=a:b"; }
+STUB_CHECK_RC=0 run_wrapper --migration X --yes
+expect_case "--migration X at check 0 migrates" migrate_current
+
+migrate_discard() { rc_is 0 && logged "update migrate --id X --yes --expect=a:b --discard-local-changes"; }
+STUB_CHECK_RC=20 run_wrapper --migration X --yes --discard-local-changes
+expect_case "--migration at check 20 passes --discard-local-changes" migrate_discard
+answer j j
+STUB_CHECK_RC=20 run_wrapper --migration X
+expect_case "--migration at check 20 interactive passes --discard-local-changes" migrate_discard
+
+migrate_no_discard() { rc_is 20 && not_logged "update migrate"; }
+STUB_CHECK_RC=20 run_wrapper --migration X --yes
+expect_case "--migration at check 20 with --yes needs --discard-local-changes" migrate_no_discard
+
+info_10() { grep -q "${WORK}/dir/docker-compose-backups/" "$WORK/out" && ! grep -q "docker-compose.override.yml" "$WORK/out"; }
+run_wrapper --yes
+expect_case "backup location is shown before applying" info_10
+
+info_20() { grep -q "${WORK}/dir/docker-compose-backups/" "$WORK/out" && grep -q "docker-compose.override.yml" "$WORK/out"; }
+answer n
+STUB_CHECK_RC=20 run_wrapper
+expect_case "check 20 shows backups and override hint before asking" info_20
+STUB_CHECK_RC=20 run_wrapper --yes
+expect_case "check 20 --yes exit message has the override hint" info_20
+
+json_alone() { rc_is 2 && not_logged "run "; }
+run_wrapper --json
+expect_case "--json without --check exits 2" json_alone
 
 if [[ $fails -ne 0 ]]; then
     echo "$fails case(s) failed"

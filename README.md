@@ -20,7 +20,7 @@ Apply the update. The script shows what changes, asks for confirmation on the te
 curl -fsSL https://get.edulution.io/update | sudo bash -s --
 ```
 
-Declining changes nothing. For unattended runs (for example by the edulution-manager) use `--yes`; `--compose-only` updates the files without pulling or restarting:
+Declining changes nothing and exits with code 2. For unattended runs (for example by the edulution-manager) use `--yes`; `--compose-only` updates the files without pulling or restarting:
 
 ```bash
 curl -fsSL https://get.edulution.io/update | sudo bash -s -- --compose-only --yes

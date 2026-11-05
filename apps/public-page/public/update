@@ -11,8 +11,9 @@ DIRECTORY="/srv/docker/edulution-ui/"
 # Image und Version dieses Skripts. Ein Release ersetzt beide Zeilen durch den veroeffentlichten Digest und seine Version.
 EDULUTION_INSTALLER_IMAGE="ghcr.io/edulution-io/edulution-installer:latest"
 EDULUTION_INSTALLER_VERSION="dev"
-# Testhooks: Verzeichnis, Terminal und Root-Pruefung.
+# Test hooks: directory, terminal and root check.
 DIRECTORY="${EDULUTION_UPDATE_DIR:-$DIRECTORY}"
+DIRECTORY="${DIRECTORY%/}/"
 TTY_FILE="${EDULUTION_UPDATE_TTY:-/dev/tty}"
 
 use_version() {
@@ -27,78 +28,11 @@ use_version() {
 }
 
 usage() {
-    echo "Verwendung: $0 [--version <X.Y.Z[-rc.N]>] [--check [--json]] [--yes] [--compose-only]"
+    echo "Verwendung: update [--version <X.Y.Z[-rc.N]>] [--check [--json]] [--yes] [--compose-only]"
     echo "              [--discard-local-changes] [--migration <ID>]"
 }
 
-CHECK_ONLY=0
-JSON=0
-YES=0
-COMPOSE_ONLY=0
-DISCARD=0
-MIGRATION=""
-
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --version)
-            use_version "${2:-}"
-            shift 2
-            ;;
-        --version=*)
-            use_version "${1#*=}"
-            shift
-            ;;
-        --check) CHECK_ONLY=1; shift ;;
-        --json) JSON=1; shift ;;
-        --yes) YES=1; shift ;;
-        --compose-only) COMPOSE_ONLY=1; shift ;;
-        --discard-local-changes) DISCARD=1; shift ;;
-        --migration)
-            MIGRATION="${2:-}"
-            if [[ -z "$MIGRATION" || "$MIGRATION" == --* ]]; then
-                echo "[!] --migration benötigt die ID der Migration."
-                exit 2
-            fi
-            shift 2
-            ;;
-        --migration=*)
-            MIGRATION="${1#*=}"
-            if [[ -z "$MIGRATION" ]]; then
-                echo "[!] --migration benötigt die ID der Migration."
-                exit 2
-            fi
-            shift
-            ;;
-        *)
-            echo "Unbekannter Parameter: $1"
-            usage
-            exit 2
-            ;;
-    esac
-done
-
-if [[ -z "${EDULUTION_UPDATE_SKIP_ROOT_CHECK:-}" && $EUID -ne 0 ]]; then
-    echo "[!] Bitte als root ausführen, z.B. mit sudo."
-    exit 1
-fi
-
-if [[ ! -f "${DIRECTORY}edulution.env" ]]; then
-    echo "[!] ${DIRECTORY}edulution.env nicht gefunden. Ist edulution hier installiert?"
-    exit 1
-fi
-
-echo "edulution update (Installer ${EDULUTION_INSTALLER_VERSION})"
-
-if ! docker pull "$EDULUTION_INSTALLER_IMAGE"; then
-    if docker image inspect "$EDULUTION_INSTALLER_IMAGE" >/dev/null 2>&1; then
-        echo "[!] Das Image konnte nicht geladen werden, das lokale wird verwendet."
-    else
-        echo "[!] Das Image ${EDULUTION_INSTALLER_IMAGE} konnte nicht geladen werden."
-        exit 1
-    fi
-fi
-
-# Der Docker-Socket wird nur fuer --migration eingehaengt, weil Migrationen Container steuern.
+# The Docker socket is mounted only for migrate, which controls containers.
 run_update() {
     local mounts=(-v "${DIRECTORY}:/edulution-ui")
     if [[ -n "$MIGRATION" && "${1:-}" == migrate ]]; then
@@ -107,87 +41,171 @@ run_update() {
     docker run --rm "${mounts[@]}" "$EDULUTION_INSTALLER_IMAGE" python -m update "$@"
 }
 
-if [[ $CHECK_ONLY -eq 1 ]]; then
-    rc=0
-    if [[ $JSON -eq 1 ]]; then
-        run_update check --json || rc=$?
-    else
-        run_update check || rc=$?
-    fi
-    exit "$rc"
-fi
+main() {
+    CHECK_ONLY=0
+    JSON=0
+    YES=0
+    COMPOSE_ONLY=0
+    DISCARD=0
+    MIGRATION=""
 
-rc=0
-run_update check || rc=$?
-case $rc in
-    0)
-        if [[ -z "$MIGRATION" ]]; then
-            echo "Die Installation ist aktuell, es gibt nichts zu tun."
-            exit 0
-        fi
-        ;;
-    10) ;;
-    20) ;;
-    30)
-        if [[ -z "$MIGRATION" ]]; then
-            echo "Vor diesem Update ist eine größere Migration nötig. Die IDs stehen oben unter"
-            echo "\"Verfügbare größere Migrationen\"; ausführen mit: $0 --migration <ID>"
-            exit 30
-        fi
-        ;;
-    *) exit "$rc" ;;
-esac
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --version)
+                use_version "${2:-}"
+                shift 2
+                ;;
+            --version=*)
+                use_version "${1#*=}"
+                shift
+                ;;
+            --check) CHECK_ONLY=1; shift ;;
+            --json) JSON=1; shift ;;
+            --yes) YES=1; shift ;;
+            --compose-only) COMPOSE_ONLY=1; shift ;;
+            --discard-local-changes) DISCARD=1; shift ;;
+            --migration)
+                MIGRATION="${2:-}"
+                if [[ -z "$MIGRATION" || "$MIGRATION" == --* ]]; then
+                    echo "[!] --migration benötigt die ID der Migration."
+                    exit 2
+                fi
+                shift 2
+                ;;
+            --migration=*)
+                MIGRATION="${1#*=}"
+                if [[ -z "$MIGRATION" ]]; then
+                    echo "[!] --migration benötigt die ID der Migration."
+                    exit 2
+                fi
+                shift
+                ;;
+            *)
+                echo "Unbekannter Parameter: $1"
+                usage
+                exit 2
+                ;;
+        esac
+    done
 
-# Der Fingerabdruck gilt fuer genau die Dateien, die der Operator gerade gesehen hat.
-token=$(run_update expect)
-
-if [[ $YES -eq 1 ]]; then
-    if [[ $rc -eq 20 && $DISCARD -eq 0 ]]; then
-        echo "[!] Lokale Änderungen in docker-compose.yml vorhanden. Mit --discard-local-changes werden sie verworfen (Backup bleibt)."
-        exit 20
-    fi
-else
-    if ! { : < "$TTY_FILE"; } 2>/dev/null; then
-        echo "[!] Kein Terminal für die Rückfrage verfügbar. Mit --yes ohne Rückfrage ausführen."
+    if [[ $JSON -eq 1 && $CHECK_ONLY -eq 0 ]]; then
+        echo "[!] --json gibt es nur zusammen mit --check."
+        usage
         exit 2
     fi
-    exec 3< "$TTY_FILE"
-    read -r -p "Update jetzt anwenden? [j/N] " answer <&3 || answer=""
-    if [[ ! "$answer" =~ ^[jJyY]$ ]]; then
-        echo "Abgebrochen, es wurde nichts geändert."
+
+    if [[ -z "${EDULUTION_UPDATE_SKIP_ROOT_CHECK:-}" && $EUID -ne 0 ]]; then
+        echo "[!] Bitte als root ausführen, z.B. mit sudo."
         exit 1
     fi
-    if [[ $rc -eq 20 && $DISCARD -eq 0 ]]; then
-        read -r -p "Lokale Änderungen in docker-compose.yml verwerfen? Sie stehen danach nur noch im Backup. [j/N] " answer <&3 || answer=""
-        if [[ ! "$answer" =~ ^[jJyY]$ ]]; then
-            echo "Abgebrochen, es wurde nichts geändert."
+
+    if [[ ! -f "${DIRECTORY}edulution.env" ]]; then
+        echo "[!] ${DIRECTORY}edulution.env nicht gefunden. Ist edulution hier installiert?"
+        exit 1
+    fi
+
+    echo "edulution update (Installer ${EDULUTION_INSTALLER_VERSION})"
+
+    if ! docker pull "$EDULUTION_INSTALLER_IMAGE"; then
+        if docker image inspect "$EDULUTION_INSTALLER_IMAGE" >/dev/null 2>&1; then
+            echo "[!] ${EDULUTION_INSTALLER_IMAGE} konnte nicht geladen werden, das lokale Image wird verwendet."
+        else
+            echo "[!] Das Image ${EDULUTION_INSTALLER_IMAGE} konnte nicht geladen werden."
             exit 1
         fi
-        DISCARD=1
     fi
-fi
 
-args=(--yes "--expect=${token}")
-[[ $DISCARD -eq 1 ]] && args+=(--discard-local-changes)
+    if [[ $CHECK_ONLY -eq 1 ]]; then
+        rc=0
+        if [[ $JSON -eq 1 ]]; then
+            run_update check --json || rc=$?
+        else
+            run_update check || rc=$?
+        fi
+        exit "$rc"
+    fi
 
-rc=0
-if [[ -n "$MIGRATION" ]]; then
-    run_update migrate --id "$MIGRATION" "${args[@]}" || rc=$?
-else
-    run_update apply "${args[@]}" || rc=$?
-fi
-if [[ $rc -ne 0 ]]; then
-    exit "$rc"
-fi
+    rc=0
+    run_update check || rc=$?
+    case $rc in
+        0)
+            if [[ -z "$MIGRATION" ]]; then
+                echo "Die Installation ist aktuell, es gibt nichts zu tun."
+                exit 0
+            fi
+            ;;
+        10) ;;
+        20) ;;
+        30)
+            if [[ -z "$MIGRATION" ]]; then
+                echo "Vor diesem Update ist eine größere Migration nötig. Die IDs stehen oben unter"
+                echo "\"Verfügbare größere Migrationen\"; ausführen mit:"
+                echo "  curl -fsSL https://get.edulution.io/update | sudo bash -s -- --migration <ID>"
+                exit 30
+            fi
+            ;;
+        *) exit "$rc" ;;
+    esac
 
-if [[ $COMPOSE_ONLY -eq 1 ]]; then
-    echo "Dateien aktualisiert. Die Dienste wurden nicht neu gestartet (--compose-only)."
-    exit 0
-fi
+    # The token covers the files as they are when expect runs, which is right after check.
+    token=$(run_update expect)
 
-if ! docker compose --project-directory "$DIRECTORY" pull || ! docker compose --project-directory "$DIRECTORY" up -d; then
-    echo "[!] Die Dateien wurden aktualisiert, aber das Neustarten der Dienste ist fehlgeschlagen."
-    echo "    Sicherungen der alten Dateien: ${DIRECTORY}docker-compose-backups/"
-    exit 1
-fi
-echo "Update abgeschlossen."
+    echo "Vor jeder Änderung werden die bisherigen Dateien gesichert in ${DIRECTORY}docker-compose-backups/"
+    if [[ $rc -eq 20 ]]; then
+        echo "Lokale Änderungen in docker-compose.yml bleiben danach nur im Backup erhalten."
+        echo "Eigene Anpassungen gehören in docker-compose.override.yml."
+    fi
+
+    if [[ $YES -eq 1 ]]; then
+        if [[ $rc -eq 20 && $DISCARD -eq 0 ]]; then
+            echo "[!] Mit --discard-local-changes werden die lokalen Änderungen verworfen (Backup bleibt). Eigene Anpassungen gehören in docker-compose.override.yml."
+            exit 20
+        fi
+    else
+        if ! { : < "$TTY_FILE"; } 2>/dev/null; then
+            echo "[!] Kein Terminal für die Rückfrage verfügbar. Mit --yes ohne Rückfrage ausführen."
+            exit 2
+        fi
+        exec 3< "$TTY_FILE"
+        read -r -p "Update jetzt anwenden? [j/N] " answer <&3 || answer=""
+        if [[ ! "$answer" =~ ^[jJyY]$ ]]; then
+            echo "Abgebrochen, es wurde nichts geändert."
+            exit 2
+        fi
+        if [[ $rc -eq 20 && $DISCARD -eq 0 ]]; then
+            read -r -p "Lokale Änderungen in docker-compose.yml verwerfen? Sie stehen danach nur noch im Backup. [j/N] " answer <&3 || answer=""
+            if [[ ! "$answer" =~ ^[jJyY]$ ]]; then
+                echo "Abgebrochen, es wurde nichts geändert."
+                exit 2
+            fi
+            DISCARD=1
+        fi
+    fi
+
+    args=(--yes "--expect=${token}")
+    [[ $DISCARD -eq 1 ]] && args+=(--discard-local-changes)
+
+    rc=0
+    if [[ -n "$MIGRATION" ]]; then
+        run_update migrate --id "$MIGRATION" "${args[@]}" || rc=$?
+    else
+        run_update apply "${args[@]}" || rc=$?
+    fi
+    if [[ $rc -ne 0 ]]; then
+        exit "$rc"
+    fi
+
+    if [[ $COMPOSE_ONLY -eq 1 ]]; then
+        echo "Dateien aktualisiert. Die Dienste wurden nicht neu gestartet (--compose-only)."
+        exit 0
+    fi
+
+    if ! docker compose --project-directory "$DIRECTORY" pull || ! docker compose --project-directory "$DIRECTORY" up -d; then
+        echo "[!] Die Dateien wurden aktualisiert, aber das Neustarten der Dienste ist fehlgeschlagen."
+        echo "    Sicherungen der alten Dateien: ${DIRECTORY}docker-compose-backups/"
+        exit 1
+    fi
+    echo "Update abgeschlossen."
+}
+
+main "$@"
