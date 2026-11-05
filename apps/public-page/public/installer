@@ -590,8 +590,10 @@ echo "[*] Arbeiten am Authentifizierungserver abgeschlossen."
 echo "[*] Herunterladen der edulution Container..."
 docker compose --project-directory ${DIRECTORY} pull 2>&1 > /dev/zero
 
-if ! docker run --rm -v "${DIRECTORY}:/edulution-ui" "${EDULUTION_INSTALLER_IMAGE}" python -m update init > /dev/null 2>&1; then
-    echo "[!] Die Update-Kennung konnte nicht geschrieben werden; 'update.sh' meldet die Installation später als unbekannt."
+if ! docker run --rm -v "${DIRECTORY}:/edulution-ui" "${EDULUTION_INSTALLER_IMAGE}" python -m update init > /dev/null; then
+    echo "[!] Die Installation konnte nicht für Updates markiert werden (Fehler siehe oben)."
+    echo "    Die Prüfung mit 'curl -fsSL https://get.edulution.io/update | sudo bash -s -- --check'"
+    echo "    meldet deshalb ein ausstehendes Update, bis einmal ein Update gelaufen ist."
 fi
 
 echo "[*] Konfiguration abgeschlossen. Starte edulution!"

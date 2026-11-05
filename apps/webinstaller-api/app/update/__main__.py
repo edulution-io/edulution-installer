@@ -124,7 +124,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--expect", required=True)
     p.add_argument("--discard-local-changes", action="store_true")
 
-    sub.add_parser("init", help="Bestehende Installation für Updates vorbereiten")
+    sub.add_parser("init", help="Frische Installation markieren (nur für den Installer)")
     return parser
 
 

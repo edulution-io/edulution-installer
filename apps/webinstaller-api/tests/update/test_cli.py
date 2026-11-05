@@ -174,7 +174,9 @@ def test_usage_error_returns_2(capsys):
 
 def test_help_returns_0(capsys):
     assert main(["--help"]) == 0
-    assert "usage:" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "usage:" in out
+    assert "Frische Installation markieren (nur für den Installer)" in out
 
 
 def test_status_is_german(outdated, capsys):
