@@ -86,6 +86,7 @@ def _commit(
     rendered = env.render()
     if rendered != original_env:
         atomic_write(root / ENV, rendered, mode=0o600)
+    os.chmod(root / ENV, 0o600)
     if compose_text is not None:
         atomic_write(root / COMPOSE, compose_text)
     save_state(root, state)
@@ -151,7 +152,12 @@ def migrate(
         if missing:
             raise UpdateError(2, f"Zuerst erforderlich: {', '.join(missing)}.")
         _guard_expect(root, expect)
-        if migration.gates_template:
+        # The last pending gating major installs the template; earlier ones only run their data step.
+        installs_template = migration.gates_template and not any(
+            m.kind == "major" and m.gates_template and m.id not in state.applied and m.id != migration_id
+            for m in registry
+        )
+        if installs_template:
             report = check(root, target_text, target_version, history, registry)
             _guard_template(report, target_version, discard_local_changes)
 
@@ -159,7 +165,7 @@ def migrate(
         original_env = env.render()
         _run_migration(migration, Context(root, env), state)
         compose = None
-        if migration.gates_template:
+        if installs_template:
             compose = _install_template(root, env, state, target_text, target_version, registry)
         _commit(root, env, original_env, compose, state, now)
         return check(root, target_text, target_version, history, registry)

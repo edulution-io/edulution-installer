@@ -18,7 +18,7 @@ class Migration:
     kind: Literal["normal", "major"]
     recreate: tuple[str, ...]
     needed: Callable[[Context], bool]
-    apply: Callable[[Context], None]
+    apply: Callable[[Context], None]  # may only mutate ctx.env; the runner backs up and writes files
     requires: tuple[str, ...] = ()
     gates_template: bool = False
 

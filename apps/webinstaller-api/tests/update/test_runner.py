@@ -5,7 +5,7 @@ import pytest
 
 from update.drift import check, exit_code, fingerprint
 from update.envfile import EnvFile
-from update.installation import BACKUP_DIR, COMPOSE, ENV, LOCK, State, load_state, read_header
+from update.installation import BACKUP_DIR, COMPOSE, ENV, LOCK, STATE, State, load_state, read_header
 from update.migrations import MIGRATIONS, Migration
 from update.runner import UpdateError, apply, init, locked, migrate
 from update.templates import sha256
@@ -30,6 +30,12 @@ def run_apply(root, target_text, history=frozenset(), expect=None, discard=False
     )
 
 
+def backup_bytes(root, name):
+    found = [p.read_bytes() for p in (root / BACKUP_DIR).iterdir() if p.name.startswith(name + ".")]
+    assert len(found) == 1
+    return found[0]
+
+
 @pytest.fixture
 def outdated(make_installation, target_text):
     old = target_text.replace("edu-api", "edu-api-old", 1)
@@ -39,7 +45,11 @@ def outdated(make_installation, target_text):
 
 def test_apply_outdated(outdated, target_text):
     root, history = outdated
+    before = snapshot(root)
     report = run_apply(root, target_text, history)
+    assert backup_bytes(root, COMPOSE) == before[COMPOSE]
+    assert backup_bytes(root, ENV) == before[ENV]
+    assert backup_bytes(root, STATE) == before[STATE]
     assert (root / COMPOSE).read_text() == f"# edulution-installer template {TARGET}\n{target_text}"
     env = EnvFile.parse((root / ENV).read_text())
     assert "replicaSet=rs0" in env.get("MONGODB_SERVER_URL")
@@ -165,17 +175,69 @@ def run_migrate(root, mid, target_text, registry, **extra):
     )
 
 
-def test_migrate_gating_major(make_installation, target_text, all_applied):
-    root = make_installation(header="2.1.0", state=State("2.1.0", [m.id for m in MIGRATIONS]))
+def test_migrate_gating_major(make_installation, target_text):
+    root = make_installation(header="2.1.0", state=State("2.1.0", []))
     registry = (*MIGRATIONS, GATE)
+    before = snapshot(root)
     assert check(root, target_text, TARGET, frozenset(), registry).blocked_by == [GATE]
-    report = run_migrate(root, GATE.id, target_text, registry, discard_local_changes=True)
-    assert EnvFile.parse((root / ENV).read_text()).get("GATED") == "1"
+    report = run_migrate(root, GATE.id, target_text, registry)
+    env = EnvFile.parse((root / ENV).read_text())
+    assert env.get("GATED") == "1"
+    assert "replicaSet=rs0" in env.get("MONGODB_SERVER_URL")
     state = load_state(root)
-    assert GATE.id in state.applied and state.template_version == TARGET
+    assert {GATE.id, MONGO_ID} <= set(state.applied) and state.template_version == TARGET
     assert read_header((root / COMPOSE).read_text()) == TARGET
+    assert backup_bytes(root, COMPOSE) == before[COMPOSE]
+    assert backup_bytes(root, ENV) == before[ENV]
     assert report.blocked_by == []
     assert check(root, target_text, TARGET, frozenset(), registry).blocked_by == []
+
+
+def test_migrate_requires_matching_expect(make_installation, target_text):
+    root = make_installation(header=TARGET, state=State(TARGET, [m.id for m in MIGRATIONS]))
+    before = snapshot(root)
+    with pytest.raises(UpdateError) as err:
+        run_migrate(root, GATE.id, target_text, (*MIGRATIONS, GATE), expect="stale")
+    assert err.value.code == 4
+    assert_untouched_except_lock(root, before)
+
+
+def test_migrate_gating_refuses_downgrade(make_installation, target_text):
+    root = make_installation(header="2.3.0", state=State("2.3.0", [m.id for m in MIGRATIONS]))
+    before = snapshot(root)
+    with pytest.raises(UpdateError) as err:
+        run_migrate(root, GATE.id, target_text, (*MIGRATIONS, GATE))
+    assert err.value.code == 5
+    assert_untouched_except_lock(root, before)
+
+
+def test_migrate_non_gating_leaves_compose(make_installation, target_text):
+    data = Migration("0098-data", "major", (), lambda c: True, lambda c: c.env.set_if_absent("NG", "1"))
+    root = make_installation(body=target_text + "# local\n", header="2.1.0", state=State("2.1.0", []))
+    (root / ENV).chmod(0o644)
+    before = snapshot(root)
+    run_migrate(root, data.id, target_text, (*MIGRATIONS, data))
+    assert (root / COMPOSE).read_bytes() == before[COMPOSE]
+    assert stat.S_IMODE((root / ENV).stat().st_mode) == 0o600
+    state = load_state(root)
+    assert state.applied == [data.id] and state.template_version == "2.1.0"
+    assert backup_bytes(root, ENV) == before[ENV]
+
+
+def test_migrate_holds_template_for_remaining_gating_major(make_installation, target_text):
+    first = Migration("0098-a", "major", (), lambda c: True, lambda c: c.env.set_if_absent("A98", "1"), gates_template=True)
+    second = Migration("0099-b", "major", (), lambda c: True, lambda c: c.env.set_if_absent("B99", "1"), gates_template=True)
+    registry = (*MIGRATIONS, first, second)
+    root = make_installation(header="2.1.0", state=State("2.1.0", [MONGO_ID]))
+    before = snapshot(root)
+    report = run_migrate(root, first.id, target_text, registry)
+    assert (root / COMPOSE).read_bytes() == before[COMPOSE]
+    assert first.id in load_state(root).applied
+    assert report.blocked_by == [second]
+    report = run_migrate(root, second.id, target_text, registry)
+    assert read_header((root / COMPOSE).read_text()) == TARGET
+    assert report.blocked_by == []
+    assert load_state(root).template_version == TARGET
 
 
 def test_migrate_gating_modified_without_discard(make_installation, target_text):
@@ -222,3 +284,24 @@ def test_init_marks_all_applied(make_installation, target_text):
     assert state.applied == [m.id for m in MIGRATIONS]
     assert state.template_version == TARGET
     assert exit_code(check(root, target_text, TARGET, frozenset())) == 0
+
+
+def test_apply_enforces_env_mode_without_content_change(outdated, target_text):
+    root, history = outdated
+    (root / STATE).write_text('{"templateVersion": "2.1.0", "applied": ["%s"]}' % MONGO_ID)
+    (root / ENV).chmod(0o644)
+    run_apply(root, target_text, history)
+    assert stat.S_IMODE((root / ENV).stat().st_mode) == 0o600
+
+
+def test_pending_migration_not_needed_is_recorded(outdated, target_text):
+    root, history = outdated
+    idle = Migration("0001-idle", "normal", (), lambda c: False, lambda c: pytest.fail("applied"))
+    run_apply(root, target_text, history, registry=(idle,))
+    assert load_state(root).applied == ["0001-idle"]
+
+
+def test_init_keeps_existing_header(make_installation, target_text):
+    root = make_installation(header="2.1.0")
+    init(root, target_version=TARGET)
+    assert (root / COMPOSE).read_text() == f"# edulution-installer template 2.1.0\n{target_text}"
