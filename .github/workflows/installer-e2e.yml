@@ -139,6 +139,12 @@ jobs:
       - name: Assert the stack
         run: sudo -E .github/e2e/assert-stack.sh
 
+      - name: Check the fresh install is marked for updates
+        run: |
+          sudo head -n 1 /srv/docker/edulution-ui/docker-compose.yml | grep -qxF "# edulution-installer template ${INSTALLER_TAG}"
+          sudo docker run --rm -v /srv/docker/edulution-ui:/edulution-ui \
+            "ghcr.io/edulution-io/edulution-installer:${INSTALLER_TAG}" python -m update check
+
       - name: Installer output
         if: always()
         run: sudo cat "${{ github.workspace }}/installer.log" || echo "(no log present)"

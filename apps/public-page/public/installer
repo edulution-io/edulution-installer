@@ -590,6 +590,10 @@ echo "[*] Arbeiten am Authentifizierungserver abgeschlossen."
 echo "[*] Herunterladen der edulution Container..."
 docker compose --project-directory ${DIRECTORY} pull 2>&1 > /dev/zero
 
+if ! docker run --rm -v "${DIRECTORY}:/edulution-ui" "${EDULUTION_INSTALLER_IMAGE}" python -m update init > /dev/null 2>&1; then
+    echo "[!] Die Update-Kennung konnte nicht geschrieben werden; 'update.sh' meldet die Installation später als unbekannt."
+fi
+
 echo "[*] Konfiguration abgeschlossen. Starte edulution!"
 
 docker compose --project-directory ${DIRECTORY} up -d 2>&1 > /dev/zero

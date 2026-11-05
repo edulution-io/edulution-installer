@@ -6,6 +6,7 @@ COPY apps/webinstaller-api/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --require-hashes --no-deps -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
 COPY apps/webinstaller-api/app /app
+COPY apps/public-page/public/download /app/templates
 # Handed to the LMN server over SSH, so it runs the installer of this image's version.
 COPY edulution-lmninstaller /app/lmninstaller
 COPY dist/apps/webinstaller /app/static
