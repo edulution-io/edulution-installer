@@ -100,9 +100,26 @@ def test_migrate_summary_names_non_installing_migration(make_installation, monke
     monkeypatch.setattr("update.__main__.MIGRATIONS", (*MIGRATIONS, data))
     root = make_installation(header="2.1.0", state=State("2.1.0", [MONGO]))
     argv = ["--dir", str(root), "migrate", "--id", data.id, "--yes", "--expect", token(root, capsys)]
-    assert main(argv) == 10
+    assert main(argv) == 0
     out = capsys.readouterr().out
     assert data.id in out and "edu-api" in out and "Vorlage" not in out and "Bereits aktuell" not in out
+    assert "Ein Update der Installation steht noch aus." in out
+
+
+def test_migrate_in_gating_chain_exits_0_and_names_the_next(make_installation, monkeypatch, capsys):
+    first = Migration("0098-a", "major", (), lambda c: True, lambda c: c.env.set_if_absent("A98", "1"),
+                      gates_template=True)
+    second = Migration("0099-b", "major", (), lambda c: True, lambda c: None, gates_template=True)
+    monkeypatch.setattr("update.__main__.MIGRATIONS", (*MIGRATIONS, first, second))
+    root = make_installation(header="2.1.0", state=State("2.1.0", [MONGO]))
+    argv = ["--dir", str(root), "migrate", "--id", first.id, "--yes", "--expect", token(root, capsys)]
+    assert main(argv) == 0
+    assert "Weitere Migration nötig: 0099-b" in capsys.readouterr().out
+
+
+def test_check_reports_downgrade(make_installation, all_applied, capsys):
+    root = make_installation(header="2.3.0", state=all_applied)
+    assert main(["--dir", str(root), "check"]) == 5
 
 
 def test_migrate_summary_with_template(gated, capsys):
@@ -110,6 +127,7 @@ def test_migrate_summary_with_template(gated, capsys):
     assert main(argv) == 0
     out = capsys.readouterr().out
     assert f"Vorlage {TARGET} installiert." in out and GATE.id in out and MONGO in out
+    assert "Weitere Migration" not in out and "steht noch aus" not in out
 
 
 def test_apply_summary_outdated(outdated, capsys):

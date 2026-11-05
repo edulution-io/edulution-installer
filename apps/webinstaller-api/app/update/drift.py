@@ -13,6 +13,7 @@ from update.migrations import (
     pending_normal,
 )
 from update.templates import sha256
+from update.versions import is_older
 
 
 @dataclass
@@ -21,6 +22,7 @@ class Report:
     installed_version: str | None
     target_version: str
     header_current: bool
+    downgrade: bool  # the target is older than the header or the state version
     pending: list[Migration]
     blocked_by: list[Migration]
     available_majors: list[Migration]
@@ -75,6 +77,7 @@ def check(
         installed_version=header if header is not None else state.template_version,
         target_version=target_version,
         header_current=header == target_version,
+        downgrade=is_older(target_version, header) or is_older(target_version, state.template_version),
         pending=pending,
         blocked_by=blocking_majors(state, registry),
         available_majors=available_majors(state, registry),
@@ -85,6 +88,8 @@ def check(
 
 
 def exit_code(report: Report) -> int:
+    if report.downgrade:
+        return 5
     if report.blocked_by:
         return 30
     if report.status in ("modified", "unknown"):

@@ -24,7 +24,7 @@ case $1 in
             check) echo "report"; exit "${STUB_CHECK_RC:-10}" ;;
             expect) echo "${STUB_EXPECT:-a:b}"; exit 0 ;;
             apply) exit "${STUB_APPLY_RC:-0}" ;;
-            migrate) exit "${STUB_MIGRATE_RC:-0}" ;;
+            migrate) [[ -z "${STUB_MIGRATE_OUT:-}" ]] || echo "$STUB_MIGRATE_OUT"; exit "${STUB_MIGRATE_RC:-0}" ;;
         esac
         ;;
 esac
@@ -154,6 +154,19 @@ for code in 1 3 4 5; do
     STUB_CHECK_RC=$code run_wrapper --yes
     expect_case "check $code aborts with that code" check_error
 done
+
+migrate_chain() {
+    rc_is 0 && logged "compose --project-directory $WORK/dir/ pull" && logged "compose --project-directory $WORK/dir/ up -d" \
+        && grep -q "Weitere Migration nötig: 0099-b" "$WORK/out" && grep -q "Migration 0098-a abgeschlossen." "$WORK/out"
+}
+STUB_CHECK_RC=30 STUB_MIGRATE_OUT="Weitere Migration nötig: 0099-b" run_wrapper --migration 0098-a --yes
+expect_case "--migration with a further gating major exits 0, restarts and names it" migrate_chain
+
+downgrade() { rc_is 5 && not_logged "update expect" && grep -q -- "--version" "$WORK/out"; }
+STUB_CHECK_RC=5 run_wrapper --yes
+expect_case "check 5 names --version and exits 5" downgrade
+STUB_CHECK_RC=5 run_wrapper --check
+expect_case "--check at 5 names --version and exits 5" downgrade
 
 migrate_current() { rc_is 0 && logged "update migrate --id X --yes --expect=a:b"; }
 STUB_CHECK_RC=0 run_wrapper --migration X --yes

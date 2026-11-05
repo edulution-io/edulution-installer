@@ -101,6 +101,16 @@ def test_apply_refuses_downgrade(make_installation, target_text):
     assert_untouched_except_lock(root, before)
 
 
+@pytest.mark.parametrize("header", [None, "2.1.0"])
+def test_apply_refuses_downgrade_by_state(make_installation, target_text, header):
+    root = make_installation(header=header, state=State("2.3.0", [m.id for m in MIGRATIONS]))
+    before = snapshot(root)
+    with pytest.raises(UpdateError) as err:
+        run_apply(root, target_text)
+    assert err.value.code == 5
+    assert_untouched_except_lock(root, before)
+
+
 GATE = Migration("0099-gate", "major", (), lambda c: True, lambda c: c.env.set_if_absent("GATED", "1"),
                  gates_template=True)
 
@@ -211,6 +221,16 @@ def test_migrate_gating_refuses_downgrade(make_installation, target_text):
     before = snapshot(root)
     with pytest.raises(UpdateError) as err:
         run_migrate(root, GATE.id, target_text, (*MIGRATIONS, GATE))
+    assert err.value.code == 5
+    assert_untouched_except_lock(root, before)
+
+
+def test_migrate_non_gating_refuses_downgrade(make_installation, target_text):
+    data = Migration("0098-data", "major", (), lambda c: True, lambda c: c.env.set_if_absent("NG", "1"))
+    root = make_installation(header="2.3.0", state=State("2.3.0", [m.id for m in MIGRATIONS]))
+    before = snapshot(root)
+    with pytest.raises(UpdateError) as err:
+        run_migrate(root, data.id, target_text, (*MIGRATIONS, data))
     assert err.value.code == 5
     assert_untouched_except_lock(root, before)
 

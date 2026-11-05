@@ -27,6 +27,11 @@ use_version() {
     echo "Version ${version} wird verwendet (Image ${EDULUTION_INSTALLER_IMAGE})."
 }
 
+downgrade_hint() {
+    echo "[!] Die Installation ist neuer als dieses Update-Skript (Installer ${EDULUTION_INSTALLER_VERSION}), ein Downgrade wird abgelehnt."
+    echo "    Mit --version <X.Y.Z> die Version der Installation oder eine neuere wählen."
+}
+
 usage() {
     echo "Verwendung: update [--version <X.Y.Z[-rc.N]>] [--check [--json]] [--yes] [--compose-only]"
     echo "              [--discard-local-changes] [--migration <ID>]"
@@ -122,6 +127,7 @@ main() {
         else
             run_update check || rc=$?
         fi
+        [[ $rc -ne 5 ]] || downgrade_hint
         exit "$rc"
     fi
 
@@ -133,6 +139,10 @@ main() {
                 echo "Die Installation ist aktuell, es gibt nichts zu tun."
                 exit 0
             fi
+            ;;
+        5)
+            downgrade_hint
+            exit 5
             ;;
         10) ;;
         20) ;;
@@ -205,7 +215,11 @@ main() {
         echo "    Sicherungen der alten Dateien: ${DIRECTORY}docker-compose-backups/"
         exit 1
     fi
-    echo "Update abgeschlossen."
+    if [[ -n "$MIGRATION" ]]; then
+        echo "Migration ${MIGRATION} abgeschlossen."
+    else
+        echo "Update abgeschlossen."
+    fi
 }
 
 main "$@"

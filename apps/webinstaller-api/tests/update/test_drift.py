@@ -1,7 +1,10 @@
 import os
 
+import pytest
+
 from update.drift import check, exit_code, fingerprint, to_json
-from update.migrations import Migration
+from update.installation import State
+from update.migrations import MIGRATIONS, Migration
 from update.templates import sha256
 
 TARGET = "2.2.0"
@@ -116,3 +119,20 @@ def test_json_shape(make_installation, target_text):
     assert set(data["pendingMigrations"][0]) == {"id", "kind", "recreate"}
     assert data["installedVersion"] == TARGET
     assert data["targetVersion"] == TARGET
+
+
+def test_downgrade_by_header(make_installation, target_text, all_applied):
+    root = make_installation(header="2.3.0", state=all_applied)
+    assert exit_code(run(root, target_text)) == 5
+
+
+@pytest.mark.parametrize("header", [None, "2.1.0"])
+def test_downgrade_by_state(make_installation, target_text, header):
+    root = make_installation(header=header, state=State("2.3.0", [m.id for m in MIGRATIONS]))
+    assert exit_code(run(root, target_text)) == 5
+
+
+def test_downgrade_comes_first(make_installation, target_text):
+    gate = Migration("0099-gate", "major", (), lambda c: True, lambda c: None, gates_template=True)
+    root = make_installation(body=target_text + "# local\n", header="2.3.0", state=State("2.3.0", []))
+    assert exit_code(run(root, target_text, registry=(*MIGRATIONS, gate))) == 5

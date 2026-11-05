@@ -53,6 +53,10 @@ def _summary(outcome) -> None:
     ))
     if services:
         print("Neu zu erstellende Dienste: " + ", ".join(services))
+    if outcome.report.blocked_by:
+        print("Weitere Migration nötig: " + ", ".join(m.id for m in outcome.report.blocked_by))
+    elif exit_code(outcome.report) != 0:
+        print("Ein Update der Installation steht noch aus.")
 
 
 def _run(args) -> int:
@@ -100,7 +104,7 @@ def _run(args) -> int:
             registry=MIGRATIONS,
         )
     _summary(outcome)
-    return exit_code(outcome.report)
+    return 0
 
 
 def _parser() -> argparse.ArgumentParser:

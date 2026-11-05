@@ -21,7 +21,6 @@ from update.installation import (
     with_header,
 )
 from update.migrations import MIGRATIONS, Context, pending_normal
-from update.versions import is_older
 
 
 class UpdateError(Exception):
@@ -59,13 +58,15 @@ def _read_env(root: Path) -> EnvFile:
     return EnvFile.parse(text)
 
 
-def _guard_template(report: Report, target_version: str, discard: bool) -> None:
-    if report.installed_version is not None and is_older(target_version, report.installed_version):
+def _guard_downgrade(report: Report) -> None:
+    if report.downgrade:
         raise UpdateError(
             5,
-            f"Die installierte Vorlage ({report.installed_version}) ist neuer als "
-            f"die Zielversion ({target_version}); Downgrade abgelehnt.",
+            f"Die Installation ist neuer als die Zielversion ({report.target_version}); Downgrade abgelehnt.",
         )
+
+
+def _guard_template(report: Report, discard: bool) -> None:
     if report.status in ("modified", "unknown") and not discard:
         raise UpdateError(20, f"{COMPOSE} enthält lokale Änderungen; --discard-local-changes fehlt.")
 
@@ -121,11 +122,12 @@ def apply(
 ) -> Outcome:
     with locked(root):
         report = check(root, target_text, target_version, history, registry)
+        _guard_downgrade(report)
         if report.blocked_by:
             ids = ", ".join(m.id for m in report.blocked_by)
             raise UpdateError(30, f"Zuerst muss eine größere Migration ausgeführt werden: {ids}.")
         _guard_expect(root, expect)
-        _guard_template(report, target_version, discard_local_changes)
+        _guard_template(report, discard_local_changes)
         if exit_code(report) == 0:
             return Outcome(report, [], False)
 
@@ -161,14 +163,15 @@ def migrate(
         if missing:
             raise UpdateError(2, f"Zuerst erforderlich: {', '.join(missing)}.")
         _guard_expect(root, expect)
+        report = check(root, target_text, target_version, history, registry)
+        _guard_downgrade(report)
         # The last pending gating major installs the template; earlier ones only run their data step.
         installs_template = migration.gates_template and not any(
             m.kind == "major" and m.gates_template and m.id not in state.applied and m.id != migration_id
             for m in registry
         )
         if installs_template:
-            report = check(root, target_text, target_version, history, registry)
-            _guard_template(report, target_version, discard_local_changes)
+            _guard_template(report, discard_local_changes)
 
         env = _read_env(root)
         original_env = env.render()
