@@ -6,6 +6,46 @@
 bash <(curl -s https://get.edulution.io/installer)
 ```
 
+## Update an installation
+
+Check whether an installation's `docker-compose.yml` and `edulution.env` match the release (read-only, the exit code tells the result). "Current" refers to these files: images are pulled only when an update is applied.
+
+```bash
+curl -fsSL https://get.edulution.io/update | sudo bash -s -- --check
+```
+
+Apply the update. The script shows what changes, asks for confirmation on the terminal, replaces `docker-compose.yml` with the release's template and then pulls the images and restarts the stack:
+
+```bash
+curl -fsSL https://get.edulution.io/update | sudo bash -s --
+```
+
+Declining changes nothing and exits with code 2. If pulling or restarting fails after the files were updated, running the script again finishes the restart. For unattended runs use `--yes`; `--compose-only` updates the files without pulling or restarting, and the next run without it restarts the stack:
+
+```bash
+curl -fsSL https://get.edulution.io/update | sudo bash -s -- --compose-only --yes
+```
+
+Other options: `--version X.Y.Z` (update to that release), `--check --json` (machine-readable report on stdout, the script's own messages go to stderr), `--discard-local-changes` (replace a locally modified `docker-compose.yml`) and `--migration ID` (run a major migration listed in the check output).
+
+Tools that run the installer image directly instead of this script get the same exit codes, except for the pending restart, which only this script tracks.
+
+Keep local changes in `docker-compose.override.yml`, not in `docker-compose.yml`: the update replaces `docker-compose.yml` as a whole. Before every change the previous files are copied to `/srv/docker/edulution-ui/docker-compose-backups/`.
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Nothing to do (`--check`), or the update or migration succeeded |
+| 10 | Update available, or a restart after the last update is still pending |
+| 20 | `docker-compose.yml` has local modifications |
+| 30 | Blocked by a major migration (`--migration ID`) |
+| 1 | Error |
+| 2 | Usage error, update declined, or confirmation missing (no terminal and no `--yes`) |
+| 3 | Another update is running |
+| 4 | Files changed since the check |
+| 5 | Downgrade refused: the installation is newer than the target release (`--check` reports it before anything runs; pick the release with `--version`) |
+
+Any other non-zero code (for example Docker's 125 to 127) means the update container could not be started.
+
 ## Project Structure
 
 This is an Nx monorepo containing:

@@ -139,6 +139,19 @@ jobs:
       - name: Assert the stack
         run: sudo -E .github/e2e/assert-stack.sh
 
+      - name: Check the fresh install is marked for updates
+        run: |
+          if ! sudo head -n 1 /srv/docker/edulution-ui/docker-compose.yml | grep -qxF "# edulution-installer template ${INSTALLER_TAG}"; then
+            echo "::error::docker-compose.yml does not start with the template header for ${INSTALLER_TAG}."
+            exit 1
+          fi
+          rc=0
+          sudo bash apps/public-page/public/update --version "${INSTALLER_TAG}" --check || rc=$?
+          if [[ $rc -ne 0 ]]; then
+            echo "::error::update --check exits ${rc} on the fresh install, expected 0."
+            exit 1
+          fi
+
       - name: Installer output
         if: always()
         run: sudo cat "${{ github.workspace }}/installer.log" || echo "(no log present)"
