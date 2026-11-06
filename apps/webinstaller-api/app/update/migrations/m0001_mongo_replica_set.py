@@ -39,11 +39,7 @@ def _needed(ctx: Context) -> bool:
 
 def _apply(ctx: Context) -> None:
     ctx.env.set_if_absent("MONGODB_AUTH_SOURCE", "admin", after="MONGODB_PASSWORD")
-    url = ctx.env.get(URL_KEY)
-    if url is not None:
-        new = with_replica_set(url)
-        if new != url:
-            ctx.env.replace(URL_KEY, new)
+    ctx.env.rewrite(URL_KEY, with_replica_set)
 
 
 MIGRATION = Migration(

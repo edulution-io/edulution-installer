@@ -2,7 +2,7 @@ import re
 
 from envtools import envValue
 
-_KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)[ \t]*=")
+_KEY = re.compile(r"^(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*=")
 _DOUBLE_QUOTED = re.compile(r'"((?:\\.|[^"\\])*)"')
 _ESCAPE = re.compile(r'\\([\\"$])')
 _INLINE_COMMENT = re.compile(r"[ \t]#.*")
@@ -14,18 +14,27 @@ def _eol(line):
     return "\n" if line.endswith("\n") else ""
 
 
-def _unquote(raw):
-    raw = raw.lstrip(" \t")
+def _value_span(raw):
+    """Return (start, end) of the value as written inside raw, without quotes or inline comment."""
     if raw.startswith("'"):
         end = raw.find("'", 1)
         if end != -1:
-            return raw[1:end]
+            return 1, end
     elif raw.startswith('"'):
         match = _DOUBLE_QUOTED.match(raw)
         if match:
-            return _ESCAPE.sub(r"\1", match.group(1))
+            return 1, match.end() - 1
     # Compose ends an unquoted value at whitespace followed by "#".
-    return _INLINE_COMMENT.sub("", raw, count=1).rstrip(" \t")
+    comment = _INLINE_COMMENT.search(raw)
+    return 0, len(raw[: comment.start() if comment else len(raw)].rstrip(" \t"))
+
+
+def _unquote(raw):
+    raw = raw.lstrip(" \t")
+    start, end = _value_span(raw)
+    if start == 1 and raw.startswith('"'):
+        return _ESCAPE.sub(r"\1", raw[start:end])
+    return raw[start:end]
 
 
 class EnvFile:
@@ -40,8 +49,9 @@ class EnvFile:
         return cls(re.findall(r"[^\n]*\n|[^\n]+", text))
 
     def _find(self, key):
-        for index, line in enumerate(self._lines):
-            match = _KEY.match(line)
+        # Compose uses the last assignment of a key.
+        for index in range(len(self._lines) - 1, -1, -1):
+            match = _KEY.match(self._lines[index])
             if match and match.group(1) == key:
                 return index
         return None
@@ -71,12 +81,22 @@ class EnvFile:
         self._lines.insert(position, new_line)
         return True
 
-    def replace(self, key, value):
+    def rewrite(self, key, transform):
+        """Apply transform to the value as written, keeping its quoting, so ${VAR} references keep
+        expanding. transform may only add characters that need no quoting or escaping."""
         index = self._find(key)
         if index is None:
             return False
         old = self._lines[index]
-        new = f"{key}={envValue(value)}{_eol(old)}"
+        eol = _eol(old)
+        body = old[: len(old) - len(eol)]
+        head = _KEY.match(body).end()
+        start = len(body) - len(body[head:].lstrip(" \t"))
+        raw = body[start:]
+        value_start, value_end = _value_span(raw)
+        new = (
+            body[:start] + raw[:value_start] + transform(raw[value_start:value_end]) + raw[value_end:] + eol
+        )
         if new == old:
             return False
         self._lines[index] = new

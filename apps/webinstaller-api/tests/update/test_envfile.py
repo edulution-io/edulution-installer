@@ -28,8 +28,16 @@ def test_get_unquotes_like_compose():
     assert env.get("MISSING") is None
 
 
-def test_get_first_line_wins():
-    assert EnvFile.parse("A=1\nA=2\n").get("A") == "1"
+def test_get_last_line_wins_like_compose():
+    assert EnvFile.parse("A=1\nA=2\n").get("A") == "2"
+
+
+def test_export_prefix():
+    env = EnvFile.parse("export A='x'\n")
+    assert env.get("A") == "x"
+    assert env.set_if_absent("A", "y") is False
+    env.rewrite("A", lambda v: v + "z")
+    assert env.render() == "export A='xz'\n"
 
 
 def test_get_roundtrips_env_value():
@@ -73,23 +81,41 @@ def test_insert_after_last_line_without_newline():
     assert env.render() == "A=1\nN='v'"
 
 
-def test_replace_touches_one_line():
+def test_rewrite_touches_one_line():
     env = EnvFile.parse(SAMPLE)
     before = env.render().splitlines(keepends=True)
-    assert env.replace("OTHER", "it's") is True
+    assert env.rewrite("OTHER", lambda v: v + "?x=1") is True
     after = env.render().splitlines(keepends=True)
-    assert len(before) == len(after)
     diff = [(b, a) for b, a in zip(before, after) if b != a]
-    assert diff == [("OTHER=plain  \n", 'OTHER="it\'s"\n')]
-    assert env.replace("OTHER", "it's") is False
-    assert env.replace("MISSING", "x") is False
+    assert diff == [("OTHER=plain  \n", "OTHER=plain?x=1  \n")]
+    assert env.rewrite("OTHER", lambda v: v) is False
+    assert env.rewrite("MISSING", lambda v: v + "x") is False
 
 
-def test_replace_keeps_line_ending_and_missing_newline():
-    env = EnvFile.parse("A=1\r\nB=2")
-    env.replace("A", "x")
-    env.replace("B", "y")
-    assert env.render() == "A='x'\r\nB='y'"
+def test_rewrite_keeps_quoting_and_references():
+    text = (
+        "U=a${P}b\n"
+        "D=\"a${P}\\$b\" # c\n"
+        "S='a${P}b'\n"
+        "X=  a #c\r\n"
+        "L=a"
+    )
+    env = EnvFile.parse(text)
+    for key in "UDSXL":
+        env.rewrite(key, lambda v: v + "&q=1")
+    assert env.render() == (
+        "U=a${P}b&q=1\n"
+        "D=\"a${P}\\$b&q=1\" # c\n"
+        "S='a${P}b&q=1'\n"
+        "X=  a&q=1 #c\r\n"
+        "L=a&q=1"
+    )
+
+
+def test_rewrite_changes_the_last_assignment():
+    env = EnvFile.parse("A=1\nA=2\n")
+    env.rewrite("A", lambda v: v + "x")
+    assert env.render() == "A=1\nA=2x\n"
 
 
 def test_only_newlines_split_lines():
@@ -117,10 +143,3 @@ def test_get_quoted_value_with_trailing_comment():
     env = EnvFile.parse("D=\"a # b\" # c\nS='x # y' # z\n")
     assert env.get("D") == "a # b"
     assert env.get("S") == "x # y"
-
-
-def test_replace_on_line_with_inline_comment():
-    env = EnvFile.parse("U=mongodb://edu-db:27017/ # x\n")
-    url = env.get("U")
-    assert env.replace("U", url + "?replicaSet=rs0") is True
-    assert env.render() == "U='mongodb://edu-db:27017/?replicaSet=rs0'\n"

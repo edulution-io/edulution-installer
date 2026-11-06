@@ -72,6 +72,26 @@ def test_migration_url_with_inline_comment(tmp_path):
     assert env.get("MONGODB_SERVER_URL") == BASE + WANTED
 
 
+def test_migration_keeps_interpolation(tmp_path):
+    env = EnvFile.parse(
+        "MONGODB_AUTH_SOURCE=admin\n"
+        "MONGODB_SERVER_URL=mongodb://root:${MONGODB_PASSWORD}@edu-db:27017/\n"
+    )
+    MIGRATION.apply(Context(tmp_path, env))
+    assert env.render().endswith(
+        "MONGODB_SERVER_URL=mongodb://root:${MONGODB_PASSWORD}@edu-db:27017/" + WANTED + "\n"
+    )
+
+
+def test_migration_updates_the_effective_url(tmp_path):
+    env = EnvFile.parse(f"MONGODB_AUTH_SOURCE=admin\nMONGODB_SERVER_URL=old\nMONGODB_SERVER_URL='{BASE}'\n")
+    ctx = Context(tmp_path, env)
+    assert MIGRATION.needed(ctx)
+    MIGRATION.apply(ctx)
+    assert env.render() == f"MONGODB_AUTH_SOURCE=admin\nMONGODB_SERVER_URL=old\nMONGODB_SERVER_URL='{BASE}{WANTED}'\n"
+    assert not MIGRATION.needed(ctx)
+
+
 def test_migration_on_current_env(tmp_path):
     env = EnvFile.parse(
         "MONGODB_PASSWORD=pw\n"
