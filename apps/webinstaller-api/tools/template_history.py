@@ -40,13 +40,14 @@ def render() -> str:
 
 
 def main() -> int:
-    content = render()
     if "--check" in sys.argv[1:]:
-        if not OUTPUT.exists() or OUTPUT.read_text(encoding="utf-8") != content:
+        # Extra digests are allowed: a squash merge drops intermediate template revisions from history.
+        listed = set(json.loads(OUTPUT.read_text(encoding="utf-8"))["sha256"]) if OUTPUT.exists() else set()
+        if not set(digests()) <= listed:
             print(f"template_history.json is out of date; regenerate it with: {COMMAND} (needs a full clone, not a shallow one)", file=sys.stderr)
             return 1
         return 0
-    OUTPUT.write_text(content, encoding="utf-8")
+    OUTPUT.write_text(render(), encoding="utf-8")
     return 0
 
 

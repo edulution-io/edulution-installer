@@ -112,9 +112,12 @@ def test_json_shape(make_installation, target_text):
     root = make_installation(header=TARGET)
     data = to_json(run(root, target_text))
     assert set(data) == {
-        "status", "installedVersion", "targetVersion", "pendingMigrations",
-        "blockedBy", "availableMajorMigrations", "recreate", "expect", "diff",
+        "exitCode", "status", "installedVersion", "targetVersion", "headerCurrent", "downgrade",
+        "pendingMigrations", "blockedBy", "availableMajorMigrations", "recreate", "expect", "diff",
     }
+    assert data["exitCode"] == 10  # the Mongo migration is pending
+    assert data["headerCurrent"] is True
+    assert data["downgrade"] is False
     assert data["pendingMigrations"][0]["recreate"] == ["edu-db", "edu-api"]
     assert set(data["pendingMigrations"][0]) == {"id", "kind", "recreate"}
     assert data["installedVersion"] == TARGET
@@ -124,6 +127,9 @@ def test_json_shape(make_installation, target_text):
 def test_downgrade_by_header(make_installation, target_text, all_applied):
     root = make_installation(header="2.3.0", state=all_applied)
     assert exit_code(run(root, target_text)) == 5
+    data = to_json(run(root, target_text))
+    assert data["exitCode"] == 5
+    assert data["downgrade"] is True
 
 
 @pytest.mark.parametrize("header", [None, "2.1.0"])

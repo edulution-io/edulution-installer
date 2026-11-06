@@ -39,6 +39,12 @@ def test_check_human(outdated, capsys):
     assert "2.1.0" in out and TARGET in out and "0001-mongo-replica-set-env" in out
 
 
+def test_check_human_names_an_outdated_header(make_installation, all_applied, capsys):
+    root = make_installation(header="2.1.0", state=all_applied)
+    assert main(["--dir", str(root), "check"]) == 10
+    assert f"Versionskennung in docker-compose.yml wird auf {TARGET} gesetzt" in capsys.readouterr().out
+
+
 def test_apply_without_yes(outdated, capsys):
     before = files(outdated)
     assert main(["--dir", str(outdated), "apply", "--expect", "x"]) == 2

@@ -112,9 +112,12 @@ def exit_code(report: Report) -> int:
 
 def to_json(report: Report) -> dict:
     return {
+        "exitCode": exit_code(report),
         "status": report.status,
         "installedVersion": report.installed_version,
         "targetVersion": report.target_version,
+        "headerCurrent": report.header_current,
+        "downgrade": report.downgrade,
         "pendingMigrations": [
             {"id": m.id, "kind": m.kind, "recreate": list(m.recreate)} for m in report.pending
         ],

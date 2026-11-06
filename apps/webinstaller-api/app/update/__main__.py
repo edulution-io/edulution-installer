@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from update.drift import check, exit_code, fingerprint, to_json
+from update.installation import COMPOSE
 from update.migrations import MIGRATIONS
 from update.runner import UpdateError, apply, init, migrate
 from update.templates import history, target_compose, target_version
@@ -24,6 +25,8 @@ def _print_report(report) -> None:
     print(f"Status: {STATUS_DE.get(report.status, report.status)}")
     print(f"Installierte Version: {installed}")
     print(f"Zielversion: {report.target_version}")
+    if report.status == "current" and not report.header_current and not report.downgrade:
+        print(f"Die Versionskennung in {COMPOSE} wird auf {report.target_version} gesetzt.")
     if report.pending:
         print("Ausstehende Migrationen:")
         for m in report.pending:
