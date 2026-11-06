@@ -36,18 +36,26 @@ fails=0
 LOG="$WORK/log"
 RC=0
 
-# run_wrapper <wrapper args...>; the environment of the case is set by the caller.
-run_wrapper() {
+PENDING_FILE="$WORK/dir/.update-restart-pending"
+
+# reset: clears the log and the restart marker; PENDING=1 sets the marker for the case.
+reset() {
     : > "$LOG"
     RC=0
+    rm -f "$PENDING_FILE"
+    [[ -z "${PENDING:-}" ]] || touch "$PENDING_FILE"
+}
+
+# run_wrapper <wrapper args...>; the environment of the case is set by the caller.
+run_wrapper() {
+    reset
     PATH="$WORK/bin:$PATH" STUB_LOG="$LOG" EDULUTION_UPDATE_DIR="$WORK/dir" \
         EDULUTION_UPDATE_SKIP_ROOT_CHECK=1 bash "$WRAPPER" "$@" > "$WORK/out" 2>&1 || RC=$?
 }
 
 # run_split <wrapper args...>: like run_wrapper, but keeps stdout apart in $WORK/stdout.
 run_split() {
-    : > "$LOG"
-    RC=0
+    reset
     PATH="$WORK/bin:$PATH" STUB_LOG="$LOG" EDULUTION_UPDATE_DIR="$WORK/dir" \
         EDULUTION_UPDATE_SKIP_ROOT_CHECK=1 bash "$WRAPPER" "$@" > "$WORK/stdout" 2> "$WORK/stderr" || RC=$?
     cat "$WORK/stdout" "$WORK/stderr" > "$WORK/out"
@@ -79,13 +87,16 @@ expect_case "answer n changes nothing" declined
 
 accepted() {
     rc_is 0 && logged "update apply --yes --expect=a:b" && logged "compose --project-directory $WORK/dir/ pull" \
-        && logged "compose --project-directory $WORK/dir/ up -d"
+        && logged "compose --project-directory $WORK/dir/ up -d" && [[ ! -e $PENDING_FILE ]]
 }
 answer j
 run_wrapper
 expect_case "answer j applies, pulls and restarts" accepted
 
-compose_only() { rc_is 0 && logged "update apply --yes --expect=a:b" && not_logged "compose"; }
+compose_only() {
+    rc_is 0 && logged "update apply --yes --expect=a:b" && not_logged "compose" && [[ -e $PENDING_FILE ]] \
+        && grep -q "up -d" "$WORK/out"
+}
 run_wrapper --compose-only --yes
 expect_case "--compose-only --yes skips compose" compose_only
 
@@ -119,19 +130,25 @@ blocked() { rc_is 30 && not_logged "update apply" && grep -q -- "--migration" "$
 STUB_CHECK_RC=30 run_wrapper --yes
 expect_case "check 30 names --migration and exits 30" blocked
 
-current() { rc_is 0 && not_logged "update apply"; }
+current() { rc_is 0 && not_logged "update apply" && not_logged "compose"; }
 STUB_CHECK_RC=0 run_wrapper --yes
 expect_case "check 0 exits 0 without apply" current
 
-migrate_blocked() {
-    rc_is 0 && logged "update migrate --id X --yes --expect=a:b" && logged "-v /var/run/docker.sock:/var/run/docker.sock .* python -m update migrate"
-}
-STUB_CHECK_RC=30 run_wrapper --migration X --yes
-expect_case "--migration X --yes at check 30 migrates with the socket" migrate_blocked
+pending_restart() { rc_is 0 && not_logged "update apply" && logged "compose --project-directory $WORK/dir/ up -d" && [[ ! -e $PENDING_FILE ]]; }
+PENDING=1 STUB_CHECK_RC=0 run_wrapper
+expect_case "check 0 with a pending restart restarts without asking" pending_restart
 
-no_socket() { rc_is 0 && ! grep -q "docker.sock.*update \(check\|expect\|apply\)" "$LOG"; }
-run_wrapper --yes
-expect_case "the socket is mounted for migrate only" no_socket
+pending_compose_only() { rc_is 0 && not_logged "compose" && [[ -e $PENDING_FILE ]] && grep -q "up -d" "$WORK/out"; }
+PENDING=1 STUB_CHECK_RC=0 run_wrapper --compose-only --yes
+expect_case "check 0 with a pending restart and --compose-only names the commands" pending_compose_only
+
+pending_check() { rc_is 10 && grep -q "Neustart" "$WORK/out"; }
+PENDING=1 STUB_CHECK_RC=0 run_wrapper --check
+expect_case "--check at 0 with a pending restart exits 10" pending_check
+
+migrate_blocked() { rc_is 0 && logged "update migrate --id X --yes --expect=a:b" && not_logged "docker.sock"; }
+STUB_CHECK_RC=30 run_wrapper --migration X --yes
+expect_case "--migration X --yes at check 30 migrates without the Docker socket" migrate_blocked
 
 token_dash() { rc_is 0 && logged "--expect=-:-"; }
 STUB_EXPECT="-:-" run_wrapper --yes
@@ -162,7 +179,9 @@ localtime() {
 run_wrapper --yes --compose-only
 expect_case "the container gets the host's local time" localtime
 
-restart_failed() { rc_is 1 && grep -q "docker-compose-backups" "$WORK/out"; }
+restart_failed() {
+    rc_is 1 && grep -q "docker-compose-backups" "$WORK/out" && grep -q "up -d" "$WORK/out" && [[ -e $PENDING_FILE ]]
+}
 STUB_COMPOSE_RC=1 run_wrapper --yes
 expect_case "failed restart exits 1 and names the backups" restart_failed
 
@@ -171,7 +190,7 @@ STUB_APPLY_RC=4 run_wrapper --yes
 expect_case "apply errors pass through" apply_failed
 
 for code in 1 3 4 5; do
-    check_error() { rc_is "$code" && not_logged "update apply" && not_logged "update expect"; }
+    check_error() { rc_is "$code" && not_logged "update apply" && not_logged "compose"; }
     STUB_CHECK_RC=$code run_wrapper --yes
     expect_case "check $code aborts with that code" check_error
 done
@@ -183,7 +202,7 @@ migrate_chain() {
 STUB_CHECK_RC=30 STUB_MIGRATE_OUT="Weitere Migration nötig: 0099-b" run_wrapper --migration 0098-a --yes
 expect_case "--migration with a further gating major exits 0, restarts and names it" migrate_chain
 
-downgrade() { rc_is 5 && not_logged "update expect" && grep -q -- "--version" "$WORK/out"; }
+downgrade() { rc_is 5 && not_logged "update apply" && grep -q -- "--version" "$WORK/out"; }
 STUB_CHECK_RC=5 run_wrapper --yes
 expect_case "check 5 names --version and exits 5" downgrade
 STUB_CHECK_RC=5 run_wrapper --check
@@ -214,6 +233,10 @@ STUB_CHECK_RC=20 run_wrapper
 expect_case "check 20 shows backups and override hint before asking" info_20
 STUB_CHECK_RC=20 run_wrapper --yes
 expect_case "check 20 --yes exit message has the override hint" info_20
+
+expect_first() { rc_is 0 && [[ $(grep -o "update \(expect\|check\)" "$LOG" | head -1) == "update expect" ]]; }
+run_wrapper --yes
+expect_case "the token is taken before the check is shown" expect_first
 
 json_alone() { rc_is 2 && not_logged "run "; }
 run_wrapper --json

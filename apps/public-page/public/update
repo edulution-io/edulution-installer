@@ -15,6 +15,8 @@ EDULUTION_INSTALLER_VERSION="dev"
 DIRECTORY="${EDULUTION_UPDATE_DIR:-$DIRECTORY}"
 DIRECTORY="${DIRECTORY%/}/"
 TTY_FILE="${EDULUTION_UPDATE_TTY:-/dev/tty}"
+# Set once apply has written the files and removed after the services restarted, so a later run finishes the restart.
+RESTART_PENDING="${DIRECTORY}.update-restart-pending"
 
 use_version() {
     local version="${1#v}"
@@ -37,17 +39,28 @@ usage() {
     echo "              [--discard-local-changes] [--migration <ID>]"
 }
 
-# The Docker socket is mounted only for migrate, which controls containers.
 run_update() {
     local mounts=(-v "${DIRECTORY}:/edulution-ui")
     # Backups are named after the local time; without the file the container runs on UTC.
     if [[ -e /etc/localtime ]]; then
         mounts+=(-v /etc/localtime:/etc/localtime:ro)
     fi
-    if [[ -n "$MIGRATION" && "${1:-}" == migrate ]]; then
-        mounts+=(-v /var/run/docker.sock:/var/run/docker.sock)
-    fi
     docker run --rm "${mounts[@]}" "$EDULUTION_INSTALLER_IMAGE" python -m update "$@"
+}
+
+restart_hint() {
+    echo "    docker compose --project-directory ${DIRECTORY} pull && docker compose --project-directory ${DIRECTORY} up -d"
+}
+
+restart_services() {
+    if ! docker compose --project-directory "$DIRECTORY" pull || ! docker compose --project-directory "$DIRECTORY" up -d; then
+        echo "[!] Die Dateien wurden aktualisiert, aber das Neustarten der Dienste ist fehlgeschlagen."
+        echo "    Ein erneuter Aufruf des Updates versucht es noch einmal, oder von Hand:"
+        restart_hint
+        echo "    Sicherungen der alten Dateien: ${DIRECTORY}docker-compose-backups/"
+        exit 1
+    fi
+    rm -f "$RESTART_PENDING"
 }
 
 main() {
@@ -136,15 +149,32 @@ main() {
             run_update check >&4 || rc=$?
         fi
         [[ $rc -ne 5 ]] || downgrade_hint
+        if [[ $rc -eq 0 && -e "$RESTART_PENDING" ]]; then
+            echo "Die Dateien sind aktuell, aber der Neustart der Dienste nach dem letzten Update steht noch aus."
+            rc=10
+        fi
         exit "$rc"
     fi
+
+    # Taken before check: if the files change after it, apply refuses with exit 4 instead of
+    # applying changes the operator was not shown.
+    token=$(run_update expect)
 
     rc=0
     run_update check >&4 || rc=$?
     case $rc in
         0)
             if [[ -z "$MIGRATION" ]]; then
-                echo "Die Installation ist aktuell, es gibt nichts zu tun."
+                if [[ ! -e "$RESTART_PENDING" ]]; then
+                    echo "Die Installation ist aktuell, es gibt nichts zu tun."
+                elif [[ $COMPOSE_ONLY -eq 1 ]]; then
+                    echo "Die Dateien sind aktuell; der Neustart der Dienste steht noch aus:"
+                    restart_hint
+                else
+                    echo "Die Dateien sind aktuell; der Neustart der Dienste nach dem letzten Update wird nachgeholt."
+                    restart_services
+                    echo "Update abgeschlossen."
+                fi
                 exit 0
             fi
             ;;
@@ -164,9 +194,6 @@ main() {
             ;;
         *) exit "$rc" ;;
     esac
-
-    # The token covers the files as they are when expect runs, which is right after check.
-    token=$(run_update expect)
 
     echo "Vor jeder Änderung werden die bisherigen Dateien gesichert in ${DIRECTORY}docker-compose-backups/"
     if [[ $rc -eq 20 ]]; then
@@ -212,17 +239,15 @@ main() {
     if [[ $rc -ne 0 ]]; then
         exit "$rc"
     fi
+    touch "$RESTART_PENDING"
 
     if [[ $COMPOSE_ONLY -eq 1 ]]; then
-        echo "Dateien aktualisiert. Die Dienste wurden nicht neu gestartet (--compose-only)."
+        echo "Dateien aktualisiert. Die Dienste wurden nicht neu gestartet (--compose-only). Neustart mit:"
+        restart_hint
         exit 0
     fi
 
-    if ! docker compose --project-directory "$DIRECTORY" pull || ! docker compose --project-directory "$DIRECTORY" up -d; then
-        echo "[!] Die Dateien wurden aktualisiert, aber das Neustarten der Dienste ist fehlgeschlagen."
-        echo "    Sicherungen der alten Dateien: ${DIRECTORY}docker-compose-backups/"
-        exit 1
-    fi
+    restart_services
     if [[ -n "$MIGRATION" ]]; then
         echo "Migration ${MIGRATION} abgeschlossen."
     else
