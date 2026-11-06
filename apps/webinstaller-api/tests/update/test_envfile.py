@@ -32,6 +32,23 @@ def test_get_last_line_wins_like_compose():
     assert EnvFile.parse("A=1\nA=2\n").get("A") == "2"
 
 
+def test_escaped_quotes_like_compose():
+    env = EnvFile.parse("S='let\\'s' # c\nB='a\\\\'\nD=\"x\\\"y\"\nO='open\n")
+    assert env.get("S") == "let's"
+    assert env.get("B") == "a\\\\"
+    assert env.get("D") == 'x"y'
+    assert env.get("O") == "'open"
+    env.rewrite("S", lambda v: v + "&q=1")
+    assert env.render().startswith("S='let\\'s&q=1' # c\n")
+
+
+def test_indented_assignment():
+    env = EnvFile.parse("  \tA='x'\n")
+    assert env.get("A") == "x"
+    env.rewrite("A", lambda v: v + "y")
+    assert env.render() == "  \tA='xy'\n"
+
+
 def test_export_prefix():
     env = EnvFile.parse("export A='x'\n")
     assert env.get("A") == "x"
@@ -134,7 +151,7 @@ def test_only_newlines_split_lines():
 def test_get_stops_unquoted_value_at_inline_comment():
     env = EnvFile.parse("U=mongodb://edu-db:27017/ # x\nT=a\t# y\nH=a#b\nS=v #\n")
     assert env.get("U") == "mongodb://edu-db:27017/"
-    assert env.get("T") == "a"
+    assert env.get("T") == "a\t# y"  # Compose cuts at " #" only
     assert env.get("H") == "a#b"
     assert env.get("S") == "v"
 

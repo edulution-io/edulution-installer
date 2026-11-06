@@ -83,6 +83,12 @@ def test_migration_keeps_interpolation(tmp_path):
     )
 
 
+def test_migration_with_escaped_quote_in_password(tmp_path):
+    env = EnvFile.parse("MONGODB_AUTH_SOURCE=admin\nMONGODB_SERVER_URL='mongodb://root:let\\'s@edu-db:27017/'\n")
+    MIGRATION.apply(Context(tmp_path, env))
+    assert env.get("MONGODB_SERVER_URL") == "mongodb://root:let's@edu-db:27017/" + WANTED
+
+
 def test_migration_updates_the_effective_url(tmp_path):
     env = EnvFile.parse(f"MONGODB_AUTH_SOURCE=admin\nMONGODB_SERVER_URL=old\nMONGODB_SERVER_URL='{BASE}'\n")
     ctx = Context(tmp_path, env)

@@ -2,10 +2,9 @@ import re
 
 from envtools import envValue
 
-_KEY = re.compile(r"^(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*=")
-_DOUBLE_QUOTED = re.compile(r'"((?:\\.|[^"\\])*)"')
+_KEY = re.compile(r"^[ \t]*(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*=")
 _ESCAPE = re.compile(r'\\([\\"$])')
-_INLINE_COMMENT = re.compile(r"[ \t]#.*")
+_SINGLE_ESCAPE = re.compile(r"\\(.)", re.S)
 
 
 def _eol(line):
@@ -14,27 +13,39 @@ def _eol(line):
     return "\n" if line.endswith("\n") else ""
 
 
+def _closing_quote(raw):
+    # As in Compose, a backslash escapes the next character in both quote styles.
+    escaped = False
+    for index in range(1, len(raw)):
+        if escaped:
+            escaped = False
+        elif raw[index] == "\\":
+            escaped = True
+        elif raw[index] == raw[0]:
+            return index
+    return -1
+
+
 def _value_span(raw):
     """Return (start, end) of the value as written inside raw, without quotes or inline comment."""
-    if raw.startswith("'"):
-        end = raw.find("'", 1)
+    if raw[:1] in ("'", '"'):
+        end = _closing_quote(raw)
         if end != -1:
             return 1, end
-    elif raw.startswith('"'):
-        match = _DOUBLE_QUOTED.match(raw)
-        if match:
-            return 1, match.end() - 1
-    # Compose ends an unquoted value at whitespace followed by "#".
-    comment = _INLINE_COMMENT.search(raw)
-    return 0, len(raw[: comment.start() if comment else len(raw)].rstrip(" \t"))
+    # Compose ends an unquoted value at " #", a space and not a tab.
+    comment = raw.find(" #")
+    return 0, len(raw[: comment if comment != -1 else len(raw)].rstrip(" \t"))
 
 
 def _unquote(raw):
     raw = raw.lstrip(" \t")
     start, end = _value_span(raw)
-    if start == 1 and raw.startswith('"'):
-        return _ESCAPE.sub(r"\1", raw[start:end])
-    return raw[start:end]
+    value = raw[start:end]
+    if start == 0:
+        return value
+    if raw[0] == '"':
+        return _ESCAPE.sub(r"\1", value)
+    return _SINGLE_ESCAPE.sub(lambda m: "'" if m.group(1) == "'" else m.group(0), value)
 
 
 class EnvFile:
