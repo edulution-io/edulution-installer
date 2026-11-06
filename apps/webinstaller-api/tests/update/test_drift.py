@@ -112,7 +112,7 @@ def test_json_shape(make_installation, target_text):
     root = make_installation(header=TARGET)
     data = to_json(run(root, target_text))
     assert set(data) == {
-        "exitCode", "status", "installedVersion", "targetVersion", "headerCurrent", "downgrade",
+        "exitCode", "status", "installedVersion", "targetVersion", "headerCurrent", "downgrade", "restartPending",
         "pendingMigrations", "blockedBy", "availableMajorMigrations", "recreate", "expect", "diff",
     }
     assert data["exitCode"] == 10  # the Mongo migration is pending

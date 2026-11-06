@@ -31,6 +31,7 @@ class Report:
     recreate: list[str]
     expect: str
     diff: str
+    restart_pending: bool = False  # update.sh restarted no services after its last apply
 
 
 def _file_hash(path: Path) -> str:
@@ -105,7 +106,7 @@ def exit_code(report: Report) -> int:
         return 30
     if report.status in ("modified", "unknown"):
         return 20
-    if report.status == "outdated" or report.pending or not report.header_current:
+    if report.status == "outdated" or report.pending or not report.header_current or report.restart_pending:
         return 10
     return 0
 
@@ -118,6 +119,7 @@ def to_json(report: Report) -> dict:
         "targetVersion": report.target_version,
         "headerCurrent": report.header_current,
         "downgrade": report.downgrade,
+        "restartPending": report.restart_pending,
         "pendingMigrations": [
             {"id": m.id, "kind": m.kind, "recreate": list(m.recreate)} for m in report.pending
         ],

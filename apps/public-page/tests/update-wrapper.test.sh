@@ -142,9 +142,13 @@ pending_compose_only() { rc_is 0 && not_logged "compose" && [[ -e $PENDING_FILE 
 PENDING=1 STUB_CHECK_RC=0 run_wrapper --compose-only --yes
 expect_case "check 0 with a pending restart and --compose-only names the commands" pending_compose_only
 
-pending_check() { rc_is 10 && grep -q "Neustart" "$WORK/out"; }
-PENDING=1 STUB_CHECK_RC=0 run_wrapper --check
-expect_case "--check at 0 with a pending restart exits 10" pending_check
+pending_check() { rc_is 0 && logged "update check --json --restart-pending"; }
+PENDING=1 STUB_CHECK_RC=0 run_wrapper --check --json
+expect_case "--check passes a pending restart to the check" pending_check
+
+no_pending_check() { rc_is 0 && not_logged "restart-pending"; }
+STUB_CHECK_RC=0 run_wrapper --check
+expect_case "--check without a pending restart passes no flag" no_pending_check
 
 migrate_blocked() { rc_is 0 && logged "update migrate --id X --yes --expect=a:b" && not_logged "docker.sock"; }
 STUB_CHECK_RC=30 run_wrapper --migration X --yes

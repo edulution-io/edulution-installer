@@ -142,17 +142,12 @@ main() {
     fi
 
     if [[ $CHECK_ONLY -eq 1 ]]; then
+        check_args=(check)
+        [[ $JSON -eq 0 ]] || check_args+=(--json)
+        [[ ! -e "$RESTART_PENDING" ]] || check_args+=(--restart-pending)
         rc=0
-        if [[ $JSON -eq 1 ]]; then
-            run_update check --json >&4 || rc=$?
-        else
-            run_update check >&4 || rc=$?
-        fi
+        run_update "${check_args[@]}" >&4 || rc=$?
         [[ $rc -ne 5 ]] || downgrade_hint
-        if [[ $rc -eq 0 && -e "$RESTART_PENDING" ]]; then
-            echo "Die Dateien sind aktuell, aber der Neustart der Dienste nach dem letzten Update steht noch aus."
-            rc=10
-        fi
         exit "$rc"
     fi
 

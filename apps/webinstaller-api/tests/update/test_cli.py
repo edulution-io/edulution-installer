@@ -45,6 +45,17 @@ def test_check_human_names_an_outdated_header(make_installation, all_applied, ca
     assert f"Versionskennung in docker-compose.yml wird auf {TARGET} gesetzt" in capsys.readouterr().out
 
 
+def test_check_restart_pending(make_installation, target_text, all_applied, capsys):
+    root = make_installation(header=TARGET, state=all_applied)
+    assert main(["--dir", str(root), "check", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["restartPending"] is False
+    assert main(["--dir", str(root), "check", "--json", "--restart-pending"]) == 10
+    data = json.loads(capsys.readouterr().out)
+    assert data["restartPending"] is True and data["exitCode"] == 10 and data["status"] == "current"
+    assert main(["--dir", str(root), "check", "--restart-pending"]) == 10
+    assert "Neustart der Dienste" in capsys.readouterr().out
+
+
 def test_apply_without_yes(outdated, capsys):
     before = files(outdated)
     assert main(["--dir", str(outdated), "apply", "--expect", "x"]) == 2

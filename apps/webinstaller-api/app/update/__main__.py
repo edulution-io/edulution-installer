@@ -27,6 +27,8 @@ def _print_report(report) -> None:
     print(f"Zielversion: {report.target_version}")
     if report.status == "current" and not report.header_current and not report.downgrade:
         print(f"Die Versionskennung in {COMPOSE} wird auf {report.target_version} gesetzt.")
+    if report.restart_pending:
+        print("Der Neustart der Dienste nach dem letzten Update steht noch aus.")
     if report.pending:
         print("Ausstehende Migrationen:")
         for m in report.pending:
@@ -63,6 +65,7 @@ def _run(args) -> int:
     version = target_version()
     if args.command == "check":
         report = check(root, target_compose(), version, history(), MIGRATIONS)
+        report.restart_pending = args.restart_pending
         if args.json:
             print(json.dumps(to_json(report), ensure_ascii=False, indent=2))
         else:
@@ -113,6 +116,7 @@ def _parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("check", help="Zustand prüfen")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--restart-pending", action="store_true", help="update.sh: Neustart steht noch aus")
 
     sub.add_parser("expect", help="Fingerabdruck der Dateien ausgeben")
 
