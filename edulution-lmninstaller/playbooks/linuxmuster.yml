@@ -98,18 +98,23 @@
     # It has to be set up separately.
 
     # Repository (normally left unchanged)
-    lmn_repo_url: 'https://deb.linuxmuster.net/'
-    lmn_repo_gpg_url: 'https://deb.linuxmuster.net/pub.gpg'
-    # Fingerprint of the linuxmuster.net archive key; lmn-appliance gets this key as well.
-    lmn_repo_key_fingerprint: '21A91AEC28D1BE943FCF2AA94E8B8B667D752C32'  # gitleaks:allow
-    lmn_repo_key_download: /root/linuxmuster.gpg
-    lmn_repo_keyring: /usr/share/keyrings/linuxmuster.net.gpg
+    lmn_repo_url: 'https://package.edulution.io/'
+    lmn_repo_gpg_url: 'https://package.edulution.io/pub.gpg'
+    # Fingerprint of the edulution archive key; lmn-appliance gets this key as well.
+    lmn_repo_key_fingerprint: 'DD8F6E92D5B8F2333450AD69BD35E6DB4655161B'  # gitleaks:allow
+    lmn_repo_key_download: /root/edulution.asc
+    # The edulution key is ASCII-armored where linuxmuster.net's was binary, so
+    # it is installed as .asc and not dearmored. apt reads an armored keyring
+    # behind signed-by since 2.4, and lmn-appliance uses the same path, so both
+    # installation paths end up with the same file.
+    lmn_repo_keyring: /usr/share/keyrings/edulution.asc
     lmn_appliance_global_key: /etc/apt/trusted.gpg.d/linuxmuster.net.gpg
-    lmn_repo_list: /etc/apt/sources.list.d/lmn.list
-    lmn_repo_sources: /etc/apt/sources.list.d/lmn.sources
+    lmn_repo_list: /etc/apt/sources.list.d/edulution.list
+    lmn_repo_sources: /etc/apt/sources.list.d/edulution.sources
     lmn_appliance_script: /root/lmn-appliance
     lmn_repo_key_fpr: "{{ lmn_repo_key_fingerprint | replace(' ', '') | upper }}"
-    lmn_repo_deb_line: 'deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} {{ lmn_repo_distribution }} main'
+    # The suites of package.edulution.io are Ubuntu codenames, not lmnNN.
+    lmn_repo_deb_line: 'deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} {{ lmn_repo_suite }} main'
     # Lines in lmn-appliance that are switched to the checked key.
     lmn_appliance_key_lines:
       lmnkey_remote: "lmnkey_remote = 'file://{{ lmn_repo_key_download }}'"
@@ -123,11 +128,12 @@
     lmn_version_map:
       '26':
         distribution: 'lmn74'
-        prepare_version: 'v7.4.0'
-        prepare_commit: '659a9940c03efc5e0a4d6d4a096a9096f06d9a8c'
-        appliance_sha256: 'd08354cb5114070f9e6b2407821fd8903a296f779dba00dd573b9dc6ae3a7351'
+        suite: 'resolute'
+        prepare_version: '1:7.4.2~edu'
+        prepare_commit: '24160e82251fdd9246c3ab8cec2f3fc8e6038d60'
+        appliance_sha256: '7691708ef83eea808b86b8312e0a6425411d639af49a371a4ac22e668b01e750'
         label: '7.4'
-    lmn_appliance_url: 'https://raw.githubusercontent.com/linuxmuster/linuxmuster-prepare/{{ lmn_prepare_commit }}/lmn-appliance'
+    lmn_appliance_url: 'https://raw.githubusercontent.com/edulution-io/linuxmuster-prepare/{{ lmn_prepare_commit }}/lmn-appliance'
 
     # Packages
     lmn_additional_packages:
@@ -177,6 +183,7 @@
     - name: Determine the linuxmuster version from the Ubuntu version
       ansible.builtin.set_fact:
         lmn_repo_distribution: "{{ lmn_version_map[ansible_distribution_major_version].distribution }}"
+        lmn_repo_suite: "{{ lmn_version_map[ansible_distribution_major_version].suite }}"
         lmn_prepare_version: "{{ lmn_version_map[ansible_distribution_major_version].prepare_version }}"
         lmn_prepare_commit: "{{ lmn_version_map[ansible_distribution_major_version].prepare_commit }}"
         lmn_appliance_sha256: "{{ lmn_version_map[ansible_distribution_major_version].appliance_sha256 }}"
@@ -200,8 +207,9 @@
       ansible.builtin.debug:
         msg: >-
           Ubuntu {{ ansible_distribution_version }} detected -> linuxmuster.net
-          {{ lmn_version_label }} ({{ lmn_repo_distribution }}, lmn-appliance
-          {{ lmn_prepare_version }}, commit {{ lmn_prepare_commit[:7] }})
+          {{ lmn_version_label }} ({{ lmn_repo_distribution }}, suite
+          {{ lmn_repo_suite }}, lmn-appliance {{ lmn_prepare_version }},
+          commit {{ lmn_prepare_commit[:7] }})
 
     # -------------------------------------------------------------------------
     # DETECT PROXY + UPSTREAM DNS (before the network is reconfigured)
@@ -376,13 +384,13 @@
         mode: '0644'
         force: true
 
-    - name: Read the fingerprint of the linuxmuster key
+    - name: Read the fingerprint of the edulution key
       ansible.builtin.command:
         argv: [gpg, --batch, --show-keys, --with-colons, '{{ lmn_repo_key_download }}']
       register: lmn_repo_key_info
       changed_when: false
 
-    - name: Check the fingerprint of the linuxmuster key
+    - name: Check the fingerprint of the edulution key
       ansible.builtin.assert:
         that:
           - lmn_repo_key_info.stdout_lines | select('match', '^pub:') | list | length == 1
@@ -392,13 +400,19 @@
           ({{ lmn_repo_key_fingerprint }}). Installation stopped.
         quiet: true
 
-    - name: Convert and install the GPG key
-      ansible.builtin.command:
-        argv: [gpg, --batch, --yes, --dearmor, -o, '{{ lmn_repo_keyring }}', '{{ lmn_repo_key_download }}']
+    # No dearmor: the key is ASCII-armored and is installed as .asc, which apt
+    # reads behind signed-by. lmn-appliance writes the same path, so the two
+    # installation paths cannot end up with two different keyrings.
+    - name: Install the GPG key
+      ansible.builtin.copy:
+        src: '{{ lmn_repo_key_download }}'
+        dest: '{{ lmn_repo_keyring }}'
+        mode: '0644'
+        remote_src: true
 
     # Fixed content instead of apt_repository: an older setup leaves lmn.list
     # without signed-by, which would otherwise stay next to the new line.
-    - name: Remove the globally trusted linuxmuster key before adding the repository
+    - name: Remove the globally trusted linuxmuster.net key before adding the repository
       ansible.builtin.file:
         path: '{{ lmn_appliance_global_key }}'
         state: absent
@@ -408,14 +422,14 @@
         path: '{{ lmn_repo_sources }}'
       register: lmn_repo_sources_before
 
-    - name: Add the linuxmuster repository
+    - name: Add the edulution repository
       ansible.builtin.copy:
         dest: '{{ lmn_repo_list }}'
         content: "{{ lmn_repo_deb_line }}\n"
         mode: '0644'
       when: not lmn_repo_sources_before.stat.exists
 
-    - name: Remove the duplicate linuxmuster source before lmn-appliance
+    - name: Remove the duplicate edulution source before lmn-appliance
       ansible.builtin.file:
         path: '{{ lmn_repo_list }}'
         state: absent
@@ -546,7 +560,7 @@
               After lmn-appliance the linuxmuster key is missing or a different one is present;
               the key and the package source were removed. Expected: {{ lmn_repo_key_fingerprint }}
 
-    - name: Remove the globally trusted linuxmuster key
+    - name: Remove the globally trusted linuxmuster.net key
       ansible.builtin.file:
         path: '{{ lmn_appliance_global_key }}'
         state: absent
@@ -556,14 +570,14 @@
         path: '{{ lmn_repo_sources }}'
       register: lmn_repo_sources_file
 
-    - name: Restrict the linuxmuster repository to its key
+    - name: Restrict the edulution repository to its key
       ansible.builtin.copy:
         dest: '{{ lmn_repo_list }}'
         content: "{{ lmn_repo_deb_line }}\n"
         mode: '0644'
       when: not lmn_repo_sources_file.stat.exists
 
-    - name: Remove the duplicate linuxmuster source
+    - name: Remove the duplicate edulution source
       ansible.builtin.file:
         path: '{{ lmn_repo_list }}'
         state: absent
@@ -585,13 +599,19 @@
         DEBIAN_FRONTEND: noninteractive
       changed_when: false
 
+    # Kept in step with srvpkgs in lmn-prepare. linuxmuster-webui7 is not part
+    # of this installation; linuxmuster-api7 takes its place, and
+    # edulution-linbo-gui7 replaces linuxmuster-linbo-gui7 (it declares
+    # Provides/Conflicts/Replaces for it).
     - name: Install the linuxmuster server packages (non-interactive)
       ansible.builtin.apt:
         name:
           - linuxmuster-base7
-          - linuxmuster-webui7
           - linuxmuster-linbo7
-          - linuxmuster-linbo-gui7
+          - linuxmuster-tools7
+          - linuxmuster-cli7
+          - linuxmuster-api7
+          - edulution-linbo-gui7
           - sophomorix-samba
         state: latest
         update_cache: true
@@ -854,13 +874,23 @@
     # On the same machine the edulution Traefik uses host port 443. So that the
     # Ajenti web UI (linuxmuster.net) does not collide with it, it is moved to
     # lmn_webui_port.
+    #
+    # linuxmuster-webui7 is no longer installed, so /etc/ajenti/config.yml
+    # usually does not exist and the task is skipped. It stays in for a host
+    # that still carries the webui from an earlier installation - without the
+    # stat it would fail there instead of moving the port.
+
+    - name: Find the Ajenti configuration
+      ansible.builtin.stat:
+        path: /etc/ajenti/config.yml
+      register: lmn_ajenti_config
 
     - name: Adjust the Ajenti port (local installation)
       ansible.builtin.replace:
         path: /etc/ajenti/config.yml
         regexp: '(^\s*port:\s*)443\b'
         replace: '\g<1>{{ lmn_webui_port }}'
-      when: lmn_local_install | bool
+      when: (lmn_local_install | bool) and lmn_ajenti_config.stat.exists
       notify: Restart the linuxmuster web UI
 
     # =========================================================================
@@ -938,8 +968,11 @@
           Server: {{ lmn_servername }}.{{ lmn_domainname }}
           IP:     {{ lmn_server_ip }}
 
-          Web UI: https://{{ lmn_server_ip }}{{ (':' + lmn_webui_port | string) if (lmn_local_install | bool) else '' }}
+          API:    https://{{ lmn_server_ip }}:8001
           Login:  global-admin (password from the setup)
+
+          The linuxmuster web UI (Ajenti) is not installed - user and device
+          management runs through the edulution UI and lmncli.
 
           edulution bind user: CN=edulutionui-binduser,OU=Management,OU=GLOBAL,{{ edulution_dc_parts }}
 
