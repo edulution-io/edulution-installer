@@ -23,7 +23,11 @@ case $1 in
         case $1 in
             check) echo "report"; exit "${STUB_CHECK_RC:-10}" ;;
             expect) echo "${STUB_EXPECT:-a:b}"; exit 0 ;;
-            apply) exit "${STUB_APPLY_RC:-0}" ;;
+            apply)
+                # Simulates the wrapper being stopped right after apply wrote the files.
+                [[ -z "${STUB_APPLY_KILL:-}" ]] || kill -TERM "$PPID"
+                exit "${STUB_APPLY_RC:-0}"
+                ;;
             migrate) [[ -z "${STUB_MIGRATE_OUT:-}" ]] || echo "$STUB_MIGRATE_OUT"; exit "${STUB_MIGRATE_RC:-0}" ;;
         esac
         ;;
@@ -189,9 +193,22 @@ restart_failed() {
 STUB_COMPOSE_RC=1 run_wrapper --yes
 expect_case "failed restart exits 1 and names the backups" restart_failed
 
-apply_failed() { rc_is 4 && not_logged "compose"; }
+apply_failed() { rc_is 4 && not_logged "compose" && [[ ! -e $PENDING_FILE ]]; }
 STUB_APPLY_RC=4 run_wrapper --yes
-expect_case "apply errors pass through" apply_failed
+expect_case "apply errors pass through and leave no pending restart" apply_failed
+
+apply_failed_keeps() { rc_is 4 && [[ -e $PENDING_FILE ]]; }
+PENDING=1 STUB_APPLY_RC=4 run_wrapper --yes
+expect_case "an apply refusal keeps an earlier pending restart" apply_failed_keeps
+
+apply_error() { rc_is 1 && not_logged "compose" && [[ -e $PENDING_FILE ]]; }
+STUB_APPLY_RC=1 run_wrapper --yes
+expect_case "an apply error may have written files and keeps the restart pending" apply_error
+
+interrupted() { [[ $RC -ne 0 ]] && logged "update apply" && not_logged "compose" && [[ -e $PENDING_FILE ]]; }
+# The braces keep bash's own report about the stopped wrapper out of the test output.
+{ STUB_APPLY_KILL=1 run_wrapper --yes; } 2>/dev/null
+expect_case "stopping the script after apply keeps the restart pending" interrupted
 
 for code in 1 3 4 5; do
     check_error() { rc_is "$code" && not_logged "update apply" && not_logged "compose"; }

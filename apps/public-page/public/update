@@ -225,6 +225,11 @@ main() {
     args=(--yes "--expect=${token}")
     [[ $DISCARD -eq 1 ]] && args+=(--discard-local-changes)
 
+    # Set before the container writes anything, so an interruption after the writes keeps the restart pending.
+    had_pending=0
+    [[ ! -e "$RESTART_PENDING" ]] || had_pending=1
+    touch "$RESTART_PENDING"
+
     rc=0
     if [[ -n "$MIGRATION" ]]; then
         run_update migrate --id "$MIGRATION" "${args[@]}" >&4 || rc=$?
@@ -232,9 +237,12 @@ main() {
         run_update apply "${args[@]}" >&4 || rc=$?
     fi
     if [[ $rc -ne 0 ]]; then
+        # These codes come from checks that run before any file is written.
+        case $rc in
+            2 | 3 | 4 | 5 | 20 | 30) [[ $had_pending -eq 1 ]] || rm -f "$RESTART_PENDING" ;;
+        esac
         exit "$rc"
     fi
-    touch "$RESTART_PENDING"
 
     if [[ $COMPOSE_ONLY -eq 1 ]]; then
         echo "Dateien aktualisiert. Die Dienste wurden nicht neu gestartet (--compose-only). Neustart mit:"
