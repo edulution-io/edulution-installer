@@ -103,11 +103,11 @@
     # Fingerprint of the edulution archive key; lmn-appliance gets this key as well.
     lmn_repo_key_fingerprint: 'DD8F6E92D5B8F2333450AD69BD35E6DB4655161B'  # gitleaks:allow
     lmn_repo_key_download: /root/edulution.asc
-    # The edulution key is ASCII-armored where linuxmuster.net's was binary, so
-    # it is installed as .asc and not dearmored. apt reads an armored keyring
-    # behind signed-by since 2.4, and lmn-appliance uses the same path, so both
-    # installation paths end up with the same file.
-    lmn_repo_keyring: /usr/share/keyrings/edulution.asc
+    # The path edulution-archive-keyring owns. linuxmuster-prepare depends on
+    # that package, which takes the file over and brings rotated keys with apt
+    # upgrade; lmn-appliance writes the same path, so both installation paths
+    # end up with the same keyring.
+    lmn_repo_keyring: /usr/share/keyrings/edulution.gpg
     lmn_appliance_global_key: /etc/apt/trusted.gpg.d/linuxmuster.net.gpg
     lmn_repo_list: /etc/apt/sources.list.d/edulution.list
     lmn_repo_sources: /etc/apt/sources.list.d/edulution.sources
@@ -130,8 +130,8 @@
         distribution: 'lmn74'
         suite: 'resolute'
         prepare_version: '1:7.4.2~edu'
-        prepare_commit: '24160e82251fdd9246c3ab8cec2f3fc8e6038d60'
-        appliance_sha256: '7691708ef83eea808b86b8312e0a6425411d639af49a371a4ac22e668b01e750'
+        prepare_commit: '63703a53651c93d4c4002ea57bfe641953f2ca23'
+        appliance_sha256: '417011d9a2c0ac592ba3bc640bd8a1ac55de76c75cf18c81b732c2601b1a4652'
         label: '7.4'
     lmn_appliance_url: 'https://raw.githubusercontent.com/edulution-io/linuxmuster-prepare/{{ lmn_prepare_commit }}/lmn-appliance'
 
@@ -400,15 +400,11 @@
           ({{ lmn_repo_key_fingerprint }}). Installation stopped.
         quiet: true
 
-    # No dearmor: the key is ASCII-armored and is installed as .asc, which apt
-    # reads behind signed-by. lmn-appliance writes the same path, so the two
-    # installation paths cannot end up with two different keyrings.
-    - name: Install the GPG key
-      ansible.builtin.copy:
-        src: '{{ lmn_repo_key_download }}'
-        dest: '{{ lmn_repo_keyring }}'
-        mode: '0644'
-        remote_src: true
+    # pub.gpg is ASCII-armored; edulution.gpg, the file of
+    # edulution-archive-keyring, is a binary keyring.
+    - name: Convert and install the GPG key
+      ansible.builtin.command:
+        argv: [gpg, --batch, --yes, --dearmor, -o, '{{ lmn_repo_keyring }}', '{{ lmn_repo_key_download }}']
 
     # Fixed content instead of apt_repository: an older setup leaves lmn.list
     # without signed-by, which would otherwise stay next to the new line.
