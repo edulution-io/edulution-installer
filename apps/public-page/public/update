@@ -151,6 +151,14 @@ main() {
         exit "$rc"
     fi
 
+    # The container's lock covers only its own run; this one keeps a second script from
+    # changing the restart marker while this one is between its steps.
+    exec 9> "${DIRECTORY}.update-script.lock"
+    if ! flock -n 9; then
+        echo "[!] Ein anderes Update läuft bereits."
+        exit 3
+    fi
+
     # Taken before check: if the files change after it, apply refuses with exit 4 instead of
     # applying changes the operator was not shown.
     token=$(run_update expect)

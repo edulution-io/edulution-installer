@@ -259,6 +259,13 @@ expect_first() { rc_is 0 && [[ $(grep -o "update \(expect\|check\)" "$LOG" | hea
 run_wrapper --yes
 expect_case "the token is taken before the check is shown" expect_first
 
+locked_out() { rc_is 3 && not_logged "update expect" && not_logged "update apply" && [[ -e $PENDING_FILE ]]; }
+exec 8> "$WORK/dir/.update-script.lock"
+flock 8
+PENDING=1 run_wrapper --yes
+exec 8>&-
+expect_case "a second script exits 3 and leaves the restart marker alone" locked_out
+
 json_alone() { rc_is 2 && not_logged "run "; }
 run_wrapper --json
 expect_case "--json without --check exits 2" json_alone
