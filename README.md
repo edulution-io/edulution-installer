@@ -49,3 +49,11 @@ The web installer runs on `https://localhost:443/?token=<token>`. The token is t
 
 - **Public Page** — Automatically deployed to GitHub Pages via GitHub Actions on push to `main` or `dev`
 - **Web Installer** — Docker image built via `docker-compose.yml` / `Dockerfile`
+
+## Licence
+
+Proprietary software of Digitale Schule Innovationsberatung GmbH (DSI), not open source. Anyone may run the installer, unmodified and free of charge, to install, configure and update edulution; copying, modifying and distributing it is not permitted, see [LICENSE](LICENSE). Netzint GmbH develops and operates it on DSI's behalf.
+
+The build writes the licence and notice files of the packages in each frontend bundle to `third-party-licenses.txt` next to it. The container image carries `LICENSE` in `/app/`.
+
+Manufacturer and licensor: Digitale Schule Innovationsberatung GmbH, Lammstr. 6, 77933 Lahr, Germany. Licensing enquiries: info@edulution.io. Report security vulnerabilities to security@edulution.io, as the [security policy](https://github.com/edulution-io/.github/blob/main/SECURITY.md) describes.
