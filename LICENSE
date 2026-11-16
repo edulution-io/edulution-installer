@@ -1,0 +1,41 @@
+Copyright (c) 2024-2026 Digitale Schule Innovationsberatung GmbH. All rights reserved.
+
+edulution-installer, including its source code, its container image, the installer
+script and download page published at get.edulution.io, the installer for
+linuxmuster.net servers, the configuration templates and its documentation
+(together, the "Software"), is proprietary software of Digitale Schule
+Innovationsberatung GmbH ("DSI"). It is not open source software. Netzint GmbH
+develops and operates the Software on DSI's behalf.
+
+Anyone may obtain the Software from the places DSI publishes it, including this
+repository and its container registry, and run it, unmodified and free of charge,
+to install, configure and update edulution, a linuxmuster.net server and the
+components the Software sets up with them, on systems they operate or administer.
+This includes the copies that such use involves, among them the parts the Software
+places on those systems. The configuration files the Software generates there are
+the operator's to adapt. This permission does not extend to the programs the
+Software installs: each of them is under its own licence.
+
+Except as permitted above or by a written agreement with DSI, no part of the
+Software may be copied, modified, distributed or sublicensed. Rights that the terms
+of a hosting platform give its users, such as viewing and forking this repository
+on GitHub, are unaffected.
+
+Except as agreed with DSI, the Software is provided "as is", without warranty of
+any kind, express or implied.
+
+The Software contains third-party components. Each of them remains under its own
+licence, and nothing in this notice restricts the rights that licence grants. The
+packages built into the web installer and the download page are listed, with the
+licence and notice files they ship, in third-party-licenses.txt, which each build
+places next to them: in /app/static/ of the container image and at the root of the
+download page. The Python packages in the container image carry their licence
+files in their .dist-info directories. Both user interfaces also build on
+@edulution-io/ui-kit, which the Software includes under that package's commercial
+licence.
+
+Manufacturer and licensor: Digitale Schule Innovationsberatung GmbH, Lammstr. 6,
+77933 Lahr, Germany. Licensing enquiries: info@edulution.io.
+
+Security vulnerabilities: security@edulution.io, as set out in the security policy at
+https://github.com/edulution-io/.github/blob/main/SECURITY.md

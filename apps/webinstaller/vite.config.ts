@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { resolve } from 'path';
+import thirdPartyLicenses from '../../tools/thirdPartyLicenses';
 
 export default defineConfig({
   root: __dirname,
@@ -11,6 +12,7 @@ export default defineConfig({
   plugins: [
     react(),
     nxViteTsPaths(),
+    thirdPartyLicenses(['tailwindcss']),
     viteStaticCopy({
       targets: [
         {

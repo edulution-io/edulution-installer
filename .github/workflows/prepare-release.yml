@@ -56,7 +56,7 @@ jobs:
           mkdir sbom
           stamp() {
             jq --arg name "$1" --arg version "$2" \
-              '.metadata.supplier = {name: "Netzint GmbH", url: ["https://netzint.de"]}
+              '.metadata.supplier = {name: "Digitale Schule Innovationsberatung GmbH", url: ["https://edulution.io"]}
               | .metadata.component = ((.metadata.component // {type: "application"})
                   + {name: $name, version: $version, supplier: .metadata.supplier})
               | del(.metadata.component.purl)'
