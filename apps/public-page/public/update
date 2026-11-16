@@ -34,6 +34,17 @@ downgrade_hint() {
     echo "    Mit --version <X.Y.Z> die Version der Installation oder eine neuere wählen."
 }
 
+# Installer images from before the update tool fail with "No module named update" and exit 1.
+old_image_hint() {
+    local out
+    [[ $1 -eq 1 ]] || return 0
+    out=$(docker run --rm "$EDULUTION_INSTALLER_IMAGE" python -c "import update" 2>&1) && return 0
+    if [[ "$out" == *"No module named"*update* ]]; then
+        echo "[!] Das Image ${EDULUTION_INSTALLER_IMAGE} enthält das Update-Werkzeug noch nicht."
+        echo "    Mit --version <X.Y.Z> eine neuere Version wählen."
+    fi
+}
+
 usage() {
     echo "Verwendung: update [--version <X.Y.Z[-rc.N]>] [--check [--json]] [--yes] [--compose-only]"
     echo "              [--discard-local-changes] [--migration <ID>]"
@@ -61,6 +72,16 @@ restart_services() {
         exit 1
     fi
     rm -f "$RESTART_PENDING"
+}
+
+# nothing_written <rc> <token>: true if the failed apply or migrate left the files as they were.
+nothing_written() {
+    local after
+    case $1 in
+        # These codes come from checks that run before any file is written.
+        2 | 3 | 4 | 5 | 20 | 30) return 0 ;;
+    esac
+    after=$(run_update expect 2>/dev/null) && [[ "$after" == "$2" ]]
 }
 
 main() {
@@ -148,6 +169,7 @@ main() {
         rc=0
         run_update "${check_args[@]}" >&4 || rc=$?
         [[ $rc -ne 5 ]] || downgrade_hint
+        old_image_hint "$rc"
         exit "$rc"
     fi
 
@@ -161,7 +183,12 @@ main() {
 
     # Taken before check: if the files change after it, apply refuses with exit 4 instead of
     # applying changes the operator was not shown.
-    token=$(run_update expect)
+    rc=0
+    token=$(run_update expect) || rc=$?
+    if [[ $rc -ne 0 ]]; then
+        old_image_hint "$rc"
+        exit "$rc"
+    fi
 
     rc=0
     run_update check >&4 || rc=$?
@@ -245,10 +272,9 @@ main() {
         run_update apply "${args[@]}" >&4 || rc=$?
     fi
     if [[ $rc -ne 0 ]]; then
-        # These codes come from checks that run before any file is written.
-        case $rc in
-            2 | 3 | 4 | 5 | 20 | 30) [[ $had_pending -eq 1 ]] || rm -f "$RESTART_PENDING" ;;
-        esac
+        if [[ $had_pending -eq 0 ]] && nothing_written "$rc" "$token"; then
+            rm -f "$RESTART_PENDING"
+        fi
         exit "$rc"
     fi
 

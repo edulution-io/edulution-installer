@@ -17,12 +17,25 @@ case $1 in
     image) exit "${STUB_INSPECT_RC:-0}" ;;
     compose) exit "${STUB_COMPOSE_RC:-0}" ;;
     run)
+        if [[ -n "${STUB_NO_MODULE:-}" ]]; then
+            echo "ModuleNotFoundError: No module named 'update'" >&2
+            exit 1
+        fi
+        [[ "$*" != *"python -c import update"* ]] || exit 0
         while [[ $# -gt 0 && $1 != update ]]; do shift; done
         [[ $# -gt 0 ]] || exit 98
         shift
         case $1 in
             check) echo "report"; exit "${STUB_CHECK_RC:-10}" ;;
-            expect) echo "${STUB_EXPECT:-a:b}"; exit 0 ;;
+            expect)
+                # A second expect sees the files as apply left them.
+                if [[ -n "${STUB_EXPECT_AFTER:-}" && $(grep -c "update expect" "$STUB_LOG") -gt 1 ]]; then
+                    echo "$STUB_EXPECT_AFTER"
+                else
+                    echo "${STUB_EXPECT:-a:b}"
+                fi
+                exit 0
+                ;;
             apply)
                 # Simulates the wrapper being stopped right after apply wrote the files.
                 [[ -z "${STUB_APPLY_KILL:-}" ]] || kill -TERM "$PPID"
@@ -202,8 +215,21 @@ PENDING=1 STUB_APPLY_RC=4 run_wrapper --yes
 expect_case "an apply refusal keeps an earlier pending restart" apply_failed_keeps
 
 apply_error() { rc_is 1 && not_logged "compose" && [[ -e $PENDING_FILE ]]; }
+STUB_APPLY_RC=1 STUB_EXPECT_AFTER=c:d run_wrapper --yes
+expect_case "an apply error after writing files keeps the restart pending" apply_error
+
+apply_error_clean() { rc_is 1 && not_logged "compose" && [[ ! -e $PENDING_FILE ]]; }
 STUB_APPLY_RC=1 run_wrapper --yes
-expect_case "an apply error may have written files and keeps the restart pending" apply_error
+expect_case "an apply error before writing files leaves no pending restart" apply_error_clean
+
+PENDING=1 STUB_APPLY_RC=1 run_wrapper --yes
+expect_case "an apply error keeps an earlier pending restart" apply_error
+
+old_image() { rc_is 1 && not_logged "update apply" && grep -q "neuere Version" "$WORK/out"; }
+STUB_NO_MODULE=1 run_wrapper --version 2.0.0 --yes
+expect_case "an image without the update tool names --version" old_image
+STUB_NO_MODULE=1 run_wrapper --version 2.0.0 --check
+expect_case "--check with an image without the update tool names --version" old_image
 
 interrupted() { [[ $RC -ne 0 ]] && logged "update apply" && not_logged "compose" && [[ -e $PENDING_FILE ]]; }
 # The braces keep bash's own report about the stopped wrapper out of the test output.
@@ -211,7 +237,9 @@ interrupted() { [[ $RC -ne 0 ]] && logged "update apply" && not_logged "compose"
 expect_case "stopping the script after apply keeps the restart pending" interrupted
 
 for code in 1 3 4 5; do
-    check_error() { rc_is "$code" && not_logged "update apply" && not_logged "compose"; }
+    check_error() {
+        rc_is "$code" && not_logged "update apply" && not_logged "compose" && ! grep -q "neuere Version" "$WORK/out"
+    }
     STUB_CHECK_RC=$code run_wrapper --yes
     expect_case "check $code aborts with that code" check_error
 done
