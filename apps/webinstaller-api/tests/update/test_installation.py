@@ -80,6 +80,14 @@ def test_backup_names(tmp_path):
     assert first[0].read_bytes() == b"compose\r\n"
     assert first[1].read_bytes() == b"A=1\n"
     assert stat.S_IMODE(first[1].stat().st_mode) == 0o600
+    assert stat.S_IMODE((tmp_path / BACKUP_DIR).stat().st_mode) == 0o700
+
+
+def test_backup_tightens_existing_directory(tmp_path):
+    (tmp_path / BACKUP_DIR).mkdir(mode=0o755)
+    (tmp_path / ENV).write_text("A=1\n")
+    backup(tmp_path, [ENV], NOW)
+    assert stat.S_IMODE((tmp_path / BACKUP_DIR).stat().st_mode) == 0o700
 
 
 def test_backup_keeps_source_mode_capped(tmp_path):

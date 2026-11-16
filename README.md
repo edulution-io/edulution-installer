@@ -30,7 +30,7 @@ Other options: `--version X.Y.Z` (update to that release), `--check --json` (mac
 
 Tools that run the installer image directly instead of this script get the same exit codes, except for the pending restart, which only this script tracks.
 
-Keep local changes in `docker-compose.override.yml`, not in `docker-compose.yml`: the update replaces `docker-compose.yml` as a whole. Before every change the previous files are copied to `/srv/docker/edulution-ui/docker-compose-backups/`.
+Keep local changes in `docker-compose.override.yml`, not in `docker-compose.yml`: the update replaces `docker-compose.yml` as a whole. Before every change the previous files are copied to `/srv/docker/edulution-ui/docker-compose-backups/` (readable by root only, as the copies of `edulution.env` hold its secrets). Old backups are not removed automatically; delete the ones you no longer need.
 
 | Exit code | Meaning |
 | --- | --- |

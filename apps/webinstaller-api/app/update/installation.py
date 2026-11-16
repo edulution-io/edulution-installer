@@ -73,6 +73,8 @@ def backup(root: Path, names: list[str], now: datetime | None = None) -> list[Pa
     stamp = (now or datetime.now()).strftime("%Y-%m-%dT%H-%M-%S")
     directory = root / BACKUP_DIR
     directory.mkdir(parents=True, exist_ok=True)
+    # Holds copies of edulution.env and its secrets.
+    os.chmod(directory, 0o700)
     created = []
     for name in names:
         source = root / name
