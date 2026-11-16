@@ -18,6 +18,7 @@ def parse_version(text: str | None) -> tuple | None:
 
 def is_older(a: str | None, b: str | None) -> bool:
     pa, pb = parse_version(a), parse_version(b)
+    # Dev builds and other non-release tags have no order, so they never count as a downgrade.
     if pa is None or pb is None:
         return False
     return pa < pb

@@ -132,6 +132,13 @@ def test_downgrade_by_header(make_installation, target_text, all_applied):
     assert data["downgrade"] is True
 
 
+def test_dev_target_never_counts_as_downgrade(make_installation, target_text):
+    root = make_installation(header="2.3.0", state=State("2.3.0", [m.id for m in MIGRATIONS]))
+    report = check(root, target_text, "dev", frozenset())
+    assert not report.downgrade
+    assert exit_code(report) == 10
+
+
 @pytest.mark.parametrize("header", [None, "2.1.0"])
 def test_downgrade_by_state(make_installation, target_text, header):
     root = make_installation(header=header, state=State("2.3.0", [m.id for m in MIGRATIONS]))
