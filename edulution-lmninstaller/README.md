@@ -256,13 +256,13 @@ All variables have default values. Through the API, the settings in the tables b
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `lmn_local_install` | `false` | linuxmuster runs on the same machine as edulution |
-| `lmn_webui_port` | `8443` | Port of the linuxmuster web UI in that case |
+| `lmn_webui_port` | `8443` | Port of the linuxmuster web UI in that case. The web UI itself is no longer installed; the value still reaches the edulution configuration and is kept for a host that carries the web UI from an earlier installation. |
 
 The API checks every value against the form its setting needs (addresses, names, disk, port, flags). Server name, domain name and country are taken in lower case. School name, location and state may contain any text except line breaks, control characters, `%` and `$`; the admin password uses the characters the web installer allows.
 
 ### Updates on the linuxmuster Server
 
-While the playbook runs, automatic updates are paused if `lmn_disable_auto_updates` is set; with `false` they keep running during the installation. At the end of the run, also when a task failed, the playbook switches them on: `unattended-upgrades` then installs updates from Ubuntu's own release and security origins (security updates in practice, Samba among them), as configured in Ubuntu's `50unattended-upgrades`. A later run of the playbook switches them on again, even if they were switched off by hand in the meantime. linuxmuster packages from deb.linuxmuster.net are not part of that and are updated by hand:
+While the playbook runs, automatic updates are paused if `lmn_disable_auto_updates` is set; with `false` they keep running during the installation. At the end of the run, also when a task failed, the playbook switches them on: `unattended-upgrades` then installs updates from Ubuntu's own release and security origins (security updates in practice, Samba among them), as configured in Ubuntu's `50unattended-upgrades`. A later run of the playbook switches them on again, even if they were switched off by hand in the meantime. linuxmuster packages from package.edulution.io are not part of that and are updated by hand:
 
 ```bash
 apt update && apt full-upgrade
