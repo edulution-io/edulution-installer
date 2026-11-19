@@ -74,7 +74,7 @@ def backup(root: Path, names: list[str], now: datetime | None = None) -> list[Pa
     directory = root / BACKUP_DIR
     directory.mkdir(parents=True, exist_ok=True)
     # Holds copies of edulution.env and its secrets.
-    os.chmod(directory, 0o700)
+    os.chmod(directory, stat.S_IRWXU)
     created = []
     for name in names:
         source = root / name
