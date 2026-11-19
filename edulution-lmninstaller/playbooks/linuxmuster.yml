@@ -100,8 +100,11 @@
     # Repository (normally left unchanged)
     lmn_repo_url: 'https://package.edulution.io/'
     lmn_repo_gpg_url: 'https://package.edulution.io/pub.gpg'
-    # Fingerprint of the edulution archive key; lmn-appliance gets this key as well.
-    lmn_repo_key_fingerprint: 'DD8F6E92D5B8F2333450AD69BD35E6DB4655161B'  # gitleaks:allow
+    # Fingerprints of the edulution archive keys; lmn-appliance gets these keys as well.
+    # Both stay accepted while the repository key is rotated (edulution-package-server#50).
+    lmn_repo_key_fingerprints:
+      - 'DD8F6E92D5B8F2333450AD69BD35E6DB4655161B'  # gitleaks:allow
+      - 'D40E9D60D4D78DE744D56538CDA6FAD3A2E91A18'  # gitleaks:allow
     lmn_repo_key_download: /root/edulution.asc
     # The path edulution-archive-keyring owns. linuxmuster-prepare depends on
     # that package, which takes the file over and brings rotated keys with apt
@@ -112,10 +115,15 @@
     lmn_repo_list: /etc/apt/sources.list.d/edulution.list
     lmn_repo_sources: /etc/apt/sources.list.d/edulution.sources
     lmn_appliance_script: /root/lmn-appliance
-    lmn_repo_key_fpr: "{{ lmn_repo_key_fingerprint | replace(' ', '') | upper }}"
+    lmn_repo_key_fprs: "{{ lmn_repo_key_fingerprints | map('replace', ' ', '') | map('upper') | list }}"
+    # Primary key fingerprints from lmn_key_lines (set per check); gpg prints a key's
+    # fpr line right after its pub line. The checks reject sec lines (secret keys) outright.
+    lmn_key_primary_fprs: >-
+      {{ lmn_key_lines[:-1] | zip(lmn_key_lines[1:]) | selectattr('0', 'match', '^pub:')
+         | map(attribute='1') | map('split', ':') | map(attribute='9') | list }}
     # The suites of package.edulution.io are Ubuntu codenames, not lmnNN.
     lmn_repo_deb_line: 'deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} {{ lmn_repo_suite }} main'
-    # Lines in lmn-appliance that are switched to the checked key.
+    # Lines in lmn-appliance that are switched to the checked keys.
     lmn_appliance_key_lines:
       lmnkey_remote: "lmnkey_remote = 'file://{{ lmn_repo_key_download }}'"
       lmnkey_local: "lmnkey_local = '{{ lmn_repo_keyring }}'"
@@ -384,21 +392,24 @@
         mode: '0644'
         force: true
 
-    - name: Read the fingerprint of the edulution key
+    - name: Read the fingerprints of the edulution keys
       ansible.builtin.command:
         argv: [gpg, --batch, --show-keys, --with-colons, '{{ lmn_repo_key_download }}']
       register: lmn_repo_key_info
       changed_when: false
 
-    - name: Check the fingerprint of the edulution key
+    - name: Check the fingerprints of the edulution keys
       ansible.builtin.assert:
         that:
-          - lmn_repo_key_info.stdout_lines | select('match', '^pub:') | list | length == 1
-          - (lmn_repo_key_info.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == lmn_repo_key_fpr
+          - lmn_key_primary_fprs | length > 0
+          - lmn_key_primary_fprs is subset(lmn_repo_key_fprs)
+          - lmn_key_lines | select('match', '^sec:') | list | length == 0
         fail_msg: >-
-          {{ lmn_repo_gpg_url }} does not provide the expected key
-          ({{ lmn_repo_key_fingerprint }}). Installation stopped.
+          {{ lmn_repo_gpg_url }} provides no key, a secret key or a key other than
+          {{ lmn_repo_key_fingerprints | join(', ') }}. Installation stopped.
         quiet: true
+      vars:
+        lmn_key_lines: '{{ lmn_repo_key_info.stdout_lines }}'
 
     # pub.gpg is ASCII-armored; edulution.gpg, the file of
     # edulution-archive-keyring, is a binary keyring.
@@ -446,8 +457,8 @@
         mode: '0755'
         checksum: 'sha256:{{ lmn_appliance_sha256 }}'
 
-    # lmn-appliance gets the key checked above as its source and keyring.
-    - name: Switch lmn-appliance to the checked key
+    # lmn-appliance gets the keys checked above as its source and keyring.
+    - name: Switch lmn-appliance to the checked keys
       ansible.builtin.replace:
         path: '{{ lmn_appliance_script }}'
         regexp: '^{{ item.key }} = .*$'
@@ -461,13 +472,13 @@
         src: '{{ lmn_appliance_script }}'
       register: lmn_appliance_source
 
-    - name: Check that lmn-appliance uses the checked key
+    - name: Check that lmn-appliance uses the checked keys
       ansible.builtin.assert:
         that:
           - (lmn_appliance_lines | select('match', '^lmnkey_remote ') | list) == [lmn_appliance_key_lines.lmnkey_remote]
           - (lmn_appliance_lines | select('match', '^lmnkey_local ') | list) == [lmn_appliance_key_lines.lmnkey_local]
         fail_msg: >-
-          lmn-appliance cannot be switched to the checked key
+          lmn-appliance cannot be switched to the checked keys
           (lmnkey_remote or lmnkey_local). Installation stopped.
         quiet: true
       vars:
@@ -499,8 +510,9 @@
     # =========================================================================
     # REPOSITORY KEY AFTER LMN-APPLIANCE
     # =========================================================================
-    # Follow-up check: lmn-appliance may leave only the checked key behind,
-    # and the repository uses it through signed-by only.
+    # Follow-up check: lmn-appliance, and edulution-archive-keyring which it
+    # installs, may leave only the accepted keys behind, and the repository
+    # uses them through signed-by only.
 
     - name: Check the repository key after lmn-appliance
       block:
@@ -518,7 +530,7 @@
             fail_msg: '{{ lmn_repo_keyring }} is missing after lmn-appliance.'
             quiet: true
 
-        - name: Read the fingerprint of the keys written by lmn-appliance
+        - name: Read the fingerprints of the keys written by lmn-appliance
           ansible.builtin.command:
             argv: [gpg, --batch, --show-keys, --with-colons, '{{ item.stat.path }}']
           loop: "{{ lmn_written_keys.results | selectattr('stat.exists') | list }}"
@@ -527,15 +539,18 @@
           register: lmn_written_key_info
           changed_when: false
 
-        - name: Check the fingerprint of the keys written by lmn-appliance
+        - name: Check the fingerprints of the keys written by lmn-appliance
           ansible.builtin.assert:
             that:
-              - item.stdout_lines | select('match', '^pub:') | list | length == 1
-              - (item.stdout_lines | select('match', '^fpr:') | first).split(':')[9] == lmn_repo_key_fpr
+              - lmn_key_primary_fprs | length > 0
+              - lmn_key_primary_fprs is subset(lmn_repo_key_fprs)
+              - lmn_key_lines | select('match', '^sec:') | list | length == 0
             fail_msg: >-
-              {{ item.item.stat.path }} does not contain the expected key
-              ({{ lmn_repo_key_fingerprint }}). Installation stopped.
+              {{ item.item.stat.path }} contains no key, a secret key or a key other than
+              {{ lmn_repo_key_fingerprints | join(', ') }}. Installation stopped.
             quiet: true
+          vars:
+            lmn_key_lines: '{{ item.stdout_lines }}'
           loop: '{{ lmn_written_key_info.results }}'
           loop_control:
             label: '{{ item.item.stat.path }}'
@@ -554,7 +569,7 @@
           ansible.builtin.fail:
             msg: >-
               After lmn-appliance the linuxmuster key is missing or a different one is present;
-              the key and the package source were removed. Expected: {{ lmn_repo_key_fingerprint }}
+              the key and the package source were removed. Expected: {{ lmn_repo_key_fingerprints | join(', ') }}
 
     - name: Remove the globally trusted linuxmuster.net key
       ansible.builtin.file:
