@@ -44,6 +44,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from envtools import generateSecret, openPrivate, envValue
+
 
 BASE_PATH = Path(__file__).parent
 STATIC_PATH = BASE_PATH / "static"
@@ -1000,32 +1002,10 @@ if STATIC_PATH.exists():
 
 # --- Helper Functions ---
 
-def generateSecret(length=32):
-    characters = string.ascii_letters + string.digits
-    random_string = "".join(secrets.choice(characters) for _ in range(length))
-    return random_string
-
-
 def generateRandom(length=5):
     characters = string.ascii_lowercase
     random_string = "".join(secrets.choice(characters) for _ in range(length))
     return random_string
-
-
-def openPrivate(path, mode="w"):
-    """Oeffnet eine Datei mit Geheimnissen zum Schreiben, nur fuer root lesbar."""
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    # Der Modus von os.open gilt nur fuer neue Dateien.
-    os.fchmod(fd, 0o600)
-    return os.fdopen(fd, mode)
-
-
-def envValue(value):
-    # Docker Compose takes single-quoted values literally, except a trailing \ escaping the closing quote.
-    # In double quotes it unescapes \\, \" and \$ but keeps a backslash before anything else, such as `.
-    if "'" not in value and not value.endswith("\\"):
-        return f"'{value}'"
-    return '"' + re.sub(r'([\\"$])', r'\\\1', value) + '"'
 
 
 def createEdulutionEnvFile(data: Data):
