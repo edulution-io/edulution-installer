@@ -1708,10 +1708,20 @@
     "strictTransportSecurity": "max-age=31536000; includeSubDomains"
   },
   "smtpServer": {},
-  "eventsEnabled": false,
+  "eventsEnabled": true,
+  "eventsExpiration": 2592000,
   "eventsListeners": ["jboss-logging"],
-  "enabledEventTypes": [],
-  "adminEventsEnabled": false,
+  "enabledEventTypes": [
+    "LOGIN",
+    "LOGIN_ERROR",
+    "LOGOUT",
+    "CODE_TO_TOKEN",
+    "REFRESH_TOKEN_ERROR",
+    "UPDATE_PASSWORD",
+    "UPDATE_CREDENTIAL",
+    "REMOVE_CREDENTIAL"
+  ],
+  "adminEventsEnabled": true,
   "adminEventsDetailsEnabled": false,
   "identityProviders": [],
   "identityProviderMappers": [],
@@ -3010,7 +3020,8 @@
     "clientSessionMaxLifespan": "0",
     "frontendUrl": "https://example.com/auth",
     "organizationsEnabled": "false",
-    "acr.loa.map": "{}"
+    "acr.loa.map": "{}",
+    "adminEventsExpiration": "2592000"
   },
   "keycloakVersion": "25.0.6",
   "userManagedAccessAllowed": true,
