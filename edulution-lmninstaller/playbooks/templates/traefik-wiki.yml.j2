@@ -1,0 +1,37 @@
+# Rendered by the edulution-installer `edulution-fileproxy.yml` playbook.
+#
+# Routes the two wiki HTTP API endpoints edu-api calls -- /wiki/search and
+# /wiki/list -- to the fileproxy backend.
+#
+# The rule matches those two paths exactly and MUST NOT be widened to
+# PathPrefix(`/wiki`). /wiki is also the edulution SPA's own client-side route
+# (/wiki/<share>/<path>), and Traefik prioritises by rule length, so a prefix
+# rule outranks the catch-all to the frontend and claims the whole subtree. The
+# fileproxy answers only its own endpoints and returns 404 for everything else,
+# so every wiki deep link would 404 on a full page load while in-app navigation
+# kept working. Traefik returns the chosen backend's response as-is -- there is
+# no fall-through to another router on a 404.
+#
+# Path matching is case-sensitive and exact (verified against traefik v3.1), so
+# a wiki page named `Search` or `List` is routed to the SPA and renders
+# normally. A wiki root named exactly lowercase `search` or `list` remains
+# ambiguous; that is the reason edulution-io/edulution-ui#3141 moves the API off
+# this prefix entirely, after which this file can be dropped.
+#
+# Place this file next to the existing webdav.yml + fileproxy.yml in the
+# Traefik file-provider dynamic-config directory. Traefik hot-reloads when
+# watch: true is set in the static config.
+http:
+  routers:
+    wiki:
+      rule: "Path(`/wiki/search`) || Path(`/wiki/list`)"
+      service: wiki-fileproxy
+      entryPoints:
+        - websecure
+      tls: {}
+
+  services:
+    wiki-fileproxy:
+      loadBalancer:
+        servers:
+          - url: "{{ fp_traefik_wiki_backend }}"

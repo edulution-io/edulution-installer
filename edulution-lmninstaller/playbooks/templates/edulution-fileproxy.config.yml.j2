@@ -1,0 +1,46 @@
+# Rendered by the edulution-installer `edulution-fileproxy.yml` playbook.
+# Hand-edits will be overwritten on the next playbook run — change the
+# vars in edulution-fileproxy_vars.yml (or via extra_vars) and re-run.
+
+ldap:
+  server: "ldaps://{{ fp_ldap_server }}:636"
+  insecure_skip_verify: true
+  base_dn: "{{ fp_ldap_base_dn }}"
+
+smb:
+  server: "{{ fp_smb_default_server }}"
+  domain: "{{ fp_smb_domain }}"
+  share_autodiscover: false
+  session_max_idle_minutes: 15
+  session_max_creation_minutes: 30
+  session_cleanup_interval: 1
+
+  # AD account the indexer uses for every filesystem read (PostWriteHook
+  # doc body, reindex walk, reconciler scan, search-time title extraction).
+  # REQUIRED when elasticsearch.enabled: true. Uses the existing global-admin
+  # account — no dedicated AD user or group creation necessary.
+  indexer_service_account:
+    user: "{{ fp_indexer_user }}"
+    password_file: "{{ fp_indexer_secret_path }}"
+
+  shares:
+{% for s in fp_shares %}
+    - name: "{{ s.name }}"
+{%   if s.server is defined and s.server %}
+      server: "{{ s.server }}"
+{%   endif %}
+{% endfor %}
+
+http:
+  address: "{{ fp_listen_address }}"
+  webdav_prefix: "{{ fp_webdav_prefix }}"
+  cert_file: "{{ fp_cert_file }}"
+  key_file: "{{ fp_key_file }}"
+
+log:
+  level: "{{ fp_log_level }}"
+  file: "{{ fp_log_file }}"
+
+elasticsearch:
+  enabled: {{ fp_elasticsearch_enabled | to_json }}
+  url: "{{ fp_elasticsearch_url }}"
