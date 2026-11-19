@@ -2,7 +2,7 @@
 
 ###########################################################
 # Installer for edulution UI
-# by Netzint GmbH
+# by Digitale Schule Innovationsberatung GmbH
 ###########################################################
 
 DIRECTORY="/srv/docker/edulution-ui/"
