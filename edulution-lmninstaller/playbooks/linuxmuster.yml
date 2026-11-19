@@ -117,9 +117,9 @@
     lmn_appliance_script: /root/lmn-appliance
     lmn_repo_key_fprs: "{{ lmn_repo_key_fingerprints | map('replace', ' ', '') | map('upper') | list }}"
     # Primary key fingerprints from lmn_key_lines (set per check); gpg prints a key's
-    # fpr line right after its pub line, or its sec line for a secret key in the file.
+    # fpr line right after its pub line. The checks reject sec lines (secret keys) outright.
     lmn_key_primary_fprs: >-
-      {{ lmn_key_lines[:-1] | zip(lmn_key_lines[1:]) | selectattr('0', 'match', '^(pub|sec):')
+      {{ lmn_key_lines[:-1] | zip(lmn_key_lines[1:]) | selectattr('0', 'match', '^pub:')
          | map(attribute='1') | map('split', ':') | map(attribute='9') | list }}
     # The suites of package.edulution.io are Ubuntu codenames, not lmnNN.
     lmn_repo_deb_line: 'deb [arch=amd64 signed-by={{ lmn_repo_keyring }}] {{ lmn_repo_url }} {{ lmn_repo_suite }} main'
@@ -403,8 +403,9 @@
         that:
           - lmn_key_primary_fprs | length > 0
           - lmn_key_primary_fprs is subset(lmn_repo_key_fprs)
+          - lmn_key_lines | select('match', '^sec:') | list | length == 0
         fail_msg: >-
-          {{ lmn_repo_gpg_url }} provides no key or a key other than
+          {{ lmn_repo_gpg_url }} provides no key, a secret key or a key other than
           {{ lmn_repo_key_fingerprints | join(', ') }}. Installation stopped.
         quiet: true
       vars:
@@ -543,8 +544,9 @@
             that:
               - lmn_key_primary_fprs | length > 0
               - lmn_key_primary_fprs is subset(lmn_repo_key_fprs)
+              - lmn_key_lines | select('match', '^sec:') | list | length == 0
             fail_msg: >-
-              {{ item.item.stat.path }} contains no key or a key other than
+              {{ item.item.stat.path }} contains no key, a secret key or a key other than
               {{ lmn_repo_key_fingerprints | join(', ') }}. Installation stopped.
             quiet: true
           vars:
