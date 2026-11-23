@@ -256,13 +256,13 @@ All variables have default values. Through the API, the settings in the tables b
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `lmn_local_install` | `false` | linuxmuster runs on the same machine as edulution |
-| `lmn_webui_port` | `8443` | Port of WebDAV (edulution-fileproxy) in that case, since the edulution Traefik holds 443. Otherwise edulution-fileproxy listens on 443. A linuxmuster web UI from an earlier installation is stopped and disabled once edulution-fileproxy has passed its test, and restored if it then does not answer. |
+| `lmn_webui_port` | `8443` | Port of WebDAV (edulution-fileproxy) in that case, since the edulution Traefik holds 443. Otherwise edulution-fileproxy listens on 443. A linuxmuster web UI from an earlier installation is stopped and disabled once edulution-fileproxy has passed its test, and restored if it then does not answer (only on the first switch; a fileproxy that already served WebDAV stays). |
 
 ### WebDAV (edulution-fileproxy)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `lmn_fileproxy_rewrite_config` | `false` | The playbook writes `/etc/edulution-fileproxy/config.yml` only while it is the package default. `true` replaces a configuration made on the host; command line only (`-e`), not through the API. |
+| `lmn_fileproxy_rewrite_config` | `false` | The playbook writes `/etc/edulution-fileproxy/config.yml` only while it is the package default. A configuration made on the host is kept: it is tested without the bind user's login, and WebDAV is checked on the port it sets. `true` replaces it; command line only (`-e`), not through the API. |
 
 The API checks every value against the form its setting needs (addresses, names, disk, port, flags). Server name, domain name and country are taken in lower case. School name, location and state may contain any text except line breaks, control characters, `%` and `$`; the admin password uses the characters the web installer allows.
 

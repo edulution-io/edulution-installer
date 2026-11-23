@@ -897,9 +897,10 @@
     - name: Gather the installed services (web UI from an earlier installation)
       ansible.builtin.service_facts:
 
-    - name: Remember the state of the linuxmuster web UI
+    - name: Remember the state of the linuxmuster web UI and of edulution-fileproxy
       ansible.builtin.set_fact:
         lmn_webui_service: "{{ ansible_facts.services['linuxmuster-webui.service'] | default({}) }}"
+        lmn_fileproxy_was_running: "{{ (ansible_facts.services['edulution-fileproxy.service'] | default({})).state | default('') == 'running' }}"
 
     # The package installs the service neither enabled nor started.
     - name: Install edulution-fileproxy
@@ -921,44 +922,24 @@
         fail_msg: "testparm returned no usable NetBIOS domain: '{{ lmn_samba_workgroup.stdout | trim }}'"
         quiet: true
 
-    # The service account cannot read /etc/linuxmuster/ssl, so it gets its own copy.
+    # The service account cannot read /etc/linuxmuster/ssl, so it gets its own
+    # copy. It stays root's, as the login test below trusts it.
     - name: Give edulution-fileproxy the linuxmuster CA
       ansible.builtin.copy:
         src: /etc/linuxmuster/ssl/cacert.pem
         remote_src: true
         dest: '{{ lmn_fileproxy_ca }}'
-        owner: edulution-fileproxy
-        group: edulution-fileproxy
+        owner: root
+        group: root
         mode: '0644'
       register: lmn_fileproxy_ca_file
-
-    - name: Read the edulution-fileproxy configuration and its package default
-      ansible.builtin.slurp:
-        src: '{{ item }}'
-      loop:
-        - /etc/edulution-fileproxy/config.yml
-        - /etc/edulution-fileproxy/config.example.yml
-      register: lmn_fileproxy_configs
-
-    # The package's postinst copies the example and only sets base_dn in it.
-    # Any other content was configured on this host and stays.
-    - name: Decide whether to write the edulution-fileproxy configuration
-      ansible.builtin.set_fact:
-        lmn_fileproxy_write_config: >-
-          {{ (lmn_fileproxy_rewrite_config | bool)
-             or (lmn_fileproxy_configs.results | map(attribute='content') | map('b64decode')
-                 | map('regex_replace', '(?m)^[ \t]*base_dn:.*$', '') | unique | length == 1) }}
 
     # The wiki indexer needs an Elasticsearch sidecar in Docker, which this
     # installation does not set up, so it is switched off. base_dn is upper
     # case as the package's own upgrade writes it.
-    - name: Write the edulution-fileproxy configuration
-      ansible.builtin.copy:
-        dest: /etc/edulution-fileproxy/config.yml
-        owner: edulution-fileproxy
-        group: edulution-fileproxy
-        mode: '0600'
-        content: |
+    - name: Render the installer's edulution-fileproxy configuration
+      ansible.builtin.set_fact:
+        lmn_fileproxy_config: |
           ldap:
             server: "ldaps://{{ lmn_fileproxy_ldap_host }}:636"
             insecure_skip_verify: false
@@ -982,25 +963,67 @@
             file: "/var/log/edulution-fileproxy/webdav-server.log"
           elasticsearch:
             enabled: false
+
+    # A configuration made on this host may hold passwords.
+    - name: Read the edulution-fileproxy configuration and its package default
+      ansible.builtin.slurp:
+        src: '{{ item }}'
+      loop:
+        - /etc/edulution-fileproxy/config.yml
+        - /etc/edulution-fileproxy/config.example.yml
+      register: lmn_fileproxy_configs
+      no_log: true
+
+    # The package's postinst copies the example and only sets base_dn in it.
+    # Any other content was configured on this host and stays; WebDAV is then
+    # checked on the port it sets.
+    - name: Decide how to handle the edulution-fileproxy configuration
+      ansible.builtin.set_fact:
+        lmn_fileproxy_write_config: '{{ lmn_fileproxy_replace | bool }}'
+        lmn_fileproxy_config_is_ours: >-
+          {{ (lmn_fileproxy_replace | bool) or (lmn_fileproxy_current | trim) == (lmn_fileproxy_config | trim) }}
+        lmn_fileproxy_listen_port: >-
+          {{ lmn_fileproxy_port if (lmn_fileproxy_replace | bool)
+             else ((lmn_fileproxy_current | from_yaml).http.address | default(':' ~ lmn_fileproxy_port)
+                   | regex_replace('^.*:', '')) }}
+      vars:
+        lmn_fileproxy_current: "{{ lmn_fileproxy_configs.results[0].content | b64decode }}"
+        lmn_fileproxy_replace: >-
+          {{ (lmn_fileproxy_rewrite_config | bool)
+             or (lmn_fileproxy_configs.results | map(attribute='content') | map('b64decode')
+                 | map('regex_replace', '(?m)^[ \t]*base_dn:.*$', '') | unique | length == 1) }}
+      no_log: true
+
+    - name: Write the edulution-fileproxy configuration
+      ansible.builtin.copy:
+        dest: /etc/edulution-fileproxy/config.yml
+        owner: edulution-fileproxy
+        group: edulution-fileproxy
+        mode: '0600'
+        content: '{{ lmn_fileproxy_config }}'
       register: lmn_fileproxy_config_file
       when: lmn_fileproxy_write_config | bool
 
     - name: Note the kept edulution-fileproxy configuration
       ansible.builtin.debug:
         msg: >-
-          /etc/edulution-fileproxy/config.yml differs from the package default (an earlier run
-          or a change on this host) and is kept.
+          /etc/edulution-fileproxy/config.yml was changed on this host and is kept. It is tested
+          without a login, and WebDAV is checked on its port {{ lmn_fileproxy_listen_port }}.
           -e lmn_fileproxy_rewrite_config=true replaces it with the installer's configuration.
-      when: not (lmn_fileproxy_write_config | bool)
+      when: not (lmn_fileproxy_config_is_ours | bool)
 
     # As the service user, with the bind user: the same TLS verification, bind
     # and SMB login a WebDAV login goes through. The /webdav/ probe further down
-    # gets its 401 before any of that.
+    # gets its 401 before any of that. The bind user's password goes only to the
+    # servers of the installer's own configuration. The SMB part of the test has
+    # no deadline of its own after connecting, hence timeout.
     - name: Test edulution-fileproxy against LDAPS and SMB
       ansible.builtin.command:
-        argv: [runuser, -u, edulution-fileproxy, --, edulution-fileproxy, -c, /etc/edulution-fileproxy/config.yml,
-               -t, -user, edulutionui-binduser]
-        stdin: '{{ binduser_pw_result.stdout | trim }}'
+        argv: >-
+          {{ ['runuser', '-u', 'edulution-fileproxy', '--', 'timeout', '-k', '10', '120',
+              'edulution-fileproxy', '-c', '/etc/edulution-fileproxy/config.yml', '-t']
+             + (['-user', 'edulutionui-binduser'] if (lmn_fileproxy_config_is_ours | bool) else []) }}
+        stdin: "{{ (binduser_pw_result.stdout | trim) if (lmn_fileproxy_config_is_ours | bool) else omit }}"
       register: lmn_fileproxy_test
       changed_when: false
       failed_when: false
@@ -1010,10 +1033,15 @@
       ansible.builtin.assert:
         that: lmn_fileproxy_test.rc == 0
         fail_msg: >-
-          edulution-fileproxy -t -user edulutionui-binduser failed:
+          {% if lmn_fileproxy_test.rc in [124, 137] %}
+          edulution-fileproxy -t did not finish within 120 seconds: the LDAP or SMB server accepts
+          the connection but does not answer.
+          {% else %}
+          edulution-fileproxy -t{{ ' -user edulutionui-binduser' if (lmn_fileproxy_config_is_ours | bool) else '' }} failed:
           {{ lmn_fileproxy_test.stdout_lines | select('search', '❌') | join(' / ') or lmn_fileproxy_test.stderr }}.
           A certificate without the server name in its subject alternative names is renewed with
           'linuxmuster-renew-certs -c server' and 'systemctl restart samba-ad-dc'.
+          {% endif %}
         quiet: true
 
     - name: Hand the WebDAV port to edulution-fileproxy
@@ -1034,7 +1062,7 @@
         # 401 without credentials: the listener runs and /webdav/ asks for the login.
         - name: Wait until edulution-fileproxy answers on /webdav/
           ansible.builtin.uri:
-            url: 'https://127.0.0.1:{{ lmn_fileproxy_port }}/webdav/'
+            url: 'https://127.0.0.1:{{ lmn_fileproxy_listen_port }}/webdav/'
             validate_certs: false
             use_proxy: false
             status_code: 401
@@ -1042,26 +1070,49 @@
           until: lmn_fileproxy_probe.status == 401
           retries: 12
           delay: 5
+
+        # Another HTTPS service on the port may answer 401 as well, and the unit
+        # counts as started before the fileproxy has bound its port.
+        - name: Check that edulution-fileproxy holds the port
+          ansible.builtin.command:
+            argv:
+              - bash
+              - -c
+              - 'pid=$(systemctl show -p MainPID --value edulution-fileproxy) && [ "$pid" -gt 0 ] && ss -Hltnp "sport = :$1" | grep -q "pid=$pid,"'
+              - check-listener
+              - '{{ lmn_fileproxy_listen_port }}'
+          register: lmn_fileproxy_listener
+          changed_when: false
+          until: lmn_fileproxy_listener.rc == 0
+          retries: 3
+          delay: 2
       rescue:
+        # A fileproxy that already served WebDAV before this run stays; only a
+        # first cutover hands the port back to the web UI.
+        - name: Decide whether to restore the earlier web UI
+          ansible.builtin.set_fact:
+            lmn_fileproxy_restore_webui: "{{ lmn_webui_service | length > 0 and not (lmn_fileproxy_was_running | bool) }}"
+
         - name: Stop edulution-fileproxy for the earlier web UI
           ansible.builtin.systemd:
             name: edulution-fileproxy
             state: stopped
             enabled: false
-          when: lmn_webui_service | length > 0
+          when: lmn_fileproxy_restore_webui | bool
 
         - name: Restore the linuxmuster web UI
           ansible.builtin.systemd:
             name: linuxmuster-webui
             state: "{{ 'started' if lmn_webui_service.state == 'running' else 'stopped' }}"
             enabled: "{{ lmn_webui_service.status == 'enabled' }}"
-          when: lmn_webui_service | length > 0
+          when: lmn_fileproxy_restore_webui | bool
 
         - name: 'Stop: edulution-fileproxy does not answer'
           ansible.builtin.fail:
             msg: >-
-              edulution-fileproxy does not answer on https://127.0.0.1:{{ lmn_fileproxy_port }}/webdav/.
-              {{ 'The linuxmuster web UI was restored. ' if lmn_webui_service | length > 0 else '' }}See
+              edulution-fileproxy does not answer on https://127.0.0.1:{{ lmn_fileproxy_listen_port }}/webdav/
+              or another service holds that port.
+              {{ 'The linuxmuster web UI was restored. ' if (lmn_fileproxy_restore_webui | bool) else '' }}See
               'journalctl -u edulution-fileproxy' and /var/log/edulution-fileproxy/webdav-server.log.
 
     # =========================================================================
@@ -1129,6 +1180,8 @@
     # =========================================================================
 
     - name: Installation finished
+      vars:
+        lmn_webdav_port_suffix: "{{ '' if lmn_fileproxy_listen_port | int == 443 else ':' ~ lmn_fileproxy_listen_port }}"
       ansible.builtin.debug:
         msg: |
           ====================================================================
@@ -1139,7 +1192,7 @@
           IP:     {{ lmn_server_ip }}
 
           API:    https://{{ lmn_server_ip }}:8001
-          WebDAV: https://{{ lmn_server_ip }}{{ '' if (lmn_fileproxy_port | int) == 443 else ':' ~ lmn_fileproxy_port }}/webdav/ (edulution-fileproxy)
+          WebDAV: https://{{ lmn_server_ip }}{{ lmn_webdav_port_suffix }}/webdav/ (edulution-fileproxy)
           Login:  global-admin (password from the setup)
 
           The linuxmuster web UI (Ajenti) is not installed - user and device
