@@ -42,7 +42,7 @@
     "manualEntryLabel": "Go to manual configuration:",
     "manualEntry": "Enter manually",
     "localInstall": "Install on this machine",
-    "localInstallHint": "The linuxmuster.net server is installed on the same machine as edulution. The docker0 IP is used as its address and the linuxmuster web UI (Ajenti) is moved to a different port."
+    "localInstallHint": "The linuxmuster.net server is installed on the same machine as edulution. The docker0 IP is used as its address and WebDAV (edulution-fileproxy) is moved to a different port."
   },
   "configure": {
     "externalDomainLmn": "External domain of the linuxmuster.net server:",

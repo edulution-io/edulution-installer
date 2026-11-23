@@ -345,8 +345,8 @@ def configure(config: ConfigurationRequest, data: Data = Depends(getData)):
     data.DATA_LMN_CA_CERTIFICATE = config.lmnCaCertificate
     data.DATA_EDULUTION_EXTERNAL_DOMAIN = config.edulutionExternalDomain
     data.DATA_LMN_LOCAL_INSTALL = config.lmnLocalInstall
-    # Ajenti/webdav bleibt auf 443, ausser bei "gleiche Maschine": dort weicht
-    # die linuxmuster-Web-UI dem edulution-Traefik auf lmnWebuiPort aus.
+    # WebDAV (edulution-fileproxy, auf aelteren Servern Ajenti) bleibt auf 443, ausser bei
+    # "gleiche Maschine": dort weicht es dem edulution-Traefik auf lmnWebuiPort aus.
     data.DATA_LMN_WEBUI_PORT = config.lmnWebuiPort if config.lmnLocalInstall else 443
     return {"status": True, "message": "Konfiguration gespeichert"}
 
@@ -372,12 +372,16 @@ def checkAPIStatus(data: Data = Depends(getData)):
 @api.get("/check-webdav-status")
 def checkWebDAV(data: Data = Depends(getData)):
     try:
+        # Only checks that the server the admin entered answers; edulution-fileproxy
+        # brings a self-signed certificate. The response is not passed on.
+        # nosemgrep: python.flask.security.injection.ssrf-requests.ssrf-requests, python.requests.security.disabled-cert-validation.disabled-cert-validation
         result = requests.get(
-            "https://" + data.DATA_LMN_EXTERNAL_DOMAIN + ":" + str(data.DATA_LMN_WEBUI_PORT),
+            "https://" + data.DATA_LMN_EXTERNAL_DOMAIN + ":" + str(data.DATA_LMN_WEBUI_PORT) + "/webdav/",
             verify=False,
             timeout=3,
         )
-        if result.status_code == 200:
+        # edulution-fileproxy has nothing at "/" and asks for a login on /webdav/.
+        if result.status_code in (200, 401):
             return {"status": True, "message": "Successful"}
         return {"status": False, "message": f"Got HTTP-Status {result.status_code}"}
     except requests.exceptions.ConnectTimeout:
@@ -1011,9 +1015,10 @@ def generateRandom(length=5):
 def createEdulutionEnvFile(data: Data):
     root_dn = re.search(r"(DC=.*$)", data.DATA_LMN_BINDUSER_DN).group(1)
 
-    # Ajenti serves the LMN webdav. On a "same machine" install it is moved off
-    # 443 (which the edulution Traefik occupies), so webdav must be addressed on
-    # the new port. On 443 the netloc stays bare to preserve prior behaviour.
+    # edulution-fileproxy (Ajenti on older servers) serves the LMN webdav. On a
+    # "same machine" install it is moved off 443 (which the edulution Traefik
+    # occupies), so webdav must be addressed on the new port. On 443 the netloc
+    # stays bare to preserve prior behaviour.
     webdav_port = data.DATA_LMN_WEBUI_PORT or 443
     webdav_netloc = (
         data.DATA_LMN_EXTERNAL_DOMAIN

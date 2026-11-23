@@ -42,7 +42,7 @@
     "manualEntryLabel": "Hier gehts zur manuellen Eingabe:",
     "manualEntry": "Manuell eingeben",
     "localInstall": "Auf dieser Maschine installieren",
-    "localInstallHint": "Der linuxmuster.net-Server wird auf derselben Maschine wie edulution installiert. Als Adresse wird die docker0-IP verwendet und die linuxmuster-Web-UI (Ajenti) auf einen anderen Port verschoben."
+    "localInstallHint": "Der linuxmuster.net-Server wird auf derselben Maschine wie edulution installiert. Als Adresse wird die docker0-IP verwendet und WebDAV (edulution-fileproxy) auf einen anderen Port verschoben."
   },
   "configure": {
     "externalDomainLmn": "Externe Domain des linuxmuster.net-Servers:",
