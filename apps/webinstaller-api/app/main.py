@@ -372,6 +372,9 @@ def checkAPIStatus(data: Data = Depends(getData)):
 @api.get("/check-webdav-status")
 def checkWebDAV(data: Data = Depends(getData)):
     try:
+        # Only checks that the server the admin entered answers; edulution-fileproxy
+        # brings a self-signed certificate. The response is not passed on.
+        # nosemgrep: python.flask.security.injection.ssrf-requests.ssrf-requests, python.requests.security.disabled-cert-validation.disabled-cert-validation
         result = requests.get(
             "https://" + data.DATA_LMN_EXTERNAL_DOMAIN + ":" + str(data.DATA_LMN_WEBUI_PORT) + "/webdav/",
             verify=False,
