@@ -18,6 +18,7 @@ import {
   getLmnPlaybookStatus,
   submitConfiguration,
   shutdownLmnInstaller,
+  type ApiError,
 } from '../api/installerApi';
 import EdulutionDomainField from '../components/EdulutionDomainField';
 import { defaultEdulutionDomain, isValidEdulutionDomain } from '../utils/edulutionDomain';
@@ -51,6 +52,9 @@ const LmnInstallPage = () => {
   const reconnectAttemptRef = useRef(0);
   const lastContactRef = useRef(Date.now());
   const connectOutputRef = useRef<() => void>(() => {});
+  const pendingLinesRef = useRef<string[]>([]);
+  const flushFrameRef = useRef<number | undefined>(undefined);
+  const startWhenIdleRef = useRef(false);
 
   useEffect(() => {
     if (logRef.current) {
@@ -58,12 +62,30 @@ const LmnInstallPage = () => {
     }
   }, [store.lmnOutputLog]);
 
+  // A replay brings thousands of lines at once; one store update per frame keeps the page responsive.
+  const flushLines = useCallback(() => {
+    window.cancelAnimationFrame(flushFrameRef.current ?? 0);
+    flushFrameRef.current = undefined;
+    const lines = pendingLinesRef.current;
+    pendingLinesRef.current = [];
+    if (lines.length > 0) store.appendLmnOutputLines(lines);
+  }, [store]);
+
+  const queueLine = useCallback(
+    (line: string) => {
+      pendingLinesRef.current.push(line);
+      flushFrameRef.current ??= window.requestAnimationFrame(flushLines);
+    },
+    [flushLines],
+  );
+
   const stopFollowing = useCallback(() => {
+    flushLines();
     finalStatusRef.current = true;
     window.clearInterval(statusPollRef.current);
     window.clearTimeout(reconnectTimerRef.current);
     wsRef.current?.close();
-  }, []);
+  }, [flushLines]);
 
   // Only the job status of the server ends a run here; a lost output stream is reconnected.
   const finish = useCallback(
@@ -86,6 +108,9 @@ const LmnInstallPage = () => {
       lastContactRef.current = Date.now();
       setConnection('connected');
       // The server sends the output of the run so far first.
+      window.cancelAnimationFrame(flushFrameRef.current ?? 0);
+      flushFrameRef.current = undefined;
+      pendingLinesRef.current = [];
       store.clearLmnOutput();
     };
 
@@ -94,7 +119,7 @@ const LmnInstallPage = () => {
       try {
         const msg = JSON.parse(event.data as string) as { type: string; data: string };
         if (msg.type === 'stdout' || msg.type === 'stderr') {
-          store.appendLmnOutput(msg.data);
+          queueLine(msg.data);
         } else if (msg.type === 'status') {
           if (msg.data === 'successful' || msg.data === 'completed') {
             finish('completed');
@@ -102,10 +127,10 @@ const LmnInstallPage = () => {
             finish('failed');
           }
         } else if (msg.type === 'event') {
-          store.appendLmnOutput(msg.data);
+          queueLine(msg.data);
         }
       } catch {
-        store.appendLmnOutput(event.data as string);
+        queueLine(event.data as string);
       }
     };
 
@@ -116,45 +141,8 @@ const LmnInstallPage = () => {
       reconnectAttemptRef.current += 1;
       reconnectTimerRef.current = window.setTimeout(() => connectOutputRef.current(), delay);
     };
-  }, [finish, store]);
+  }, [finish, queueLine, store]);
   connectOutputRef.current = connectOutput;
-
-  const pollStatus = useCallback(async () => {
-    try {
-      const { status } = await getLmnPlaybookStatus();
-      lastContactRef.current = Date.now();
-      if (!finalStatusRef.current && (status === 'completed' || status === 'failed')) {
-        finish(status);
-      }
-    } catch {
-      // Unreachable for now; the check below tells when that lasts.
-    }
-    if (
-      !finalStatusRef.current &&
-      wsRef.current?.readyState !== WebSocket.OPEN &&
-      Date.now() - lastContactRef.current > UNRESPONSIVE_AFTER_MS
-    ) {
-      setConnection('unresponsive');
-    }
-  }, [finish]);
-
-  const followRun = useCallback(() => {
-    finalStatusRef.current = false;
-    lastContactRef.current = Date.now();
-    connectOutput();
-    window.clearInterval(statusPollRef.current);
-    statusPollRef.current = window.setInterval(() => {
-      void pollStatus();
-    }, STATUS_POLL_MS);
-  }, [connectOutput, pollStatus]);
-
-  const checkAgain = useCallback(() => {
-    lastContactRef.current = Date.now();
-    reconnectAttemptRef.current = 0;
-    setConnection('reconnecting');
-    connectOutput();
-    void pollStatus();
-  }, [connectOutput, pollStatus]);
 
   const startPlaybook = useCallback(async (): Promise<boolean> => {
     try {
@@ -178,11 +166,58 @@ const LmnInstallPage = () => {
       });
       return true;
     } catch (error) {
+      // Started already, e.g. by this page before a reload: follow that run.
+      if ((error as ApiError).status === 409) return true;
       store.appendLmnOutput(`${t('lmnInstall.playbookError')}: ${(error as Error).message}`);
       store.setLmnPlaybookStatus('failed');
       return false;
     }
   }, [store, t]);
+
+  const pollStatus = useCallback(async () => {
+    try {
+      const { status } = await getLmnPlaybookStatus();
+      lastContactRef.current = Date.now();
+      if (status === 'idle' && startWhenIdleRef.current) {
+        startWhenIdleRef.current = false;
+        store.clearLmnOutput();
+        store.clearLmnFetchedConfig();
+        if (!(await startPlaybook())) stopFollowing();
+        return;
+      }
+      if (!finalStatusRef.current && (status === 'completed' || status === 'failed')) {
+        finish(status);
+      }
+      setConnection((current) => (current === 'unresponsive' ? 'reconnecting' : current));
+    } catch {
+      // Unreachable for now; the check below tells when that lasts.
+    }
+    if (
+      !finalStatusRef.current &&
+      wsRef.current?.readyState !== WebSocket.OPEN &&
+      Date.now() - lastContactRef.current > UNRESPONSIVE_AFTER_MS
+    ) {
+      setConnection('unresponsive');
+    }
+  }, [finish, startPlaybook, stopFollowing, store]);
+
+  const followRun = useCallback(() => {
+    finalStatusRef.current = false;
+    lastContactRef.current = Date.now();
+    connectOutput();
+    window.clearInterval(statusPollRef.current);
+    statusPollRef.current = window.setInterval(() => {
+      void pollStatus();
+    }, STATUS_POLL_MS);
+  }, [connectOutput, pollStatus]);
+
+  const checkAgain = useCallback(() => {
+    lastContactRef.current = Date.now();
+    reconnectAttemptRef.current = 0;
+    setConnection('reconnecting');
+    connectOutput();
+    void pollStatus();
+  }, [connectOutput, pollStatus]);
 
   // Auto-fetch config from LMN API as soon as playbook completes
   useEffect(() => {
@@ -265,12 +300,18 @@ const LmnInstallPage = () => {
         store.setLmnPlaybookStatus('completed');
         return;
       }
+      store.setLmnPlaybookStatus('running');
+      if (status === null) {
+        // A reload while the server is unreachable: a run may be going on. The status poll starts one if none is.
+        startWhenIdleRef.current = true;
+        followRun();
+        return;
+      }
       if (status !== 'running') {
         // A new run may target another server, so the configuration of an earlier run no longer applies.
         store.clearLmnOutput();
         store.clearLmnFetchedConfig();
       }
-      store.setLmnPlaybookStatus('running');
       // Connected after the start: the server sends the whole output of the run on connecting.
       if (status !== 'running' && !(await startPlaybook())) return;
       if (!active) return;
@@ -346,7 +387,7 @@ const LmnInstallPage = () => {
               className="mt-0.5 text-amber-500"
             />
             <span>
-              {t('lmnInstall.unresponsive')}{' '}
+              {t('lmnInstall.unresponsive', { minutes: UNRESPONSIVE_AFTER_MS / 60000 })}{' '}
               <code className="break-all">tail -f /opt/edulution-installer/ansible/artifacts/*/stdout</code>
             </span>
           </div>

@@ -173,8 +173,8 @@
     "configFetched": "Configuration fetched successfully. You can now restart the linuxmuster.net server and then click 'Next'.",
     "configFetchedLocal": "Configuration fetched successfully. Check the address of edulution UI and click 'Next'.",
     "configError": "Failed to fetch edulution configuration. Please check if the linuxmuster.net server is accessible.",
-    "reconnecting": "The connection to the linuxmuster.net installer was interrupted. The installation continues on the server; reconnecting...",
-    "unresponsive": "The linuxmuster.net installer has not answered for more than 2 minutes. The installation may still be running. Follow it on the server with:",
+    "reconnecting": "The connection to the linuxmuster.net installer was interrupted and is being restored. The installation on the server is not affected by this.",
+    "unresponsive": "The linuxmuster.net installer has not answered for more than {{minutes}} minutes. The installation may still be running. Follow it on the server with:",
     "checkAgain": "Check again"
   },
   "finish": {

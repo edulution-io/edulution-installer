@@ -173,8 +173,8 @@
     "configFetched": "Konfiguration erfolgreich abgerufen. Sie können den linuxmuster.net-Server jetzt neu starten und anschließend auf 'Weiter' klicken.",
     "configFetchedLocal": "Konfiguration erfolgreich abgerufen. Prüfen Sie die Adresse der edulutionUI und klicken Sie auf 'Weiter'.",
     "configError": "Edulution-Konfiguration konnte nicht abgerufen werden. Bitte prüfen Sie, ob der linuxmuster.net-Server erreichbar ist.",
-    "reconnecting": "Die Verbindung zum linuxmuster.net-Installer ist unterbrochen. Die Installation läuft auf dem Server weiter; die Verbindung wird wiederhergestellt...",
-    "unresponsive": "Der linuxmuster.net-Installer antwortet seit über 2 Minuten nicht. Die Installation läuft möglicherweise weiter. Auf dem Server lässt sie sich verfolgen mit:",
+    "reconnecting": "Die Verbindung zum linuxmuster.net-Installer ist unterbrochen und wird wiederhergestellt. Die Installation auf dem Server ist davon nicht betroffen.",
+    "unresponsive": "Der linuxmuster.net-Installer antwortet seit über {{minutes}} Minuten nicht. Die Installation läuft möglicherweise weiter. Auf dem Server lässt sie sich verfolgen mit:",
     "checkAgain": "Erneut prüfen"
   },
   "finish": {

@@ -50,6 +50,8 @@ interface AcmeCnameResponse {
   resolved: boolean;
 }
 
+export type ApiError = Error & { status: number };
+
 const apiFetch = async <T>(
   url: string,
   options?: RequestInit,
@@ -57,9 +59,10 @@ const apiFetch = async <T>(
 ): Promise<T> => {
   const response = await fetch(url, options);
   if (!response.ok) {
-    throw new Error(
-      toMessage ? toMessage(await response.json().catch(() => null), response.status) : `API error: ${response.status}`,
-    );
+    const message = toMessage
+      ? toMessage(await response.json().catch(() => null), response.status)
+      : `API error: ${response.status}`;
+    throw Object.assign(new Error(message), { status: response.status }) as ApiError;
   }
   return response.json() as Promise<T>;
 };

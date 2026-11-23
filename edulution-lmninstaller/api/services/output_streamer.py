@@ -9,6 +9,8 @@ from api.models import MessageType, WebSocketMessage
 
 # Bounds the memory of a run whose output never ends; a normal installation stays far below.
 HISTORY_LIMIT = 20000
+# A peer that vanished without closing would otherwise hold up the output for everyone.
+SEND_TIMEOUT = 10
 
 
 class OutputStreamer:
@@ -31,7 +33,7 @@ class OutputStreamer:
         async with self._lock:
             try:
                 for message in list(self._history):
-                    await websocket.send_json(message.model_dump(mode="json"))
+                    await asyncio.wait_for(websocket.send_json(message.model_dump(mode="json")), SEND_TIMEOUT)
             except Exception:
                 return False
             self._connections.append(websocket)
@@ -49,7 +51,7 @@ class OutputStreamer:
             disconnected = []
             for connection in self._connections:
                 try:
-                    await connection.send_json(message.model_dump(mode="json"))
+                    await asyncio.wait_for(connection.send_json(message.model_dump(mode="json")), SEND_TIMEOUT)
                 except Exception:
                     disconnected.append(connection)
 
