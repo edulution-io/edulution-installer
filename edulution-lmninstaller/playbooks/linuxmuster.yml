@@ -94,6 +94,12 @@
     lmn_local_install: false
     lmn_webui_port: 8443
 
+    # edulution-fileproxy serves WebDAV where the web UI did: on 443, or on
+    # lmn_webui_port for a local installation. The edulution installer expects it there.
+    lmn_fileproxy_port: "{{ lmn_webui_port if (lmn_local_install | bool) else 443 }}"
+    lmn_fileproxy_config: /etc/edulution-fileproxy/config.yml
+    lmn_fileproxy_ca: /etc/edulution-fileproxy/dc-ca.pem
+
     # The firewall is NOT installed by default (lmn_skip_firewall: true).
     # It has to be set up separately.
 
@@ -880,6 +886,94 @@
         daemon_reload: true
 
     # =========================================================================
+    # INSTALL EDULUTION-FILEPROXY (WebDAV)
+    # =========================================================================
+    # The linuxmuster packages from package.edulution.io have no web UI and so
+    # no WebDAV. edulution-fileproxy, from the same repository, serves /webdav/.
+
+    - name: Install edulution-fileproxy
+      ansible.builtin.apt:
+        name: edulution-fileproxy
+        state: present
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Read the Samba NetBIOS domain
+      ansible.builtin.command:
+        argv: [testparm, -s, --parameter-name=workgroup]
+      register: lmn_samba_workgroup
+      changed_when: false
+
+    # The service account cannot read /etc/linuxmuster/ssl, so it gets its own copy.
+    - name: Give edulution-fileproxy the linuxmuster CA
+      ansible.builtin.copy:
+        src: /etc/linuxmuster/ssl/cacert.pem
+        remote_src: true
+        dest: '{{ lmn_fileproxy_ca }}'
+        owner: edulution-fileproxy
+        group: edulution-fileproxy
+        mode: '0644'
+      register: lmn_fileproxy_ca_file
+
+    # The wiki indexer needs an Elasticsearch sidecar in Docker, which this
+    # installation does not set up, so it is switched off.
+    - name: Write the edulution-fileproxy configuration
+      ansible.builtin.copy:
+        dest: '{{ lmn_fileproxy_config }}'
+        owner: edulution-fileproxy
+        group: edulution-fileproxy
+        mode: '0600'
+        content: |
+          ldap:
+            server: "ldaps://{{ lmn_servername }}.{{ lmn_domainname }}:636"
+            insecure_skip_verify: false
+            root_ca_file: "{{ lmn_fileproxy_ca }}"
+            base_dn: "{{ edulution_dc_parts }}"
+          smb:
+            server: "{{ lmn_server_ip }}"
+            domain: "{{ lmn_samba_workgroup.stdout | trim | upper }}"
+            share_autodiscover: false
+            message_signing: "require"
+            shares:
+              - name: default-school
+              - name: linuxmuster-global
+          http:
+            address: ":{{ lmn_fileproxy_port }}"
+            webdav_prefix: "/webdav/"
+            cert_file: "/etc/edulution-fileproxy/webdav.pem"
+            key_file: "/etc/edulution-fileproxy/webdav.key"
+          log:
+            level: "info"
+            file: "/var/log/edulution-fileproxy/webdav-server.log"
+          elasticsearch:
+            enabled: false
+      register: lmn_fileproxy_config_file
+
+    # As the service user, so that an unreadable CA or key fails here.
+    - name: Check the edulution-fileproxy configuration
+      ansible.builtin.command:
+        argv: [runuser, -u, edulution-fileproxy, --, edulution-fileproxy, -c, '{{ lmn_fileproxy_config }}', -t]
+      changed_when: false
+
+    - name: Start edulution-fileproxy
+      ansible.builtin.systemd:
+        name: edulution-fileproxy
+        enabled: true
+        state: "{{ 'restarted' if (lmn_fileproxy_ca_file is changed or lmn_fileproxy_config_file is changed) else 'started' }}"
+
+    # 401 without credentials: the listener runs and /webdav/ asks for the login.
+    - name: Wait until edulution-fileproxy answers on /webdav/
+      ansible.builtin.uri:
+        url: 'https://127.0.0.1:{{ lmn_fileproxy_port }}/webdav/'
+        validate_certs: false
+        use_proxy: false
+        status_code: 401
+      register: lmn_fileproxy_probe
+      until: lmn_fileproxy_probe.status == 401
+      retries: 12
+      delay: 5
+
+    # =========================================================================
     # ADJUST THE AJENTI PORT (local installation only)
     # =========================================================================
     # On the same machine the edulution Traefik uses host port 443. So that the
@@ -980,6 +1074,7 @@
           IP:     {{ lmn_server_ip }}
 
           API:    https://{{ lmn_server_ip }}:8001
+          WebDAV: https://{{ lmn_server_ip }}{{ '' if (lmn_fileproxy_port | int) == 443 else ':' ~ lmn_fileproxy_port }}/webdav/ (edulution-fileproxy)
           Login:  global-admin (password from the setup)
 
           The linuxmuster web UI (Ajenti) is not installed - user and device
