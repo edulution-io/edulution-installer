@@ -98,6 +98,8 @@
     lmn_fileproxy_port: "{{ lmn_webui_port if (lmn_local_install | bool) else 443 }}"
     lmn_fileproxy_ca: /etc/edulution-fileproxy/dc-ca.pem
     lmn_fileproxy_ldap_host: '{{ lmn_servername }}.{{ lmn_domainname }}'
+    # A config.yml configured on this host is kept unless this is true.
+    lmn_fileproxy_rewrite_config: false
 
     # The firewall is NOT installed by default (lmn_skip_firewall: true).
     # It has to be set up separately.
@@ -889,18 +891,17 @@
     # =========================================================================
     # The linuxmuster packages from package.edulution.io have no web UI and so
     # no WebDAV. edulution-fileproxy, from the same repository, serves /webdav/.
+    # Everything is checked before a web UI from an earlier installation gives
+    # up its port, and that web UI is restored if the fileproxy does not answer.
 
     - name: Gather the installed services (web UI from an earlier installation)
       ansible.builtin.service_facts:
 
-    # edulution-fileproxy takes over the web UI's port and its WebDAV.
-    - name: Stop the linuxmuster web UI from an earlier installation
-      ansible.builtin.systemd:
-        name: linuxmuster-webui
-        state: stopped
-        enabled: false
-      when: "'linuxmuster-webui.service' in ansible_facts.services"
+    - name: Remember the state of the linuxmuster web UI
+      ansible.builtin.set_fact:
+        lmn_webui_service: "{{ ansible_facts.services['linuxmuster-webui.service'] | default({}) }}"
 
+    # The package installs the service neither enabled nor started.
     - name: Install edulution-fileproxy
       ansible.builtin.apt:
         name: edulution-fileproxy
@@ -931,33 +932,26 @@
         mode: '0644'
       register: lmn_fileproxy_ca_file
 
-    # edulution-fileproxy only reaches LDAP when a user logs in, so the
-    # certificate check it will make is done here once.
-    - name: Verify the LDAPS certificate against the linuxmuster CA
-      ansible.builtin.command:
-        argv: [openssl, s_client, -connect, '{{ lmn_fileproxy_ldap_host }}:636', -CAfile, '{{ lmn_fileproxy_ca }}',
-               -verify_hostname, '{{ lmn_fileproxy_ldap_host }}', -verify_return_error]
-        # Q ends the session; empty stdin would leave s_client waiting on the task's stdin.
-        stdin: Q
-      register: lmn_fileproxy_ldaps
-      changed_when: false
-      failed_when: false
+    - name: Read the edulution-fileproxy configuration and its package default
+      ansible.builtin.slurp:
+        src: '{{ item }}'
+      loop:
+        - /etc/edulution-fileproxy/config.yml
+        - /etc/edulution-fileproxy/config.example.yml
+      register: lmn_fileproxy_configs
 
-    - name: Check the LDAPS certificate
-      ansible.builtin.assert:
-        that: lmn_fileproxy_ldaps.rc == 0
-        fail_msg: >-
-          The LDAPS certificate of {{ lmn_fileproxy_ldap_host }}:636 cannot be verified against
-          /etc/linuxmuster/ssl/cacert.pem, so edulution-fileproxy could not log users in.
-          openssl: {{ lmn_fileproxy_ldaps.stderr_lines | select('match', '^verify error') | first
-                      | default(lmn_fileproxy_ldaps.stderr | truncate(300)) }}.
-          A certificate without the server name in its subject alternative names is renewed with
-          'linuxmuster-renew-certs -c server' and 'systemctl restart samba-ad-dc'.
-        quiet: true
+    # The package's postinst copies the example and only sets base_dn in it.
+    # Any other content was configured on this host and stays.
+    - name: Decide whether to write the edulution-fileproxy configuration
+      ansible.builtin.set_fact:
+        lmn_fileproxy_write_config: >-
+          {{ (lmn_fileproxy_rewrite_config | bool)
+             or (lmn_fileproxy_configs.results | map(attribute='content') | map('b64decode')
+                 | map('regex_replace', '(?m)^[ \t]*base_dn:.*$', '') | unique | length == 1) }}
 
     # The wiki indexer needs an Elasticsearch sidecar in Docker, which this
     # installation does not set up, so it is switched off. base_dn is upper
-    # case as the package's own upgrade writes it, so a later run changes nothing.
+    # case as the package's own upgrade writes it.
     - name: Write the edulution-fileproxy configuration
       ansible.builtin.copy:
         dest: /etc/edulution-fileproxy/config.yml
@@ -989,30 +983,86 @@
           elasticsearch:
             enabled: false
       register: lmn_fileproxy_config_file
+      when: lmn_fileproxy_write_config | bool
 
-    # As the service user, so that an unreadable CA or key fails here.
-    - name: Check the edulution-fileproxy configuration
+    - name: Note the kept edulution-fileproxy configuration
+      ansible.builtin.debug:
+        msg: >-
+          /etc/edulution-fileproxy/config.yml differs from the package default (an earlier run
+          or a change on this host) and is kept.
+          -e lmn_fileproxy_rewrite_config=true replaces it with the installer's configuration.
+      when: not (lmn_fileproxy_write_config | bool)
+
+    # As the service user, with the bind user: the same TLS verification, bind
+    # and SMB login a WebDAV login goes through. The /webdav/ probe further down
+    # gets its 401 before any of that.
+    - name: Test edulution-fileproxy against LDAPS and SMB
       ansible.builtin.command:
-        argv: [runuser, -u, edulution-fileproxy, --, edulution-fileproxy, -c, /etc/edulution-fileproxy/config.yml, -t]
+        argv: [runuser, -u, edulution-fileproxy, --, edulution-fileproxy, -c, /etc/edulution-fileproxy/config.yml,
+               -t, -user, edulutionui-binduser]
+        stdin: '{{ binduser_pw_result.stdout | trim }}'
+      register: lmn_fileproxy_test
       changed_when: false
+      failed_when: false
+      no_log: true
 
-    - name: Start edulution-fileproxy
-      ansible.builtin.systemd:
-        name: edulution-fileproxy
-        enabled: true
-        state: "{{ 'restarted' if (lmn_fileproxy_ca_file is changed or lmn_fileproxy_config_file is changed) else 'started' }}"
+    - name: Check the edulution-fileproxy test
+      ansible.builtin.assert:
+        that: lmn_fileproxy_test.rc == 0
+        fail_msg: >-
+          edulution-fileproxy -t -user edulutionui-binduser failed:
+          {{ lmn_fileproxy_test.stdout_lines | select('search', '❌') | join(' / ') or lmn_fileproxy_test.stderr }}.
+          A certificate without the server name in its subject alternative names is renewed with
+          'linuxmuster-renew-certs -c server' and 'systemctl restart samba-ad-dc'.
+        quiet: true
 
-    # 401 without credentials: the listener runs and /webdav/ asks for the login.
-    - name: Wait until edulution-fileproxy answers on /webdav/
-      ansible.builtin.uri:
-        url: 'https://127.0.0.1:{{ lmn_fileproxy_port }}/webdav/'
-        validate_certs: false
-        use_proxy: false
-        status_code: 401
-      register: lmn_fileproxy_probe
-      until: lmn_fileproxy_probe.status == 401
-      retries: 12
-      delay: 5
+    - name: Hand the WebDAV port to edulution-fileproxy
+      block:
+        - name: Stop the linuxmuster web UI from an earlier installation
+          ansible.builtin.systemd:
+            name: linuxmuster-webui
+            state: stopped
+            enabled: false
+          when: lmn_webui_service | length > 0
+
+        - name: Start edulution-fileproxy
+          ansible.builtin.systemd:
+            name: edulution-fileproxy
+            enabled: true
+            state: "{{ 'restarted' if (lmn_fileproxy_ca_file is changed or lmn_fileproxy_config_file is changed) else 'started' }}"
+
+        # 401 without credentials: the listener runs and /webdav/ asks for the login.
+        - name: Wait until edulution-fileproxy answers on /webdav/
+          ansible.builtin.uri:
+            url: 'https://127.0.0.1:{{ lmn_fileproxy_port }}/webdav/'
+            validate_certs: false
+            use_proxy: false
+            status_code: 401
+          register: lmn_fileproxy_probe
+          until: lmn_fileproxy_probe.status == 401
+          retries: 12
+          delay: 5
+      rescue:
+        - name: Stop edulution-fileproxy for the earlier web UI
+          ansible.builtin.systemd:
+            name: edulution-fileproxy
+            state: stopped
+            enabled: false
+          when: lmn_webui_service | length > 0
+
+        - name: Restore the linuxmuster web UI
+          ansible.builtin.systemd:
+            name: linuxmuster-webui
+            state: "{{ 'started' if lmn_webui_service.state == 'running' else 'stopped' }}"
+            enabled: "{{ lmn_webui_service.status == 'enabled' }}"
+          when: lmn_webui_service | length > 0
+
+        - name: 'Stop: edulution-fileproxy does not answer'
+          ansible.builtin.fail:
+            msg: >-
+              edulution-fileproxy does not answer on https://127.0.0.1:{{ lmn_fileproxy_port }}/webdav/.
+              {{ 'The linuxmuster web UI was restored. ' if lmn_webui_service | length > 0 else '' }}See
+              'journalctl -u edulution-fileproxy' and /var/log/edulution-fileproxy/webdav-server.log.
 
     # =========================================================================
     # REBOOT REPLACEMENT: targeted service restarts instead of a full reboot
