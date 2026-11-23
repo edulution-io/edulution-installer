@@ -88,17 +88,16 @@
     lmn_disable_auto_updates: true
 
     # Local installation (edulution UI and LMN server on the same machine).
-    # Set to true for "same machine" in the installer UI.
-    # In that case the Ajenti web UI (port 443) collides with the edulution
-    # Traefik, so Ajenti is moved to lmn_webui_port.
+    # Set to true for "same machine" in the installer UI. The edulution
+    # Traefik then holds port 443, so WebDAV moves to lmn_webui_port.
     lmn_local_install: false
     lmn_webui_port: 8443
 
     # edulution-fileproxy serves WebDAV where the web UI did: on 443, or on
     # lmn_webui_port for a local installation. The edulution installer expects it there.
     lmn_fileproxy_port: "{{ lmn_webui_port if (lmn_local_install | bool) else 443 }}"
-    lmn_fileproxy_config: /etc/edulution-fileproxy/config.yml
     lmn_fileproxy_ca: /etc/edulution-fileproxy/dc-ca.pem
+    lmn_fileproxy_ldap_host: '{{ lmn_servername }}.{{ lmn_domainname }}'
 
     # The firewall is NOT installed by default (lmn_skip_firewall: true).
     # It has to be set up separately.
@@ -891,6 +890,17 @@
     # The linuxmuster packages from package.edulution.io have no web UI and so
     # no WebDAV. edulution-fileproxy, from the same repository, serves /webdav/.
 
+    - name: Gather the installed services (web UI from an earlier installation)
+      ansible.builtin.service_facts:
+
+    # edulution-fileproxy takes over the web UI's port and its WebDAV.
+    - name: Stop the linuxmuster web UI from an earlier installation
+      ansible.builtin.systemd:
+        name: linuxmuster-webui
+        state: stopped
+        enabled: false
+      when: "'linuxmuster-webui.service' in ansible_facts.services"
+
     - name: Install edulution-fileproxy
       ansible.builtin.apt:
         name: edulution-fileproxy
@@ -904,6 +914,12 @@
       register: lmn_samba_workgroup
       changed_when: false
 
+    - name: Check the Samba NetBIOS domain
+      ansible.builtin.assert:
+        that: lmn_samba_workgroup.stdout | trim is match('^[A-Za-z0-9-]{1,15}$')
+        fail_msg: "testparm returned no usable NetBIOS domain: '{{ lmn_samba_workgroup.stdout | trim }}'"
+        quiet: true
+
     # The service account cannot read /etc/linuxmuster/ssl, so it gets its own copy.
     - name: Give edulution-fileproxy the linuxmuster CA
       ansible.builtin.copy:
@@ -915,20 +931,45 @@
         mode: '0644'
       register: lmn_fileproxy_ca_file
 
+    # edulution-fileproxy only reaches LDAP when a user logs in, so the
+    # certificate check it will make is done here once.
+    - name: Verify the LDAPS certificate against the linuxmuster CA
+      ansible.builtin.command:
+        argv: [openssl, s_client, -connect, '{{ lmn_fileproxy_ldap_host }}:636', -CAfile, '{{ lmn_fileproxy_ca }}',
+               -verify_hostname, '{{ lmn_fileproxy_ldap_host }}', -verify_return_error]
+        # Q ends the session; empty stdin would leave s_client waiting on the task's stdin.
+        stdin: Q
+      register: lmn_fileproxy_ldaps
+      changed_when: false
+      failed_when: false
+
+    - name: Check the LDAPS certificate
+      ansible.builtin.assert:
+        that: lmn_fileproxy_ldaps.rc == 0
+        fail_msg: >-
+          The LDAPS certificate of {{ lmn_fileproxy_ldap_host }}:636 cannot be verified against
+          /etc/linuxmuster/ssl/cacert.pem, so edulution-fileproxy could not log users in.
+          openssl: {{ lmn_fileproxy_ldaps.stderr_lines | select('match', '^verify error') | first
+                      | default(lmn_fileproxy_ldaps.stderr | truncate(300)) }}.
+          A certificate without the server name in its subject alternative names is renewed with
+          'linuxmuster-renew-certs -c server' and 'systemctl restart samba-ad-dc'.
+        quiet: true
+
     # The wiki indexer needs an Elasticsearch sidecar in Docker, which this
-    # installation does not set up, so it is switched off.
+    # installation does not set up, so it is switched off. base_dn is upper
+    # case as the package's own upgrade writes it, so a later run changes nothing.
     - name: Write the edulution-fileproxy configuration
       ansible.builtin.copy:
-        dest: '{{ lmn_fileproxy_config }}'
+        dest: /etc/edulution-fileproxy/config.yml
         owner: edulution-fileproxy
         group: edulution-fileproxy
         mode: '0600'
         content: |
           ldap:
-            server: "ldaps://{{ lmn_servername }}.{{ lmn_domainname }}:636"
+            server: "ldaps://{{ lmn_fileproxy_ldap_host }}:636"
             insecure_skip_verify: false
             root_ca_file: "{{ lmn_fileproxy_ca }}"
-            base_dn: "{{ edulution_dc_parts }}"
+            base_dn: "{{ edulution_dc_parts | upper }}"
           smb:
             server: "{{ lmn_server_ip }}"
             domain: "{{ lmn_samba_workgroup.stdout | trim | upper }}"
@@ -952,7 +993,7 @@
     # As the service user, so that an unreadable CA or key fails here.
     - name: Check the edulution-fileproxy configuration
       ansible.builtin.command:
-        argv: [runuser, -u, edulution-fileproxy, --, edulution-fileproxy, -c, '{{ lmn_fileproxy_config }}', -t]
+        argv: [runuser, -u, edulution-fileproxy, --, edulution-fileproxy, -c, /etc/edulution-fileproxy/config.yml, -t]
       changed_when: false
 
     - name: Start edulution-fileproxy
@@ -972,31 +1013,6 @@
       until: lmn_fileproxy_probe.status == 401
       retries: 12
       delay: 5
-
-    # =========================================================================
-    # ADJUST THE AJENTI PORT (local installation only)
-    # =========================================================================
-    # On the same machine the edulution Traefik uses host port 443. So that the
-    # Ajenti web UI (linuxmuster.net) does not collide with it, it is moved to
-    # lmn_webui_port.
-    #
-    # linuxmuster-webui7 is no longer installed, so /etc/ajenti/config.yml
-    # usually does not exist and the task is skipped. It stays in for a host
-    # that still carries the webui from an earlier installation - without the
-    # stat it would fail there instead of moving the port.
-
-    - name: Find the Ajenti configuration
-      ansible.builtin.stat:
-        path: /etc/ajenti/config.yml
-      register: lmn_ajenti_config
-
-    - name: Adjust the Ajenti port (local installation)
-      ansible.builtin.replace:
-        path: /etc/ajenti/config.yml
-        regexp: '(^\s*port:\s*)443\b'
-        replace: '\g<1>{{ lmn_webui_port }}'
-      when: (lmn_local_install | bool) and lmn_ajenti_config.stat.exists
-      notify: Restart the linuxmuster web UI
 
     # =========================================================================
     # REBOOT REPLACEMENT: targeted service restarts instead of a full reboot
@@ -1035,7 +1051,6 @@
         - ntpsec
         - apparmor
         - linuxmuster-api
-        - linuxmuster-webui
       when: (item ~ '.service') in ansible_facts.services
       failed_when: false
 
@@ -1123,8 +1138,3 @@
         enabled: true
         state: started
       listen: Switch automatic security updates back on
-
-    - name: Restart the linuxmuster web UI
-      ansible.builtin.systemd:
-        name: linuxmuster-webui
-        state: restarted

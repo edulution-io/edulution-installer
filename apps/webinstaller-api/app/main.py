@@ -381,7 +381,7 @@ def checkWebDAV(data: Data = Depends(getData)):
             timeout=3,
         )
         # edulution-fileproxy has nothing at "/" and asks for a login on /webdav/.
-        if result.status_code in (200, 207, 401):
+        if result.status_code in (200, 401):
             return {"status": True, "message": "Successful"}
         return {"status": False, "message": f"Got HTTP-Status {result.status_code}"}
     except requests.exceptions.ConnectTimeout:
