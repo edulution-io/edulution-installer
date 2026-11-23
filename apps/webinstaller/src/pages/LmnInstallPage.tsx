@@ -16,6 +16,7 @@ import {
   createLmnWebSocket,
   getEdulutionConfig,
   getLmnPlaybookStatus,
+  checkLmnConnection,
   submitConfiguration,
   shutdownLmnInstaller,
   type ApiError,
@@ -26,9 +27,12 @@ import { defaultEdulutionDomain, isValidEdulutionDomain } from '../utils/eduluti
 type OutputConnection = 'connected' | 'reconnecting' | 'unresponsive';
 
 const STATUS_POLL_MS = 5000;
+const STATUS_TIMEOUT_MS = 10000;
 const MAX_RECONNECT_DELAY_MS = 15000;
 // linuxmuster-setup rebuilds network and services on the server, which may cut the connection for a while.
 const UNRESPONSIVE_AFTER_MS = 120000;
+// How long a run the status reports as ended may take to replay its output up to the end.
+const FINAL_REPLAY_MS = 10000;
 
 const LmnInstallPage = () => {
   const navigate = useNavigate();
@@ -46,11 +50,15 @@ const LmnInstallPage = () => {
   );
   const [connection, setConnection] = useState<OutputConnection>('connected');
   const wsRef = useRef<WebSocket | null>(null);
-  const finalStatusRef = useRef(false);
-  const statusPollRef = useRef<number | undefined>(undefined);
+  // Counts every start and end of following a run; a response that comes back under another count is stale.
+  const generationRef = useRef(0);
+  const followingRef = useRef(false);
+  const statusTimerRef = useRef<number | undefined>(undefined);
   const reconnectTimerRef = useRef<number | undefined>(undefined);
+  const finishTimerRef = useRef<number | undefined>(undefined);
   const reconnectAttemptRef = useRef(0);
   const lastContactRef = useRef(Date.now());
+  const pollInFlightRef = useRef(false);
   const connectOutputRef = useRef<() => void>(() => {});
   const pendingLinesRef = useRef<string[]>([]);
   const flushFrameRef = useRef<number | undefined>(undefined);
@@ -81,9 +89,12 @@ const LmnInstallPage = () => {
 
   const stopFollowing = useCallback(() => {
     flushLines();
-    finalStatusRef.current = true;
-    window.clearInterval(statusPollRef.current);
+    followingRef.current = false;
+    generationRef.current += 1;
+    window.clearInterval(statusTimerRef.current);
     window.clearTimeout(reconnectTimerRef.current);
+    window.clearTimeout(finishTimerRef.current);
+    finishTimerRef.current = undefined;
     wsRef.current?.close();
   }, [flushLines]);
 
@@ -135,7 +146,7 @@ const LmnInstallPage = () => {
     };
 
     ws.onclose = () => {
-      if (finalStatusRef.current || wsRef.current !== ws) return;
+      if (!followingRef.current || wsRef.current !== ws) return;
       setConnection((current) => (current === 'unresponsive' ? current : 'reconnecting'));
       const delay = Math.min(1000 * 2 ** reconnectAttemptRef.current, MAX_RECONNECT_DELAY_MS);
       reconnectAttemptRef.current += 1;
@@ -143,6 +154,21 @@ const LmnInstallPage = () => {
     };
   }, [finish, queueLine, store]);
   connectOutputRef.current = connectOutput;
+
+  // The stream replays the run up to its final status, which ends it here with the whole log;
+  // the status alone ends it only if that replay does not come in time.
+  const finishAfterReplay = useCallback(
+    (status: 'completed' | 'failed') => {
+      if (finishTimerRef.current !== undefined) return;
+      finishTimerRef.current = window.setTimeout(() => finish(status), FINAL_REPLAY_MS);
+      const state = wsRef.current?.readyState;
+      if (state !== WebSocket.OPEN && state !== WebSocket.CONNECTING) {
+        reconnectAttemptRef.current = 0;
+        connectOutput();
+      }
+    },
+    [connectOutput, finish],
+  );
 
   const startPlaybook = useCallback(async (): Promise<boolean> => {
     try {
@@ -175,48 +201,57 @@ const LmnInstallPage = () => {
   }, [store, t]);
 
   const pollStatus = useCallback(async () => {
+    const generation = generationRef.current;
+    pollInFlightRef.current = true;
     try {
-      const { status } = await getLmnPlaybookStatus();
+      const { status } = await getLmnPlaybookStatus(AbortSignal.timeout(STATUS_TIMEOUT_MS));
+      // The page was left or the run ended while the request was out.
+      if (generation !== generationRef.current) return;
       lastContactRef.current = Date.now();
+      setConnection((current) => (current === 'unresponsive' ? 'reconnecting' : current));
       if (status === 'idle' && startWhenIdleRef.current) {
         startWhenIdleRef.current = false;
         store.clearLmnOutput();
         store.clearLmnFetchedConfig();
-        if (!(await startPlaybook())) stopFollowing();
-        return;
+        if (!(await startPlaybook()) && generation === generationRef.current) stopFollowing();
+      } else if (status === 'completed' || status === 'failed') {
+        finishAfterReplay(status);
       }
-      if (!finalStatusRef.current && (status === 'completed' || status === 'failed')) {
-        finish(status);
-      }
-      setConnection((current) => (current === 'unresponsive' ? 'reconnecting' : current));
     } catch {
-      // Unreachable for now; the check below tells when that lasts.
+      // Unreachable for now; the deadline in checkProgress tells when that lasts.
+    } finally {
+      pollInFlightRef.current = false;
     }
-    if (
-      !finalStatusRef.current &&
-      wsRef.current?.readyState !== WebSocket.OPEN &&
-      Date.now() - lastContactRef.current > UNRESPONSIVE_AFTER_MS
-    ) {
+  }, [finishAfterReplay, startPlaybook, stopFollowing, store]);
+
+  const checkProgress = useCallback(() => {
+    if (!followingRef.current) return;
+    if (wsRef.current?.readyState !== WebSocket.OPEN && Date.now() - lastContactRef.current > UNRESPONSIVE_AFTER_MS) {
       setConnection('unresponsive');
     }
-  }, [finish, startPlaybook, stopFollowing, store]);
+    if (!pollInFlightRef.current) void pollStatus();
+  }, [pollStatus]);
 
   const followRun = useCallback(() => {
-    finalStatusRef.current = false;
+    generationRef.current += 1;
+    followingRef.current = true;
     lastContactRef.current = Date.now();
     connectOutput();
-    window.clearInterval(statusPollRef.current);
-    statusPollRef.current = window.setInterval(() => {
-      void pollStatus();
-    }, STATUS_POLL_MS);
-  }, [connectOutput, pollStatus]);
+    window.clearInterval(statusTimerRef.current);
+    statusTimerRef.current = window.setInterval(checkProgress, STATUS_POLL_MS);
+  }, [checkProgress, connectOutput]);
 
-  const checkAgain = useCallback(() => {
+  const checkAgain = useCallback(async () => {
+    const generation = generationRef.current;
     lastContactRef.current = Date.now();
     reconnectAttemptRef.current = 0;
     setConnection('reconnecting');
+    // After a restart, the web installer knows the LMN installer only again from the access it saved.
+    const host = useInstallerStore.getState().lmnSshHost;
+    if (host) await checkLmnConnection(host).catch(() => null);
+    if (generation !== generationRef.current) return;
     connectOutput();
-    void pollStatus();
+    if (!pollInFlightRef.current) void pollStatus();
   }, [connectOutput, pollStatus]);
 
   // Auto-fetch config from LMN API as soon as playbook completes
@@ -391,14 +426,27 @@ const LmnInstallPage = () => {
               <code className="break-all">tail -f /opt/edulution-installer/ansible/artifacts/*/stdout</code>
             </span>
           </div>
-          <Button
-            variant="btn-outline"
-            size="md"
-            className="justify-center"
-            onClick={checkAgain}
-          >
-            {t('lmnInstall.checkAgain')}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="btn-outline"
+              size="md"
+              className="justify-center"
+              onClick={() => {
+                void checkAgain();
+              }}
+            >
+              {t('lmnInstall.checkAgain')}
+            </Button>
+            {/* The setup page connects to the server again; a run that is still going on is followed afterwards. */}
+            <Button
+              variant="btn-outline"
+              size="md"
+              className="justify-center"
+              onClick={() => navigate('/lmn-setup')}
+            >
+              {t('lmnInstall.backToSetup')}
+            </Button>
+          </div>
         </div>
       )}
 

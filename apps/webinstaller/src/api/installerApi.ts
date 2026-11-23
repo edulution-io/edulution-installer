@@ -299,8 +299,8 @@ export const getLmnNetworkInfo = (): Promise<LmnNetworkInfo> =>
 
 type LmnJobStatus = 'idle' | 'running' | 'completed' | 'failed';
 
-export const getLmnPlaybookStatus = (): Promise<{ status: LmnJobStatus }> =>
-  apiFetch<{ status: LmnJobStatus }>('/api/lmn/status');
+export const getLmnPlaybookStatus = (signal?: AbortSignal): Promise<{ status: LmnJobStatus }> =>
+  apiFetch<{ status: LmnJobStatus }>('/api/lmn/status', { signal });
 
 export const shutdownLmnInstaller = (): Promise<StatusResponse> =>
   apiFetch<StatusResponse>('/api/lmn/shutdown', { method: 'POST' });

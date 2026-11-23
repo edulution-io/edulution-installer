@@ -7,10 +7,11 @@ router = APIRouter(tags=["websocket"])
 
 @router.websocket("/ws/output")
 async def websocket_output(websocket: WebSocket) -> None:
-    if not await streamer.connect(websocket):
-        return
+    await streamer.connect(websocket)
     try:
         while True:
             await websocket.receive_text()
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    finally:
         streamer.disconnect(websocket)
