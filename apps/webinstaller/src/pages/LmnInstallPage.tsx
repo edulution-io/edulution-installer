@@ -22,6 +22,13 @@ import {
 import EdulutionDomainField from '../components/EdulutionDomainField';
 import { defaultEdulutionDomain, isValidEdulutionDomain } from '../utils/edulutionDomain';
 
+type OutputConnection = 'connected' | 'reconnecting' | 'unresponsive';
+
+const STATUS_POLL_MS = 5000;
+const MAX_RECONNECT_DELAY_MS = 15000;
+// linuxmuster-setup rebuilds network and services on the server, which may cut the connection for a while.
+const UNRESPONSIVE_AFTER_MS = 120000;
+
 const LmnInstallPage = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -36,11 +43,14 @@ const LmnInstallPage = () => {
   const [edulutionExternalDomain, setEdulutionExternalDomain] = useState(
     store.edulutionExternalDomain || defaultEdulutionDomain(),
   );
-  const [wsError, setWsError] = useState<string | null>(null);
+  const [connection, setConnection] = useState<OutputConnection>('connected');
   const wsRef = useRef<WebSocket | null>(null);
-  const wsOpenedRef = useRef(false);
   const finalStatusRef = useRef(false);
   const statusPollRef = useRef<number | undefined>(undefined);
+  const reconnectTimerRef = useRef<number | undefined>(undefined);
+  const reconnectAttemptRef = useRef(0);
+  const lastContactRef = useRef(Date.now());
+  const connectOutputRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     if (logRef.current) {
@@ -48,29 +58,48 @@ const LmnInstallPage = () => {
     }
   }, [store.lmnOutputLog]);
 
+  const stopFollowing = useCallback(() => {
+    finalStatusRef.current = true;
+    window.clearInterval(statusPollRef.current);
+    window.clearTimeout(reconnectTimerRef.current);
+    wsRef.current?.close();
+  }, []);
+
+  // Only the job status of the server ends a run here; a lost output stream is reconnected.
+  const finish = useCallback(
+    (status: 'completed' | 'failed') => {
+      stopFollowing();
+      setConnection('connected');
+      store.setLmnPlaybookStatus(status);
+    },
+    [stopFollowing, store],
+  );
+
   const connectOutput = useCallback(() => {
+    window.clearTimeout(reconnectTimerRef.current);
+    wsRef.current?.close();
     const ws = createLmnWebSocket();
     wsRef.current = ws;
-    wsOpenedRef.current = false;
-    finalStatusRef.current = false;
-    setWsError(null);
 
     ws.onopen = () => {
-      wsOpenedRef.current = true;
+      reconnectAttemptRef.current = 0;
+      lastContactRef.current = Date.now();
+      setConnection('connected');
+      // The server sends the output of the run so far first.
+      store.clearLmnOutput();
     };
 
     ws.onmessage = (event) => {
+      lastContactRef.current = Date.now();
       try {
         const msg = JSON.parse(event.data as string) as { type: string; data: string };
         if (msg.type === 'stdout' || msg.type === 'stderr') {
           store.appendLmnOutput(msg.data);
         } else if (msg.type === 'status') {
           if (msg.data === 'successful' || msg.data === 'completed') {
-            finalStatusRef.current = true;
-            store.setLmnPlaybookStatus('completed');
+            finish('completed');
           } else if (msg.data === 'failed') {
-            finalStatusRef.current = true;
-            store.setLmnPlaybookStatus('failed');
+            finish('failed');
           }
         } else if (msg.type === 'event') {
           store.appendLmnOutput(msg.data);
@@ -80,46 +109,54 @@ const LmnInstallPage = () => {
       }
     };
 
-    ws.onerror = () => {
-      if (finalStatusRef.current) return;
-      const message = wsOpenedRef.current
-        ? t('lmnInstall.wsConnectionLost')
-        : t('lmnInstall.wsConnectionFailed');
-      setWsError(message);
-      store.appendLmnOutput(`[ERROR] ${message}`);
-      store.setLmnPlaybookStatus('failed');
-    };
-
     ws.onclose = () => {
-      if (finalStatusRef.current) return;
-      const message = wsOpenedRef.current
-        ? t('lmnInstall.wsConnectionLost')
-        : t('lmnInstall.wsConnectionFailed');
-      setWsError(message);
-      store.appendLmnOutput(`[ERROR] ${message}`);
-      store.setLmnPlaybookStatus('failed');
+      if (finalStatusRef.current || wsRef.current !== ws) return;
+      setConnection((current) => (current === 'unresponsive' ? current : 'reconnecting'));
+      const delay = Math.min(1000 * 2 ** reconnectAttemptRef.current, MAX_RECONNECT_DELAY_MS);
+      reconnectAttemptRef.current += 1;
+      reconnectTimerRef.current = window.setTimeout(() => connectOutputRef.current(), delay);
     };
-  }, [store, t]);
+  }, [finish, store]);
+  connectOutputRef.current = connectOutput;
 
-  // The output stream only carries messages sent after it connects, so a run that ends while attaching is
-  // noticed through the job status instead.
-  const followStatus = useCallback(() => {
+  const pollStatus = useCallback(async () => {
+    try {
+      const { status } = await getLmnPlaybookStatus();
+      lastContactRef.current = Date.now();
+      if (!finalStatusRef.current && (status === 'completed' || status === 'failed')) {
+        finish(status);
+      }
+    } catch {
+      // Unreachable for now; the check below tells when that lasts.
+    }
+    if (
+      !finalStatusRef.current &&
+      wsRef.current?.readyState !== WebSocket.OPEN &&
+      Date.now() - lastContactRef.current > UNRESPONSIVE_AFTER_MS
+    ) {
+      setConnection('unresponsive');
+    }
+  }, [finish]);
+
+  const followRun = useCallback(() => {
+    finalStatusRef.current = false;
+    lastContactRef.current = Date.now();
+    connectOutput();
+    window.clearInterval(statusPollRef.current);
     statusPollRef.current = window.setInterval(() => {
-      void getLmnPlaybookStatus()
-        .then(({ status }) => {
-          if (finalStatusRef.current) {
-            window.clearInterval(statusPollRef.current);
-          } else if (status === 'completed' || status === 'failed') {
-            finalStatusRef.current = true;
-            window.clearInterval(statusPollRef.current);
-            store.setLmnPlaybookStatus(status);
-          }
-        })
-        .catch(() => {});
-    }, 5000);
-  }, [store]);
+      void pollStatus();
+    }, STATUS_POLL_MS);
+  }, [connectOutput, pollStatus]);
 
-  const startPlaybook = useCallback(async () => {
+  const checkAgain = useCallback(() => {
+    lastContactRef.current = Date.now();
+    reconnectAttemptRef.current = 0;
+    setConnection('reconnecting');
+    connectOutput();
+    void pollStatus();
+  }, [connectOutput, pollStatus]);
+
+  const startPlaybook = useCallback(async (): Promise<boolean> => {
     try {
       const currentStore = useInstallerStore.getState();
       await startLmnPlaybook('linuxmuster.yml', {
@@ -139,9 +176,11 @@ const LmnInstallPage = () => {
         lmn_local_install: currentStore.lmnLocalInstall,
         lmn_webui_port: currentStore.lmnWebuiPort,
       });
+      return true;
     } catch (error) {
       store.appendLmnOutput(`${t('lmnInstall.playbookError')}: ${(error as Error).message}`);
       store.setLmnPlaybookStatus('failed');
+      return false;
     }
   }, [store, t]);
 
@@ -232,20 +271,16 @@ const LmnInstallPage = () => {
         store.clearLmnFetchedConfig();
       }
       store.setLmnPlaybookStatus('running');
-      connectOutput();
-      if (status === 'running') {
-        followStatus();
-      } else {
-        await startPlaybook();
-      }
+      // Connected after the start: the server sends the whole output of the run on connecting.
+      if (status !== 'running' && !(await startPlaybook())) return;
+      if (!active) return;
+      followRun();
     };
     void run();
     return () => {
       active = false;
-      window.clearInterval(statusPollRef.current);
       // Leaving the page is not a lost connection.
-      finalStatusRef.current = true;
-      wsRef.current?.close();
+      stopFollowing();
     };
   }, []);
 
@@ -292,13 +327,37 @@ const LmnInstallPage = () => {
         )}
       </div>
 
-      {wsError && (
-        <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+      {isRunning && connection === 'reconnecting' && (
+        <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
           <FontAwesomeIcon
-            icon={faTriangleExclamation}
-            className="mt-0.5 text-red-500"
+            icon={faSpinner}
+            spin
+            className="mt-0.5 text-amber-500"
           />
-          {wsError}
+          {t('lmnInstall.reconnecting')}
+        </div>
+      )}
+
+      {isRunning && connection === 'unresponsive' && (
+        <div className="flex flex-col gap-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+          <div className="flex items-start gap-2">
+            <FontAwesomeIcon
+              icon={faTriangleExclamation}
+              className="mt-0.5 text-amber-500"
+            />
+            <span>
+              {t('lmnInstall.unresponsive')}{' '}
+              <code className="break-all">tail -f /opt/edulution-installer/ansible/artifacts/*/stdout</code>
+            </span>
+          </div>
+          <Button
+            variant="btn-outline"
+            size="md"
+            className="justify-center"
+            onClick={checkAgain}
+          >
+            {t('lmnInstall.checkAgain')}
+          </Button>
         </div>
       )}
 
@@ -329,9 +388,7 @@ const LmnInstallPage = () => {
               {t('lmnInstall.configuringEdulution')}
             </div>
           )}
-          {configError && (
-            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{configError}</div>
-          )}
+          {configError && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{configError}</div>}
           {configFetched && (
             <>
               <div className="flex items-center gap-2 rounded-lg bg-green-50 p-3 text-sm text-green-800">

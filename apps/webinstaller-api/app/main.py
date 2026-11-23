@@ -970,7 +970,12 @@ async def lmn_ws_proxy(websocket: WebSocket, path: str):
                 except (WebSocketDisconnect, Exception):
                     pass
 
-            await asyncio.gather(forward_to_target(), forward_to_client())
+            # One side ending ends both: with gather, a browser that left kept the LMN connection open.
+            tasks = [asyncio.create_task(forward_to_target()), asyncio.create_task(forward_to_client())]
+            _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
     except Exception:
         pass
     finally:
