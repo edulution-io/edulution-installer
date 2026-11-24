@@ -4,7 +4,8 @@ from api.services.output_streamer import streamer
 
 router = APIRouter(tags=["websocket"])
 
-OUTPUT_PAGE = 2000
+# Small enough that a page passes the web installer's proxy quickly on a slow link.
+OUTPUT_PAGE = 500
 
 
 @router.get("/api/output")

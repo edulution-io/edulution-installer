@@ -30,6 +30,8 @@ type OutputConnection = 'connected' | 'reconnecting' | 'unresponsive';
 
 const STATUS_POLL_MS = 5000;
 const STATUS_TIMEOUT_MS = 10000;
+// A page of output passes the web installer's proxy as a whole, which may take a while on a slow link.
+const OUTPUT_TIMEOUT_MS = 60000;
 const MAX_RECONNECT_DELAY_MS = 15000;
 // linuxmuster-setup rebuilds network and services on the server, which may cut the connection for a while.
 const UNRESPONSIVE_AFTER_MS = 120000;
@@ -51,6 +53,8 @@ const LmnInstallPage = () => {
     store.edulutionExternalDomain || defaultEdulutionDomain(),
   );
   const [connection, setConnection] = useState<OutputConnection>('connected');
+  // The output comes over HTTP while the stream does not deliver.
+  const [followingOverHttp, setFollowingOverHttp] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   // Counts every start and end of following a run; a response that comes back under another count is stale.
   const generationRef = useRef(0);
@@ -69,6 +73,8 @@ const LmnInstallPage = () => {
   const outputPositionRef = useRef(0);
   const outputJobRef = useRef<string | null>(null);
   const streamEpochRef = useRef(0);
+  // Set by the stream's first message, not by opening: something on the way may open it and pass nothing.
+  const streamReadyRef = useRef(false);
   const outputInFlightRef = useRef(false);
   const fetchOutputRef = useRef<() => Promise<void>>(async () => {});
 
@@ -98,6 +104,7 @@ const LmnInstallPage = () => {
   const stopFollowing = useCallback(() => {
     flushLines();
     followingRef.current = false;
+    streamReadyRef.current = false;
     generationRef.current += 1;
     window.clearInterval(statusTimerRef.current);
     window.clearTimeout(reconnectTimerRef.current);
@@ -127,7 +134,8 @@ const LmnInstallPage = () => {
 
   const handleMessage = useCallback(
     (msg: LmnOutputMessage) => {
-      outputPositionRef.current += 1;
+      // The server numbers the run's messages; others leave the position as it is.
+      if (typeof msg.seq === 'number') outputPositionRef.current = msg.seq + 1;
       if (msg.job_id) outputJobRef.current = msg.job_id;
       if (msg.type === 'stdout' || msg.type === 'stderr' || msg.type === 'event') {
         queueLine(msg.data);
@@ -148,15 +156,6 @@ const LmnInstallPage = () => {
     const ws = createLmnWebSocket();
     wsRef.current = ws;
 
-    ws.onopen = () => {
-      reconnectAttemptRef.current = 0;
-      lastContactRef.current = Date.now();
-      setConnection('connected');
-      // The server sends the output of the run so far first.
-      streamEpochRef.current += 1;
-      resetOutput();
-    };
-
     ws.onmessage = (event) => {
       lastContactRef.current = Date.now();
       let msg: LmnOutputMessage;
@@ -165,11 +164,25 @@ const LmnInstallPage = () => {
       } catch {
         msg = { type: 'stdout', data: event.data as string };
       }
+      if (msg.type === 'position') {
+        // The replay of the run so far follows, from this position on.
+        streamReadyRef.current = true;
+        streamEpochRef.current += 1;
+        reconnectAttemptRef.current = 0;
+        setConnection('connected');
+        setFollowingOverHttp(false);
+        resetOutput();
+        outputPositionRef.current = Number(msg.data) || 0;
+        outputJobRef.current = msg.job_id ?? null;
+        return;
+      }
       handleMessage(msg);
     };
 
     ws.onclose = () => {
-      if (!followingRef.current || wsRef.current !== ws) return;
+      if (wsRef.current !== ws) return;
+      streamReadyRef.current = false;
+      if (!followingRef.current) return;
       setConnection((current) => (current === 'unresponsive' ? current : 'reconnecting'));
       const delay = Math.min(1000 * 2 ** reconnectAttemptRef.current, MAX_RECONNECT_DELAY_MS);
       reconnectAttemptRef.current += 1;
@@ -234,7 +247,7 @@ const LmnInstallPage = () => {
       setConnection((current) => (current === 'unresponsive' ? 'reconnecting' : current));
       if (status === 'idle' && startWhenIdleRef.current) {
         startWhenIdleRef.current = false;
-        store.clearLmnOutput();
+        resetOutput();
         store.clearLmnFetchedConfig();
         if (!(await startPlaybook()) && generation === generationRef.current) stopFollowing();
       } else if (status === 'completed' || status === 'failed') {
@@ -245,7 +258,7 @@ const LmnInstallPage = () => {
     } finally {
       pollInFlightRef.current = false;
     }
-  }, [finishAfterReplay, startPlaybook, stopFollowing, store]);
+  }, [finishAfterReplay, resetOutput, startPlaybook, stopFollowing, store]);
 
   // Without the stream, e.g. behind a proxy or in a browser that does not pass WebSockets, the output comes over HTTP.
   const fetchOutput = useCallback(async (): Promise<void> => {
@@ -254,13 +267,11 @@ const LmnInstallPage = () => {
     let more = false;
     outputInFlightRef.current = true;
     try {
-      const result = await getLmnOutput(outputPositionRef.current, AbortSignal.timeout(STATUS_TIMEOUT_MS));
-      const stale =
-        generation !== generationRef.current ||
-        epoch !== streamEpochRef.current ||
-        wsRef.current?.readyState === WebSocket.OPEN;
+      const result = await getLmnOutput(outputPositionRef.current, AbortSignal.timeout(OUTPUT_TIMEOUT_MS));
+      const stale = generation !== generationRef.current || epoch !== streamEpochRef.current || streamReadyRef.current;
       if (stale) return;
       lastContactRef.current = Date.now();
+      setFollowingOverHttp(true);
       if (result.job_id && outputJobRef.current && result.job_id !== outputJobRef.current) {
         // Another run: its output starts over.
         resetOutput();
@@ -273,6 +284,7 @@ const LmnInstallPage = () => {
       }
     } catch {
       // Unreachable for now; the next check tries again.
+      setFollowingOverHttp(false);
     } finally {
       outputInFlightRef.current = false;
     }
@@ -282,11 +294,11 @@ const LmnInstallPage = () => {
 
   const checkProgress = useCallback(() => {
     if (!followingRef.current) return;
-    if (wsRef.current?.readyState !== WebSocket.OPEN && Date.now() - lastContactRef.current > UNRESPONSIVE_AFTER_MS) {
+    if (!streamReadyRef.current && Date.now() - lastContactRef.current > UNRESPONSIVE_AFTER_MS) {
       setConnection('unresponsive');
     }
     if (!pollInFlightRef.current) void pollStatus();
-    if (wsRef.current?.readyState !== WebSocket.OPEN && !outputInFlightRef.current) void fetchOutput();
+    if (!streamReadyRef.current && !outputInFlightRef.current) void fetchOutput();
   }, [fetchOutput, pollStatus]);
 
   const followRun = useCallback(() => {
@@ -460,7 +472,7 @@ const LmnInstallPage = () => {
         )}
       </div>
 
-      {isRunning && connection === 'reconnecting' && (
+      {isRunning && connection === 'reconnecting' && !followingOverHttp && (
         <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
           <FontAwesomeIcon
             icon={faSpinner}

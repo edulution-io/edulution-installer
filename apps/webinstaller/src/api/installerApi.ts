@@ -306,6 +306,7 @@ export interface LmnOutputMessage {
   type: string;
   data: string;
   job_id?: string | null;
+  seq?: number | null;
 }
 
 export interface LmnOutputPage {
