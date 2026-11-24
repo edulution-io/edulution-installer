@@ -302,6 +302,23 @@ type LmnJobStatus = 'idle' | 'running' | 'completed' | 'failed';
 export const getLmnPlaybookStatus = (signal?: AbortSignal): Promise<{ status: LmnJobStatus }> =>
   apiFetch<{ status: LmnJobStatus }>('/api/lmn/status', { signal });
 
+export interface LmnOutputMessage {
+  type: string;
+  data: string;
+  job_id?: string | null;
+}
+
+export interface LmnOutputPage {
+  job_id: string | null;
+  first: number;
+  next: number;
+  total: number;
+  messages: LmnOutputMessage[];
+}
+
+export const getLmnOutput = (since: number, signal?: AbortSignal): Promise<LmnOutputPage> =>
+  apiFetch<LmnOutputPage>(`/api/lmn/output?since=${since}`, { signal });
+
 export const shutdownLmnInstaller = (): Promise<StatusResponse> =>
   apiFetch<StatusResponse>('/api/lmn/shutdown', { method: 'POST' });
 

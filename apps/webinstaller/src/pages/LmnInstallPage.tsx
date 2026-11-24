@@ -16,6 +16,8 @@ import {
   createLmnWebSocket,
   getEdulutionConfig,
   getLmnPlaybookStatus,
+  getLmnOutput,
+  type LmnOutputMessage,
   checkLmnConnection,
   submitConfiguration,
   shutdownLmnInstaller,
@@ -63,6 +65,12 @@ const LmnInstallPage = () => {
   const pendingLinesRef = useRef<string[]>([]);
   const flushFrameRef = useRef<number | undefined>(undefined);
   const startWhenIdleRef = useRef(false);
+  // Position in the run's output, the same for the stream and the HTTP fallback; the stream starts over on opening.
+  const outputPositionRef = useRef(0);
+  const outputJobRef = useRef<string | null>(null);
+  const streamEpochRef = useRef(0);
+  const outputInFlightRef = useRef(false);
+  const fetchOutputRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     if (logRef.current) {
@@ -108,6 +116,32 @@ const LmnInstallPage = () => {
     [stopFollowing, store],
   );
 
+  const resetOutput = useCallback(() => {
+    window.cancelAnimationFrame(flushFrameRef.current ?? 0);
+    flushFrameRef.current = undefined;
+    pendingLinesRef.current = [];
+    outputPositionRef.current = 0;
+    outputJobRef.current = null;
+    store.clearLmnOutput();
+  }, [store]);
+
+  const handleMessage = useCallback(
+    (msg: LmnOutputMessage) => {
+      outputPositionRef.current += 1;
+      if (msg.job_id) outputJobRef.current = msg.job_id;
+      if (msg.type === 'stdout' || msg.type === 'stderr' || msg.type === 'event') {
+        queueLine(msg.data);
+      } else if (msg.type === 'status') {
+        if (msg.data === 'successful' || msg.data === 'completed') {
+          finish('completed');
+        } else if (msg.data === 'failed') {
+          finish('failed');
+        }
+      }
+    },
+    [finish, queueLine],
+  );
+
   const connectOutput = useCallback(() => {
     window.clearTimeout(reconnectTimerRef.current);
     wsRef.current?.close();
@@ -119,30 +153,19 @@ const LmnInstallPage = () => {
       lastContactRef.current = Date.now();
       setConnection('connected');
       // The server sends the output of the run so far first.
-      window.cancelAnimationFrame(flushFrameRef.current ?? 0);
-      flushFrameRef.current = undefined;
-      pendingLinesRef.current = [];
-      store.clearLmnOutput();
+      streamEpochRef.current += 1;
+      resetOutput();
     };
 
     ws.onmessage = (event) => {
       lastContactRef.current = Date.now();
+      let msg: LmnOutputMessage;
       try {
-        const msg = JSON.parse(event.data as string) as { type: string; data: string };
-        if (msg.type === 'stdout' || msg.type === 'stderr') {
-          queueLine(msg.data);
-        } else if (msg.type === 'status') {
-          if (msg.data === 'successful' || msg.data === 'completed') {
-            finish('completed');
-          } else if (msg.data === 'failed') {
-            finish('failed');
-          }
-        } else if (msg.type === 'event') {
-          queueLine(msg.data);
-        }
+        msg = JSON.parse(event.data as string) as LmnOutputMessage;
       } catch {
-        queueLine(event.data as string);
+        msg = { type: 'stdout', data: event.data as string };
       }
+      handleMessage(msg);
     };
 
     ws.onclose = () => {
@@ -152,7 +175,7 @@ const LmnInstallPage = () => {
       reconnectAttemptRef.current += 1;
       reconnectTimerRef.current = window.setTimeout(() => connectOutputRef.current(), delay);
     };
-  }, [finish, queueLine, store]);
+  }, [handleMessage, resetOutput]);
   connectOutputRef.current = connectOutput;
 
   // The stream replays the run up to its final status, which ends it here with the whole log;
@@ -224,13 +247,47 @@ const LmnInstallPage = () => {
     }
   }, [finishAfterReplay, startPlaybook, stopFollowing, store]);
 
+  // Without the stream, e.g. behind a proxy or in a browser that does not pass WebSockets, the output comes over HTTP.
+  const fetchOutput = useCallback(async (): Promise<void> => {
+    const generation = generationRef.current;
+    const epoch = streamEpochRef.current;
+    let more = false;
+    outputInFlightRef.current = true;
+    try {
+      const result = await getLmnOutput(outputPositionRef.current, AbortSignal.timeout(STATUS_TIMEOUT_MS));
+      const stale =
+        generation !== generationRef.current ||
+        epoch !== streamEpochRef.current ||
+        wsRef.current?.readyState === WebSocket.OPEN;
+      if (stale) return;
+      lastContactRef.current = Date.now();
+      if (result.job_id && outputJobRef.current && result.job_id !== outputJobRef.current) {
+        // Another run: its output starts over.
+        resetOutput();
+        more = true;
+      } else {
+        outputJobRef.current = result.job_id ?? outputJobRef.current;
+        outputPositionRef.current = result.first;
+        result.messages.forEach(handleMessage);
+        more = followingRef.current && result.next < result.total;
+      }
+    } catch {
+      // Unreachable for now; the next check tries again.
+    } finally {
+      outputInFlightRef.current = false;
+    }
+    if (more) await fetchOutputRef.current();
+  }, [handleMessage, resetOutput]);
+  fetchOutputRef.current = fetchOutput;
+
   const checkProgress = useCallback(() => {
     if (!followingRef.current) return;
     if (wsRef.current?.readyState !== WebSocket.OPEN && Date.now() - lastContactRef.current > UNRESPONSIVE_AFTER_MS) {
       setConnection('unresponsive');
     }
     if (!pollInFlightRef.current) void pollStatus();
-  }, [pollStatus]);
+    if (wsRef.current?.readyState !== WebSocket.OPEN && !outputInFlightRef.current) void fetchOutput();
+  }, [fetchOutput, pollStatus]);
 
   const followRun = useCallback(() => {
     generationRef.current += 1;

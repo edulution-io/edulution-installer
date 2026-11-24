@@ -1,8 +1,23 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from api.services.output_streamer import streamer
 
 router = APIRouter(tags=["websocket"])
+
+OUTPUT_PAGE = 2000
+
+
+@router.get("/api/output")
+async def output(since: int = Query(0, ge=0)) -> dict:
+    """The run's output over HTTP, for a browser whose WebSocket does not get through (proxy, browser)."""
+    first, messages, total = streamer.output_since(since, OUTPUT_PAGE)
+    return {
+        "job_id": str(streamer.job_id) if streamer.job_id else None,
+        "first": first,
+        "next": first + len(messages),
+        "total": total,
+        "messages": [m.model_dump(mode="json") for m in messages],
+    }
 
 
 @router.websocket("/ws/output")

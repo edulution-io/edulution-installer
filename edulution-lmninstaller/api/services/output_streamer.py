@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import itertools
 from collections import deque
 from datetime import datetime
 from uuid import UUID
@@ -30,10 +31,23 @@ class OutputStreamer:
         # The current run's output, sent first to every connection: a browser that lost the stream
         # or opened the page again sees the whole run, not only what follows.
         self._history: deque[WebSocketMessage] = deque(maxlen=HISTORY_LIMIT)
+        # Messages the current run has had, also those the limit dropped: positions for output_since.
+        self._history_total = 0
 
     def set_job_id(self, job_id: UUID) -> None:
         self._current_job_id = job_id
         self._history.clear()
+        self._history_total = 0
+
+    @property
+    def job_id(self) -> UUID | None:
+        return self._current_job_id
+
+    def output_since(self, position: int, limit: int) -> tuple[int, list[WebSocketMessage], int]:
+        """The current run's messages from position on, for a client without the stream: (first, messages, total)."""
+        first = max(position, self._history_total - len(self._history))
+        skip = first - (self._history_total - len(self._history))
+        return first, list(itertools.islice(self._history, skip, skip + limit)), self._history_total
 
     async def connect(self, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -64,6 +78,7 @@ class OutputStreamer:
     async def broadcast(self, message: WebSocketMessage) -> None:
         if message.job_id is not None and message.job_id == self._current_job_id:
             self._history.append(message)
+            self._history_total += 1
         for client in self._clients.values():
             client.queue.put_nowait(message)
 
