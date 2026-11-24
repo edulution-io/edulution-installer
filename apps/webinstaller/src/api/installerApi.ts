@@ -52,6 +52,13 @@ interface AcmeCnameResponse {
 
 export type ApiError = Error & { status: number };
 
+// AbortSignal.timeout is missing in older browsers the build still targets (Safari before 16, Chrome before 103).
+export const timeoutSignal = (ms: number): AbortSignal => {
+  const controller = new AbortController();
+  window.setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+};
+
 const apiFetch = async <T>(
   url: string,
   options?: RequestInit,
@@ -301,8 +308,8 @@ export const getLmnNetworkInfo = (): Promise<LmnNetworkInfo> =>
 
 type LmnJobStatus = 'idle' | 'running' | 'completed' | 'failed';
 
-export const getLmnPlaybookStatus = (signal?: AbortSignal): Promise<{ status: LmnJobStatus }> =>
-  apiFetch<{ status: LmnJobStatus }>('/api/lmn/status', { signal });
+export const getLmnPlaybookStatus = (signal?: AbortSignal): Promise<{ status: LmnJobStatus; job_id?: string | null }> =>
+  apiFetch<{ status: LmnJobStatus; job_id?: string | null }>('/api/lmn/status', { signal });
 
 export interface LmnOutputMessage {
   type: string;
