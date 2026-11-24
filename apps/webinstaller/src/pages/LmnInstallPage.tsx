@@ -37,6 +37,7 @@ const MAX_RECONNECT_DELAY_MS = 15000;
 const UNRESPONSIVE_AFTER_MS = 120000;
 // How long a run the status reports as ended may take to replay its output up to the end.
 const FINAL_REPLAY_MS = 10000;
+const FINAL_REPLAY_MAX_MS = 180000;
 
 const LmnInstallPage = () => {
   const navigate = useNavigate();
@@ -64,6 +65,7 @@ const LmnInstallPage = () => {
   const finishTimerRef = useRef<number | undefined>(undefined);
   const reconnectAttemptRef = useRef(0);
   const lastContactRef = useRef(Date.now());
+  const lastOutputRef = useRef(0);
   const pollInFlightRef = useRef(false);
   const connectOutputRef = useRef<() => void>(() => {});
   const pendingLinesRef = useRef<string[]>([]);
@@ -134,8 +136,12 @@ const LmnInstallPage = () => {
 
   const handleMessage = useCallback(
     (msg: LmnOutputMessage) => {
-      // The server numbers the run's messages; others leave the position as it is.
-      if (typeof msg.seq === 'number') outputPositionRef.current = msg.seq + 1;
+      // The server numbers the run's messages; one below the position was shown already.
+      if (typeof msg.seq === 'number') {
+        if (msg.seq < outputPositionRef.current) return;
+        outputPositionRef.current = msg.seq + 1;
+      }
+      lastOutputRef.current = Date.now();
       if (msg.job_id) outputJobRef.current = msg.job_id;
       if (msg.type === 'stdout' || msg.type === 'stderr' || msg.type === 'event') {
         queueLine(msg.data);
@@ -165,14 +171,14 @@ const LmnInstallPage = () => {
         msg = { type: 'stdout', data: event.data as string };
       }
       if (msg.type === 'position') {
-        // The replay of the run so far follows, from this position on.
+        // The replay of the run so far follows; for the run already shown, only what is new to this page counts.
         streamReadyRef.current = true;
         streamEpochRef.current += 1;
         reconnectAttemptRef.current = 0;
         setConnection('connected');
         setFollowingOverHttp(false);
-        resetOutput();
-        outputPositionRef.current = Number(msg.data) || 0;
+        if (!msg.job_id || msg.job_id !== outputJobRef.current) resetOutput();
+        outputPositionRef.current = Math.max(outputPositionRef.current, Number(msg.data) || 0);
         outputJobRef.current = msg.job_id ?? null;
         return;
       }
@@ -191,12 +197,21 @@ const LmnInstallPage = () => {
   }, [handleMessage, resetOutput]);
   connectOutputRef.current = connectOutput;
 
-  // The stream replays the run up to its final status, which ends it here with the whole log;
-  // the status alone ends it only if that replay does not come in time.
+  // The replay of the run ends with its final status, which ends it here with the whole log;
+  // the status alone ends it once no output has come for a while, or after the maximum.
   const finishAfterReplay = useCallback(
     (status: 'completed' | 'failed') => {
       if (finishTimerRef.current !== undefined) return;
-      finishTimerRef.current = window.setTimeout(() => finish(status), FINAL_REPLAY_MS);
+      const deadline = Date.now() + FINAL_REPLAY_MAX_MS;
+      lastOutputRef.current = Date.now();
+      const wait = () => {
+        finishTimerRef.current = window.setTimeout(() => {
+          const replaying = outputInFlightRef.current || Date.now() - lastOutputRef.current < FINAL_REPLAY_MS;
+          if (replaying && Date.now() < deadline) wait();
+          else finish(status);
+        }, FINAL_REPLAY_MS);
+      };
+      wait();
       const state = wsRef.current?.readyState;
       if (state !== WebSocket.OPEN && state !== WebSocket.CONNECTING) {
         reconnectAttemptRef.current = 0;
@@ -206,7 +221,8 @@ const LmnInstallPage = () => {
     [connectOutput, finish],
   );
 
-  const startPlaybook = useCallback(async (): Promise<boolean> => {
+  // 'unknown': no answer, or the proxy lost the LMN API; the run may have started anyway.
+  const startPlaybook = useCallback(async (): Promise<'started' | 'unknown' | 'failed'> => {
     try {
       const currentStore = useInstallerStore.getState();
       await startLmnPlaybook('linuxmuster.yml', {
@@ -226,13 +242,15 @@ const LmnInstallPage = () => {
         lmn_local_install: currentStore.lmnLocalInstall,
         lmn_webui_port: currentStore.lmnWebuiPort,
       });
-      return true;
+      return 'started';
     } catch (error) {
+      const { status } = error as ApiError;
       // Started already, e.g. by this page before a reload: follow that run.
-      if ((error as ApiError).status === 409) return true;
+      if (status === 409) return 'started';
+      if (status === undefined || status >= 502) return 'unknown';
       store.appendLmnOutput(`${t('lmnInstall.playbookError')}: ${(error as Error).message}`);
       store.setLmnPlaybookStatus('failed');
-      return false;
+      return 'failed';
     }
   }, [store, t]);
 
@@ -249,7 +267,14 @@ const LmnInstallPage = () => {
         startWhenIdleRef.current = false;
         resetOutput();
         store.clearLmnFetchedConfig();
-        if (!(await startPlaybook()) && generation === generationRef.current) stopFollowing();
+        const started = await startPlaybook();
+        if (generation !== generationRef.current) return;
+        if (started === 'failed') stopFollowing();
+        else if (started === 'unknown') startWhenIdleRef.current = true;
+      } else if (status === 'idle') {
+        // The server knows no run any more, e.g. after its installer API restarted.
+        finish('failed');
+        store.appendLmnOutput(`[ERROR] ${t('lmnInstall.runLost')}`);
       } else if (status === 'completed' || status === 'failed') {
         finishAfterReplay(status);
       }
@@ -258,7 +283,7 @@ const LmnInstallPage = () => {
     } finally {
       pollInFlightRef.current = false;
     }
-  }, [finishAfterReplay, resetOutput, startPlaybook, stopFollowing, store]);
+  }, [finish, finishAfterReplay, resetOutput, startPlaybook, stopFollowing, store, t]);
 
   // Without the stream, e.g. behind a proxy or in a browser that does not pass WebSockets, the output comes over HTTP.
   const fetchOutput = useCallback(async (): Promise<void> => {
@@ -267,18 +292,21 @@ const LmnInstallPage = () => {
     let more = false;
     outputInFlightRef.current = true;
     try {
-      const result = await getLmnOutput(outputPositionRef.current, AbortSignal.timeout(OUTPUT_TIMEOUT_MS));
+      const since = outputPositionRef.current;
+      const result = await getLmnOutput(since, AbortSignal.timeout(OUTPUT_TIMEOUT_MS));
       const stale = generation !== generationRef.current || epoch !== streamEpochRef.current || streamReadyRef.current;
       if (stale) return;
       lastContactRef.current = Date.now();
       setFollowingOverHttp(true);
-      if (result.job_id && outputJobRef.current && result.job_id !== outputJobRef.current) {
-        // Another run: its output starts over.
+      if (result.job_id && result.job_id !== outputJobRef.current) {
+        // Another run, or the first answer since the page opened: the output starts over.
         resetOutput();
+        outputJobRef.current = result.job_id;
+      }
+      if (since > 0 && outputPositionRef.current === 0) {
         more = true;
       } else {
-        outputJobRef.current = result.job_id ?? outputJobRef.current;
-        outputPositionRef.current = result.first;
+        outputPositionRef.current = Math.max(outputPositionRef.current, result.first);
         result.messages.forEach(handleMessage);
         more = followingRef.current && result.next < result.total;
       }
@@ -398,12 +426,11 @@ const LmnInstallPage = () => {
         .catch(() => null);
       if (!active) return;
       // Once the installer API has been shut down after a successful run, only the store knows the result.
-      const status =
-        serverStatus ?? (useInstallerStore.getState().lmnPlaybookStatus === 'completed' ? 'completed' : null);
-      if (status === 'completed') {
+      if (serverStatus === null && useInstallerStore.getState().lmnPlaybookStatus === 'completed') {
         store.setLmnPlaybookStatus('completed');
         return;
       }
+      const status = serverStatus;
       store.setLmnPlaybookStatus('running');
       if (status === null) {
         // A reload while the server is unreachable: a run may be going on. The status poll starts one if none is.
@@ -411,13 +438,17 @@ const LmnInstallPage = () => {
         followRun();
         return;
       }
-      if (status !== 'running') {
+      // A finished run is followed as well: its replay brings the log and ends with its status.
+      if (status !== 'running' && status !== 'completed') {
         // A new run may target another server, so the configuration of an earlier run no longer applies.
-        store.clearLmnOutput();
+        resetOutput();
         store.clearLmnFetchedConfig();
+        // Connected after the start: the server sends the whole output of the run on connecting.
+        const started = await startPlaybook();
+        if (started === 'failed') return;
+        // The status poll shows whether it runs, and starts it if not.
+        if (started === 'unknown') startWhenIdleRef.current = true;
       }
-      // Connected after the start: the server sends the whole output of the run on connecting.
-      if (status !== 'running' && !(await startPlaybook())) return;
       if (!active) return;
       followRun();
     };

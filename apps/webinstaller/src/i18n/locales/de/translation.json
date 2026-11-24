@@ -175,6 +175,7 @@
     "configError": "Edulution-Konfiguration konnte nicht abgerufen werden. Bitte prüfen Sie, ob der linuxmuster.net-Server erreichbar ist.",
     "reconnecting": "Die Verbindung zum linuxmuster.net-Installer ist unterbrochen und wird wiederhergestellt. Die Installation auf dem Server ist davon nicht betroffen.",
     "unresponsive": "Der linuxmuster.net-Installer antwortet seit über {{minutes}} Minuten nicht. Die Installation läuft möglicherweise weiter. Auf dem Server lässt sie sich verfolgen mit:",
+    "runLost": "Der linuxmuster.net-Installer meldet keinen laufenden Lauf mehr, etwa nach einem Neustart des Servers. Die Installation wurde unterbrochen; über „Zurück zur Einrichtung“ lässt sie sich erneut starten.",
     "checkAgain": "Erneut prüfen"
   },
   "finish": {
