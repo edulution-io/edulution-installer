@@ -10,7 +10,7 @@ from update.migrations import (
     blocking_majors,
     pending_normal,
 )
-from update.migrations.m0001_mongo_replica_set import MIGRATION, has_credentials, with_replica_set
+from update.migrations.m0001_mongo_replica_set import MIGRATION, with_replica_set
 
 BASE = "mongodb://root:pw@edu-db:27017/"
 WANTED = "?replicaSet=rs0&directConnection=true"
@@ -131,20 +131,3 @@ def test_pending_and_blocking():
     assert pending_normal(done, reg) == [normal]
     assert blocking_majors(done, reg) == []
     assert available_majors(done, reg) == [after]
-
-
-@pytest.mark.parametrize(
-    "url, expected",
-    [
-        ("mongodb://root:pw@edu-db:27017/", True),
-        ('mongodb://root:p@ss?:%&"x@edu-db:27017/?replicaSet=rs0', True),
-        ("mongodb+srv://user:pw@cluster.example/", True),
-        ("mongodb://edu-db:27017/", False),
-        ("mongodb://edu-db:27017/?replicaSet=rs0&directConnection=true", False),
-        ("mongodb://root@edu-db:27017/", False),
-        ("mongodb://root:@edu-db:27017/", False),
-        ("mongodb://:pw@edu-db:27017/", False),
-    ],
-)
-def test_has_credentials(url, expected):
-    assert has_credentials(url) is expected

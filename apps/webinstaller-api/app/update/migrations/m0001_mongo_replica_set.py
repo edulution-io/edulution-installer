@@ -30,15 +30,6 @@ def with_replica_set(url: str) -> str:
     return f"{head}{host}?{'&'.join(params)}"
 
 
-def has_credentials(url: str) -> bool:
-    """Whether the URL names a user and a password, which a database started with a key file requires."""
-    if "@" not in url:
-        return False
-    start = url.find("://") + 3 if "://" in url else 0
-    user, sep, password = url[start:url.rfind("@")].partition(":")
-    return bool(user and sep and password)
-
-
 def _needed(ctx: Context) -> bool:
     if ctx.env.get("MONGODB_AUTH_SOURCE") is None:
         return True

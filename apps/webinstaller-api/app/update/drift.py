@@ -14,7 +14,6 @@ from update.migrations import (
     blocking_majors,
     pending_normal,
 )
-from update.migrations.m0001_mongo_replica_set import URL_KEY, has_credentials
 from update.templates import sha256
 from update.versions import is_older
 
@@ -56,21 +55,22 @@ def _needed(root: Path, pending: list[Migration]) -> list[Migration]:
     return [m for m in pending if m.needed(ctx)]
 
 
+# edu-api logs in with these two and ignores credentials in MONGODB_SERVER_URL.
+DB_USER_KEYS = ("MONGODB_USERNAME", "MONGODB_PASSWORD")
+
 DB_CREDENTIALS_MESSAGE = (
-    f"{URL_KEY} in {ENV} enthält keinen Benutzer und kein Passwort. Nach dem Update startet die Datenbank "
-    "mit Zugriffskontrolle (Replica Set mit Schlüsseldatei) und edu-api erreicht sie dann nicht mehr. "
-    f"Zuerst einen Datenbank-Benutzer anlegen und in {URL_KEY} eintragen, wie in der Anleitung zum "
-    "MongoDB Replica Set in der edulution-Dokumentation beschrieben."
+    f"{' und '.join(DB_USER_KEYS)} sind in {ENV} nicht beide gesetzt. Nach dem Update startet die Datenbank "
+    "mit Zugriffskontrolle (Replica Set mit Schlüsseldatei), und edu-api meldet sich mit diesen Werten an. "
+    f"Zuerst einen Datenbank-Benutzer anlegen und in {' und '.join(DB_USER_KEYS)} eintragen."
 )
 
 
-def _url_without_credentials(root: Path) -> bool:
+def _db_user_missing(root: Path) -> bool:
     try:
         env = EnvFile.parse((root / ENV).read_bytes().decode("utf-8"))
     except FileNotFoundError:
         return False
-    url = env.get(URL_KEY)
-    return url is not None and not has_credentials(url)
+    return not all(env.get(key) for key in DB_USER_KEYS)
 
 
 def check(
@@ -79,6 +79,7 @@ def check(
     target_version: str,
     history: frozenset[str],
     registry=MIGRATIONS,
+    restart_pending: bool = False,
 ) -> Report:
     # Bytes, not text mode: line-ending differences must count as differences.
     text = (root / COMPOSE).read_bytes().decode("utf-8")
@@ -96,11 +97,11 @@ def check(
     pending = pending_normal(state, registry)
     blocked_by = blocking_majors(state, registry)
     # Installations set up by hand may run the database without users; a template with a key file
-    # turns on access control, which edu-api then cannot pass.
+    # turns on access control, which edu-api then cannot pass. A pending restart would start it.
     db_credentials_missing = (
         "--keyFile" in target_text
-        and (status != "current" or bool(pending) or bool(blocked_by))
-        and _url_without_credentials(root)
+        and (status != "current" or bool(pending) or bool(blocked_by) or restart_pending)
+        and _db_user_missing(root)
     )
     recreate = list(dict.fromkeys(name for m in _needed(root, pending) for name in m.recreate))
     diff = "" if body == target_text else "".join(
@@ -123,6 +124,7 @@ def check(
         recreate=recreate,
         expect=fingerprint(root),
         diff=diff,
+        restart_pending=restart_pending,
         db_credentials_missing=db_credentials_missing,
     )
 

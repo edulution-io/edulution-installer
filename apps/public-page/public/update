@@ -201,6 +201,15 @@ main() {
                     echo "Die Dateien sind aktuell; der Neustart der Dienste steht noch aus:"
                     restart_hint
                 else
+                    # The restart starts what the files describe: a database with a key file needs the user edu-api logs in with.
+                    rc=0
+                    run_update check --restart-pending > /dev/null || rc=$?
+                    if [[ $rc -eq 6 ]]; then
+                        echo "[!] MONGODB_USERNAME und MONGODB_PASSWORD sind in ${DIRECTORY}edulution.env nicht beide gesetzt,"
+                        echo "    die Datenbank startet aber mit Zugriffskontrolle. Der Neustart wird nicht ausgeführt."
+                        echo "    Zuerst einen Datenbank-Benutzer anlegen und eintragen, dann das Update erneut aufrufen."
+                        exit 6
+                    fi
                     echo "Die Dateien sind aktuell; der Neustart der Dienste nach dem letzten Update wird nachgeholt."
                     restart_services
                     echo "Update abgeschlossen."

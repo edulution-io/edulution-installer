@@ -6,6 +6,7 @@ from update.installation import COMPOSE, ENV, State, save_state, with_header
 
 PRE_JULY_ENV = (
     "A=1\n"
+    "MONGODB_USERNAME=root\n"
     "MONGODB_PASSWORD=pw\n"
     "MONGODB_SERVER_URL=mongodb://root:pw@edu-db:27017/\n"
     "B=2\n"

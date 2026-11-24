@@ -179,13 +179,13 @@ def migrate(
         _guard_expect(root, expect)
         report = check(root, target_text, target_version, history, registry)
         _guard_downgrade(report)
-        _guard_db_credentials(report)
         # The last pending gating major installs the template; earlier ones only run their data step.
         installs_template = migration.gates_template and not any(
             m.kind == "major" and m.gates_template and m.id not in state.applied and m.id != migration_id
             for m in registry
         )
         if installs_template:
+            _guard_db_credentials(report)
             _guard_template(report, discard_local_changes)
 
         env = _read_env(root)

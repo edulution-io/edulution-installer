@@ -155,7 +155,7 @@ def test_apply_summary_outdated(outdated, capsys):
 
 def test_apply_summary_skips_services_of_unneeded_migrations(outdated, capsys):
     (outdated / "edulution.env").write_text(
-        "MONGODB_PASSWORD=pw\nMONGODB_AUTH_SOURCE=admin\n"
+        "MONGODB_USERNAME=root\nMONGODB_PASSWORD=pw\nMONGODB_AUTH_SOURCE=admin\n"
         "MONGODB_SERVER_URL='mongodb://root:pw@edu-db:27017/?replicaSet=rs0&directConnection=true'\n"
     )
     main(["--dir", str(outdated), "check"])
@@ -223,10 +223,12 @@ def test_init(make_installation, target_text, capsys):
     assert main(["--dir", str(root), "check"]) == 0
 
 
-def test_check_names_missing_db_credentials(make_installation, capsys):
-    root = make_installation(header="2.1.0", state=State("2.1.0", []), env="MONGODB_SERVER_URL=mongodb://edu-db:27017/\n")
+def test_check_names_missing_db_user(make_installation, capsys):
+    root = make_installation(header="2.1.0", state=State("2.1.0", []), env="MONGODB_PASSWORD=pw\n")
     assert main(["--dir", str(root), "check"]) == 6
-    assert "Blockiert: MONGODB_SERVER_URL" in capsys.readouterr().out
+    assert "Blockiert: MONGODB_USERNAME und MONGODB_PASSWORD" in capsys.readouterr().out
+    assert main(["--dir", str(root), "check", "--restart-pending"]) == 6
+    capsys.readouterr()
     before = files(root)
     token = main(["--dir", str(root), "expect"]) or capsys.readouterr().out.strip()
     assert main(["--dir", str(root), "apply", "--yes", "--expect", token]) == 6

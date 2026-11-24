@@ -43,7 +43,7 @@ Keep local changes in `docker-compose.override.yml`, not in `docker-compose.yml`
 | 3 | Another update is running |
 | 4 | Files changed since the check |
 | 5 | Downgrade refused: the installation is newer than the target release (`--check` reports it before anything runs; pick the release with `--version`) |
-| 6 | `MONGODB_SERVER_URL` in `edulution.env` has no user and password, while the update would start the database with access control; create a database user first (MongoDB replica set guide in the edulution docs) |
+| 6 | `MONGODB_USERNAME` and `MONGODB_PASSWORD` in `edulution.env` are not both set, while the update (or the pending restart) would start the database with access control; create a database user and enter it there first |
 
 Any other non-zero code (for example Docker's 125 to 127) means the update container could not be started.
 

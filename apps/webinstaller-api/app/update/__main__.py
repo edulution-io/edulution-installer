@@ -66,8 +66,7 @@ def _run(args) -> int:
     root = Path(args.dir)
     version = target_version()
     if args.command == "check":
-        report = check(root, target_compose(), version, history(), MIGRATIONS)
-        report.restart_pending = args.restart_pending
+        report = check(root, target_compose(), version, history(), MIGRATIONS, restart_pending=args.restart_pending)
         if args.json:
             print(json.dumps(to_json(report), ensure_ascii=False, indent=2))
         else:

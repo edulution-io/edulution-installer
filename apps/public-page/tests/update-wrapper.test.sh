@@ -26,7 +26,11 @@ case $1 in
         [[ $# -gt 0 ]] || exit 98
         shift
         case $1 in
-            check) echo "report"; exit "${STUB_CHECK_RC:-10}" ;;
+            check)
+                echo "report"
+                [[ $* != *--restart-pending* || -z "${STUB_PENDING_CHECK_RC:-}" ]] || exit "$STUB_PENDING_CHECK_RC"
+                exit "${STUB_CHECK_RC:-10}"
+                ;;
             expect)
                 # A second expect sees the files as apply left them.
                 if [[ -n "${STUB_EXPECT_AFTER:-}" && $(grep -c "update expect" "$STUB_LOG") -gt 1 ]]; then
@@ -297,6 +301,18 @@ expect_case "a second script exits 3 and leaves the restart marker alone" locked
 json_alone() { rc_is 2 && not_logged "run "; }
 run_wrapper --json
 expect_case "--json without --check exits 2" json_alone
+
+pending_no_db_user() { rc_is 6 && not_logged "compose" && [[ -e $PENDING_FILE ]] && grep -q "MONGODB_USERNAME" "$WORK/out"; }
+PENDING=1 STUB_CHECK_RC=0 STUB_PENDING_CHECK_RC=6 run_wrapper --yes
+expect_case "a pending restart without a database user is not carried out" pending_no_db_user
+
+pending_with_db_user() { rc_is 0 && logged "update check --restart-pending" && logged "compose --project-directory $WORK/dir/ up -d"; }
+PENDING=1 STUB_CHECK_RC=0 STUB_PENDING_CHECK_RC=10 run_wrapper --yes
+expect_case "a pending restart is checked once more and then carried out" pending_with_db_user
+
+apply_refused_6() { rc_is 6 && not_logged "compose" && [[ ! -e $PENDING_FILE ]]; }
+STUB_APPLY_RC=6 run_wrapper --yes
+expect_case "apply refusing with 6 leaves no pending restart" apply_refused_6
 
 if [[ $fails -ne 0 ]]; then
     echo "$fails case(s) failed"
