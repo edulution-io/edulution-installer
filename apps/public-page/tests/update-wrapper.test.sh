@@ -11,6 +11,13 @@ mkdir "$WORK/bin" "$WORK/dir"
 touch "$WORK/dir/edulution.env"
 cat > "$WORK/bin/docker" <<'STUB'
 #!/bin/bash
+# docker compose config is logged apart, so "compose" in the log still means pull or up.
+if [[ $1 == compose && " $* " == *" config "* ]]; then
+    echo "$*" >> "$STUB_LOG.config"
+    [[ -z "${STUB_RESOLVED_CONFIG_RC:-}" ]] || exit "$STUB_RESOLVED_CONFIG_RC"
+    echo '{"services": {"edu-api": {"environment": {}}}}'
+    exit 0
+fi
 echo "$*" >> "$STUB_LOG"
 case $1 in
     pull) echo "pull progress"; exit "${STUB_PULL_RC:-0}" ;;
@@ -313,6 +320,31 @@ expect_case "a pending restart is checked once more and then carried out" pendin
 apply_refused_6() { rc_is 6 && not_logged "compose" && [[ ! -e $PENDING_FILE ]]; }
 STUB_APPLY_RC=6 run_wrapper --yes
 expect_case "apply refusing with 6 leaves no pending restart" apply_refused_6
+
+CONFIG_IN_CONTAINER="--resolved-config /edulution-ui/.update-resolved-config.json"
+
+passes_resolved_config() {
+    rc_is 0 && logged "update check $CONFIG_IN_CONTAINER" && logged "update apply --yes --expect=a:b $CONFIG_IN_CONTAINER" \
+        && logged "update check --restart-pending $CONFIG_IN_CONTAINER" && [[ ! -e $WORK/dir/.update-resolved-config.json ]]
+}
+run_wrapper --yes
+expect_case "the resolved Compose config goes to check, apply and the restart check, and is removed" passes_resolved_config
+
+check_passes_config() { logged "update check $CONFIG_IN_CONTAINER" && [[ ! -e $WORK/dir/.update-resolved-config.json ]]; }
+STUB_CHECK_RC=0 run_wrapper --check
+expect_case "--check passes the resolved Compose config" check_passes_config
+
+no_config() { rc_is 0 && not_logged "resolved-config" && logged "compose --project-directory $WORK/dir/ up -d"; }
+STUB_RESOLVED_CONFIG_RC=1 run_wrapper --yes
+expect_case "without a Compose config the checks read edulution.env" no_config
+
+header_only_blocked() { rc_is 6 && logged "update apply" && not_logged "compose" && [[ -e $PENDING_FILE ]]; }
+STUB_PENDING_CHECK_RC=6 run_wrapper --yes
+expect_case "the restart after an update is checked and not carried out without a database user" header_only_blocked
+
+preflight_failed() { rc_is 125 && not_logged "compose" && [[ -e $PENDING_FILE ]] && grep -q "Code 125" "$WORK/out"; }
+PENDING=1 STUB_CHECK_RC=0 STUB_PENDING_CHECK_RC=125 run_wrapper --yes
+expect_case "a restart check that does not run keeps the restart pending" preflight_failed
 
 if [[ $fails -ne 0 ]]; then
     echo "$fails case(s) failed"

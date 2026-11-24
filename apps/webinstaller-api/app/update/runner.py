@@ -130,9 +130,10 @@ def apply(
     history: frozenset[str],
     registry=MIGRATIONS,
     now: datetime | None = None,
+    service_env: dict[str, str] | None = None,
 ) -> Outcome:
     with locked(root):
-        report = check(root, target_text, target_version, history, registry)
+        report = check(root, target_text, target_version, history, registry, service_env=service_env)
         _guard_downgrade(report)
         _guard_db_credentials(report)
         if report.blocked_by:
@@ -165,6 +166,7 @@ def migrate(
     registry=MIGRATIONS,
     now: datetime | None = None,
     discard_local_changes: bool = False,
+    service_env: dict[str, str] | None = None,
 ) -> Outcome:
     with locked(root):
         migration = next((m for m in registry if m.id == migration_id), None)
@@ -177,7 +179,7 @@ def migrate(
         if missing:
             raise UpdateError(2, f"Zuerst erforderlich: {', '.join(missing)}.")
         _guard_expect(root, expect)
-        report = check(root, target_text, target_version, history, registry)
+        report = check(root, target_text, target_version, history, registry, service_env=service_env)
         _guard_downgrade(report)
         # The last pending gating major installs the template; earlier ones only run their data step.
         installs_template = migration.gates_template and not any(

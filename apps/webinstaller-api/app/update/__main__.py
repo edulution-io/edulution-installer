@@ -62,11 +62,32 @@ def _summary(outcome) -> None:
         print("Ein Update der Installation steht noch aus.")
 
 
+def _service_env(path: str | None) -> dict[str, str] | None:
+    """edu-api's environment from `docker compose config --format json`, which update.sh passes."""
+    if not path:
+        return None
+    try:
+        env = json.loads(Path(path).read_text(encoding="utf-8"))["services"]["edu-api"].get("environment") or {}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    if isinstance(env, list):
+        env = dict(item.split("=", 1) if "=" in item else (item, "") for item in env)
+    return {str(key): "" if value is None else str(value) for key, value in env.items()}
+
+
 def _run(args) -> int:
     root = Path(args.dir)
     version = target_version()
     if args.command == "check":
-        report = check(root, target_compose(), version, history(), MIGRATIONS, restart_pending=args.restart_pending)
+        report = check(
+            root,
+            target_compose(),
+            version,
+            history(),
+            MIGRATIONS,
+            restart_pending=args.restart_pending,
+            service_env=_service_env(args.resolved_config),
+        )
         if args.json:
             print(json.dumps(to_json(report), ensure_ascii=False, indent=2))
         else:
@@ -94,6 +115,7 @@ def _run(args) -> int:
             target_version=version,
             history=hist,
             registry=MIGRATIONS,
+            service_env=_service_env(args.resolved_config),
         )
     else:
         outcome = migrate(
@@ -105,6 +127,7 @@ def _run(args) -> int:
             history=hist,
             discard_local_changes=args.discard_local_changes,
             registry=MIGRATIONS,
+            service_env=_service_env(args.resolved_config),
         )
     _summary(outcome)
     return 0
@@ -118,6 +141,7 @@ def _parser() -> argparse.ArgumentParser:
     p = sub.add_parser("check", help="Zustand prüfen")
     p.add_argument("--json", action="store_true")
     p.add_argument("--restart-pending", action="store_true", help="update.sh: Neustart steht noch aus")
+    p.add_argument("--resolved-config", help="update.sh: Ausgabe von docker compose config --format json")
 
     sub.add_parser("expect", help="Fingerabdruck der Dateien ausgeben")
 
@@ -125,12 +149,14 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--yes", action="store_true")
     p.add_argument("--expect", required=True)
     p.add_argument("--discard-local-changes", action="store_true")
+    p.add_argument("--resolved-config")
 
     p = sub.add_parser("migrate", help="Größere Migration ausführen")
     p.add_argument("--id", required=True)
     p.add_argument("--yes", action="store_true")
     p.add_argument("--expect", required=True)
     p.add_argument("--discard-local-changes", action="store_true")
+    p.add_argument("--resolved-config")
 
     sub.add_parser("init", help="Frische Installation markieren (nur für den Installer)")
     return parser

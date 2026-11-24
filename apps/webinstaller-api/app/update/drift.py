@@ -59,13 +59,16 @@ def _needed(root: Path, pending: list[Migration]) -> list[Migration]:
 DB_USER_KEYS = ("MONGODB_USERNAME", "MONGODB_PASSWORD")
 
 DB_CREDENTIALS_MESSAGE = (
-    f"{' und '.join(DB_USER_KEYS)} sind in {ENV} nicht beide gesetzt. Nach dem Update startet die Datenbank "
+    f"edu-api erhält {' und '.join(DB_USER_KEYS)} nicht beide mit Wert. Nach dem Update startet die Datenbank "
     "mit Zugriffskontrolle (Replica Set mit Schlüsseldatei), und edu-api meldet sich mit diesen Werten an. "
-    f"Zuerst einen Datenbank-Benutzer anlegen und in {' und '.join(DB_USER_KEYS)} eintragen."
+    f"Zuerst einen Datenbank-Benutzer anlegen und in {ENV} (oder docker-compose.override.yml) eintragen."
 )
 
 
-def _db_user_missing(root: Path) -> bool:
+def _db_user_missing(root: Path, service_env: dict[str, str] | None) -> bool:
+    # What Compose passes to edu-api (overrides, interpolation) where update.sh could resolve it.
+    if service_env is not None:
+        return not all(service_env.get(key) for key in DB_USER_KEYS)
     try:
         env = EnvFile.parse((root / ENV).read_bytes().decode("utf-8"))
     except FileNotFoundError:
@@ -80,6 +83,7 @@ def check(
     history: frozenset[str],
     registry=MIGRATIONS,
     restart_pending: bool = False,
+    service_env: dict[str, str] | None = None,
 ) -> Report:
     # Bytes, not text mode: line-ending differences must count as differences.
     text = (root / COMPOSE).read_bytes().decode("utf-8")
@@ -101,7 +105,7 @@ def check(
     db_credentials_missing = (
         "--keyFile" in target_text
         and (status != "current" or bool(pending) or bool(blocked_by) or restart_pending)
-        and _db_user_missing(root)
+        and _db_user_missing(root, service_env)
     )
     recreate = list(dict.fromkeys(name for m in _needed(root, pending) for name in m.recreate))
     diff = "" if body == target_text else "".join(
