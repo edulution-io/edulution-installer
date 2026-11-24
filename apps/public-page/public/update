@@ -16,7 +16,7 @@ DIRECTORY="${EDULUTION_UPDATE_DIR:-$DIRECTORY}"
 DIRECTORY="${DIRECTORY%/}/"
 TTY_FILE="${EDULUTION_UPDATE_TTY:-/dev/tty}"
 # Set once apply has written the files and removed after the services restarted, so a later run finishes the restart.
-# It holds the version of the script that wrote the files.
+# It names the release whose files it wrote.
 RESTART_PENDING="${DIRECTORY}.update-restart-pending"
 VERSION_GIVEN=0
 
@@ -62,7 +62,7 @@ run_update() {
 }
 
 restart_hint() {
-    echo "    docker compose --project-directory ${DIRECTORY} pull && docker compose --project-directory ${DIRECTORY} up -d"
+    echo "    docker compose --project-directory ${DIRECTORY} pull && docker compose --project-directory ${DIRECTORY} up -d && rm -f ${RESTART_PENDING}"
 }
 
 restart_services() {
@@ -155,18 +155,32 @@ main() {
         exit 1
     fi
 
+    # The container's lock covers only its own run; this one keeps a second script from
+    # changing the restart marker between this one reading it and finishing its steps.
+    if [[ $CHECK_ONLY -eq 0 ]]; then
+        exec 9> "${DIRECTORY}.update-script.lock"
+        if ! flock -n 9; then
+            echo "[!] Ein anderes Update läuft bereits."
+            exit 3
+        fi
+    fi
+
     # The pending restart belongs to the release that wrote the files: checked against a newer one,
-    # the run would apply that template instead of only restarting.
-    if [[ -s "$RESTART_PENDING" ]]; then
+    # the run would apply that template instead of only restarting. --compose-only restarts nothing
+    # and writes the files of its own release.
+    OWN_VERSION=$EDULUTION_INSTALLER_VERSION
+    if [[ -s "$RESTART_PENDING" && $COMPOSE_ONLY -eq 0 ]]; then
         recorded=$(head -n 1 "$RESTART_PENDING")
+        recorded=${recorded//[[:space:]]/}
         if [[ "$recorded" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ && "$recorded" != "$EDULUTION_INSTALLER_VERSION" ]]; then
-            if [[ $VERSION_GIVEN -eq 1 ]]; then
+            if [[ $VERSION_GIVEN -eq 0 ]]; then
+                echo "Der Neustart der Dienste nach dem Update auf ${recorded} steht noch aus."
+                use_version "$recorded"
+            elif [[ $CHECK_ONLY -eq 0 ]]; then
                 echo "[!] Der Neustart der Dienste nach dem Update auf ${recorded} steht noch aus. Zuerst diesen abschließen:"
                 echo "    curl -fsSL https://get.edulution.io/update | sudo bash -s -- --version ${recorded}"
                 exit 2
             fi
-            echo "Der Neustart der Dienste nach dem Update auf ${recorded} steht noch aus."
-            use_version "$recorded"
         fi
     fi
 
@@ -192,14 +206,6 @@ main() {
         exit "$rc"
     fi
 
-    # The container's lock covers only its own run; this one keeps a second script from
-    # changing the restart marker while this one is between its steps.
-    exec 9> "${DIRECTORY}.update-script.lock"
-    if ! flock -n 9; then
-        echo "[!] Ein anderes Update läuft bereits."
-        exit 3
-    fi
-
     # Taken before check: if the files change after it, apply refuses with exit 4 instead of
     # applying changes the operator was not shown.
     rc=0
@@ -223,6 +229,9 @@ main() {
                     echo "Die Dateien sind aktuell; der Neustart der Dienste nach dem letzten Update wird nachgeholt."
                     restart_services
                     echo "Update abgeschlossen."
+                    if [[ "$EDULUTION_INSTALLER_VERSION" != "$OWN_VERSION" ]]; then
+                        echo "Version ${OWN_VERSION} ist verfügbar; ein weiterer Aufruf des Updates wendet sie an."
+                    fi
                 fi
                 exit 0
             fi
@@ -281,7 +290,11 @@ main() {
 
     # Set before the container writes anything, so an interruption after the writes keeps the restart pending.
     had_pending=0
-    [[ ! -e "$RESTART_PENDING" ]] || had_pending=1
+    previous=""
+    if [[ -e "$RESTART_PENDING" ]]; then
+        had_pending=1
+        previous=$(cat "$RESTART_PENDING")
+    fi
     printf '%s\n' "$EDULUTION_INSTALLER_VERSION" > "$RESTART_PENDING"
 
     rc=0
@@ -291,8 +304,13 @@ main() {
         run_update apply "${args[@]}" >&4 || rc=$?
     fi
     if [[ $rc -ne 0 ]]; then
-        if [[ $had_pending -eq 0 ]] && nothing_written "$rc" "$token"; then
-            rm -f "$RESTART_PENDING"
+        if nothing_written "$rc" "$token"; then
+            # The files on disk are still those of the earlier marker, if any.
+            if [[ $had_pending -eq 0 ]]; then
+                rm -f "$RESTART_PENDING"
+            else
+                { [[ -z "$previous" ]] || printf '%s\n' "$previous"; } > "$RESTART_PENDING"
+            fi
         fi
         exit "$rc"
     fi

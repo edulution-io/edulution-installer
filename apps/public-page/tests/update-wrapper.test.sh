@@ -348,6 +348,39 @@ expect_case "an empty marker from an earlier script uses the script's own releas
 PENDING='2.2.2;x' STUB_CHECK_RC=0 run_stamped --yes
 expect_case "a marker that names no release is ignored" own_version
 
+hint_clears_marker() { grep -q "up -d && rm -f $WORK/dir/.update-restart-pending" "$WORK/out"; }
+run_stamped --compose-only --yes
+expect_case "the restart hint removes the marker as well" hint_clears_marker
+
+names_newer() { follows_recorded && grep -q "Version 2.2.3 ist verfügbar" "$WORK/out"; }
+PENDING=2.2.2 STUB_CHECK_RC=0 run_stamped --yes
+expect_case "finishing an older pending restart names the newer release" names_newer
+
+compose_only_own() {
+    rc_is 0 && logged "pull ghcr.io/edulution-io/edulution-installer:2.2.3" && not_logged "edulution-installer:2.2.2" \
+        && logged "update apply" && [[ $(cat "$PENDING_FILE") == 2.2.3 ]]
+}
+PENDING=2.2.2 run_stamped --compose-only --yes
+expect_case "--compose-only writes its own release despite an older marker" compose_only_own
+
+check_other_version() { rc_is 10 && logged "pull ghcr.io/edulution-io/edulution-installer:2.2.4"; }
+PENDING=2.2.2 run_stamped --version 2.2.4 --check --json
+expect_case "--check with another --version checks that release" check_other_version
+
+PENDING=$'2.2.2\r' STUB_CHECK_RC=0 run_stamped --yes
+expect_case "a marker with CRLF is read" follows_recorded
+
+restored() { rc_is 4 && [[ -e $PENDING_FILE && ! -s $PENDING_FILE ]]; }
+PENDING=1 STUB_APPLY_RC=4 run_stamped --yes
+expect_case "an apply that wrote nothing restores the earlier marker" restored
+
+locked_before_marker() { rc_is 3 && not_logged "pull" && [[ $(cat "$PENDING_FILE") == 2.2.2 ]]; }
+exec 8> "$WORK/dir/.update-script.lock"
+flock 8
+PENDING=2.2.2 run_stamped --yes
+exec 8>&-
+expect_case "the lock is taken before the marker is read" locked_before_marker
+
 if [[ $fails -ne 0 ]]; then
     echo "$fails case(s) failed"
     exit 1
