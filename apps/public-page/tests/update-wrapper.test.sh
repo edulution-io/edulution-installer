@@ -55,12 +55,17 @@ RC=0
 
 PENDING_FILE="$WORK/dir/.update-restart-pending"
 
-# reset: clears the log and the restart marker; PENDING=1 sets the marker for the case.
+# reset: clears the log and the restart marker; PENDING=1 sets an empty marker (scripts before 2.2.3),
+# PENDING=<version> one naming the release that wrote the files.
 reset() {
     : > "$LOG"
     RC=0
     rm -f "$PENDING_FILE"
-    [[ -z "${PENDING:-}" ]] || touch "$PENDING_FILE"
+    case ${PENDING:-} in
+        "") ;;
+        1) touch "$PENDING_FILE" ;;
+        *) printf '%s\n' "$PENDING" > "$PENDING_FILE" ;;
+    esac
 }
 
 # run_wrapper <wrapper args...>; the environment of the case is set by the caller.
@@ -297,6 +302,51 @@ expect_case "a second script exits 3 and leaves the restart marker alone" locked
 json_alone() { rc_is 2 && not_logged "run "; }
 run_wrapper --json
 expect_case "--json without --check exits 2" json_alone
+
+# A released script, stamped as stamp-installer.sh does (with a tag instead of a digest).
+STAMPED="$WORK/update-2.2.3"
+sed -e 's|^EDULUTION_INSTALLER_IMAGE=.*|EDULUTION_INSTALLER_IMAGE="ghcr.io/edulution-io/edulution-installer:2.2.3"|' \
+    -e 's|^EDULUTION_INSTALLER_VERSION=.*|EDULUTION_INSTALLER_VERSION="2.2.3"|' "$WRAPPER" > "$STAMPED"
+
+run_stamped() {
+    reset
+    PATH="$WORK/bin:$PATH" STUB_LOG="$LOG" EDULUTION_UPDATE_DIR="$WORK/dir" \
+        EDULUTION_UPDATE_SKIP_ROOT_CHECK=1 bash "$STAMPED" "$@" > "$WORK/out" 2>&1 || RC=$?
+}
+
+records_version() { rc_is 0 && [[ $(cat "$PENDING_FILE") == 2.2.3 ]]; }
+run_stamped --compose-only --yes
+expect_case "--compose-only records the script's version in the restart marker" records_version
+
+restart_failed_records() { rc_is 1 && [[ $(cat "$PENDING_FILE") == 2.2.3 ]]; }
+STUB_COMPOSE_RC=1 run_stamped --yes
+expect_case "a failed restart leaves the marker with the script's version" restart_failed_records
+
+follows_recorded() {
+    rc_is 0 && logged "pull ghcr.io/edulution-io/edulution-installer:2.2.2" \
+        && not_logged "edulution-installer:2.2.3" && not_logged "update apply" \
+        && logged "compose --project-directory $WORK/dir/ up -d" && [[ ! -e $PENDING_FILE ]]
+}
+PENDING=2.2.2 STUB_CHECK_RC=0 run_stamped --yes
+expect_case "a pending restart from 2.2.2 is finished with 2.2.2, not the newer release" follows_recorded
+
+check_follows_recorded() { rc_is 10 && logged "pull ghcr.io/edulution-io/edulution-installer:2.2.2" && logged "update check --restart-pending"; }
+PENDING=2.2.2 run_stamped --check
+expect_case "--check with a pending restart checks against the recorded release" check_follows_recorded
+
+other_version_refused() { rc_is 2 && not_logged "pull" && not_logged "run " && grep -q -- "--version 2.2.2" "$WORK/out"; }
+PENDING=2.2.2 run_stamped --version 2.2.4 --yes
+expect_case "--version other than the recorded one is refused while a restart is pending" other_version_refused
+
+same_version() { rc_is 0 && logged "pull ghcr.io/edulution-io/edulution-installer:2.2.2" && [[ ! -e $PENDING_FILE ]]; }
+PENDING=2.2.2 STUB_CHECK_RC=0 run_stamped --version 2.2.2 --yes
+expect_case "--version equal to the recorded one finishes the restart" same_version
+
+own_version() { rc_is 0 && logged "pull ghcr.io/edulution-io/edulution-installer:2.2.3"; }
+PENDING=1 STUB_CHECK_RC=0 run_stamped --yes
+expect_case "an empty marker from an earlier script uses the script's own release" own_version
+PENDING='2.2.2;x' STUB_CHECK_RC=0 run_stamped --yes
+expect_case "a marker that names no release is ignored" own_version
 
 if [[ $fails -ne 0 ]]; then
     echo "$fails case(s) failed"

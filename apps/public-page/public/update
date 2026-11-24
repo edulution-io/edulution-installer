@@ -16,7 +16,9 @@ DIRECTORY="${EDULUTION_UPDATE_DIR:-$DIRECTORY}"
 DIRECTORY="${DIRECTORY%/}/"
 TTY_FILE="${EDULUTION_UPDATE_TTY:-/dev/tty}"
 # Set once apply has written the files and removed after the services restarted, so a later run finishes the restart.
+# It holds the version of the script that wrote the files.
 RESTART_PENDING="${DIRECTORY}.update-restart-pending"
+VERSION_GIVEN=0
 
 use_version() {
     local version="${1#v}"
@@ -100,10 +102,12 @@ main() {
         case $1 in
             --version)
                 use_version "${2:-}"
+                VERSION_GIVEN=1
                 shift 2
                 ;;
             --version=*)
                 use_version "${1#*=}"
+                VERSION_GIVEN=1
                 shift
                 ;;
             --check) CHECK_ONLY=1; shift ;;
@@ -149,6 +153,21 @@ main() {
     if [[ ! -f "${DIRECTORY}edulution.env" ]]; then
         echo "[!] ${DIRECTORY}edulution.env nicht gefunden. Ist edulution hier installiert?"
         exit 1
+    fi
+
+    # The pending restart belongs to the release that wrote the files: checked against a newer one,
+    # the run would apply that template instead of only restarting.
+    if [[ -s "$RESTART_PENDING" ]]; then
+        recorded=$(head -n 1 "$RESTART_PENDING")
+        if [[ "$recorded" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ && "$recorded" != "$EDULUTION_INSTALLER_VERSION" ]]; then
+            if [[ $VERSION_GIVEN -eq 1 ]]; then
+                echo "[!] Der Neustart der Dienste nach dem Update auf ${recorded} steht noch aus. Zuerst diesen abschließen:"
+                echo "    curl -fsSL https://get.edulution.io/update | sudo bash -s -- --version ${recorded}"
+                exit 2
+            fi
+            echo "Der Neustart der Dienste nach dem Update auf ${recorded} steht noch aus."
+            use_version "$recorded"
+        fi
     fi
 
     echo "edulution update (Installer ${EDULUTION_INSTALLER_VERSION})"
@@ -263,7 +282,7 @@ main() {
     # Set before the container writes anything, so an interruption after the writes keeps the restart pending.
     had_pending=0
     [[ ! -e "$RESTART_PENDING" ]] || had_pending=1
-    touch "$RESTART_PENDING"
+    printf '%s\n' "$EDULUTION_INSTALLER_VERSION" > "$RESTART_PENDING"
 
     rc=0
     if [[ -n "$MIGRATION" ]]; then
