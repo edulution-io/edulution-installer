@@ -35,9 +35,11 @@ const OUTPUT_TIMEOUT_MS = 60000;
 const MAX_RECONNECT_DELAY_MS = 15000;
 // linuxmuster-setup rebuilds network and services on the server, which may cut the connection for a while.
 const UNRESPONSIVE_AFTER_MS = 120000;
-// How long a run the status reports as ended may take to replay its output up to the end.
+// No output for this long ends a run the status reports as ended; the maximum bounds the wait.
 const FINAL_REPLAY_MS = 10000;
 const FINAL_REPLAY_MAX_MS = 180000;
+// Starting returns at once; without an answer by then the outcome counts as unknown.
+const START_TIMEOUT_MS = 30000;
 
 const LmnInstallPage = () => {
   const navigate = useNavigate();
@@ -48,6 +50,8 @@ const LmnInstallPage = () => {
   const configFetched =
     store.lmnPlaybookStatus === 'completed' && store.lmnBinduserPw !== '' && store.lmnCaCertificate !== '';
   const [configuring, setConfiguring] = useState(false);
+  const configRequestedRef = useRef(false);
+  const [configAttempt, setConfigAttempt] = useState(0);
   const [configError, setConfigError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [edulutionExternalDomain, setEdulutionExternalDomain] = useState(
@@ -71,7 +75,7 @@ const LmnInstallPage = () => {
   const pendingLinesRef = useRef<string[]>([]);
   const flushFrameRef = useRef<number | undefined>(undefined);
   const startWhenIdleRef = useRef(false);
-  // Position in the run's output, the same for the stream and the HTTP fallback; the stream starts over on opening.
+  // Position in the run's output, by the server's numbering, shared by the stream and the HTTP fallback.
   const outputPositionRef = useRef(0);
   const outputJobRef = useRef<string | null>(null);
   const streamEpochRef = useRef(0);
@@ -164,6 +168,8 @@ const LmnInstallPage = () => {
 
     ws.onmessage = (event) => {
       lastContactRef.current = Date.now();
+      // Also a replay of lines already shown: the run is still being caught up on.
+      lastOutputRef.current = Date.now();
       let msg: LmnOutputMessage;
       try {
         msg = JSON.parse(event.data as string) as LmnOutputMessage;
@@ -177,7 +183,7 @@ const LmnInstallPage = () => {
         reconnectAttemptRef.current = 0;
         setConnection('connected');
         setFollowingOverHttp(false);
-        if (!msg.job_id || msg.job_id !== outputJobRef.current) resetOutput();
+        if (outputJobRef.current === null || (msg.job_id && msg.job_id !== outputJobRef.current)) resetOutput();
         outputPositionRef.current = Math.max(outputPositionRef.current, Number(msg.data) || 0);
         outputJobRef.current = msg.job_id ?? null;
         return;
@@ -225,23 +231,27 @@ const LmnInstallPage = () => {
   const startPlaybook = useCallback(async (): Promise<'started' | 'unknown' | 'failed'> => {
     try {
       const currentStore = useInstallerStore.getState();
-      await startLmnPlaybook('linuxmuster.yml', {
-        lmn_server_ip: currentStore.lmnServerIp,
-        lmn_netmask: currentStore.lmnNetmask,
-        lmn_gateway: currentStore.lmnGateway,
-        lmn_servername: currentStore.lmnServername,
-        lmn_domainname: currentStore.lmnDomainname,
-        lmn_schoolname: currentStore.lmnSchoolname,
-        lmn_location: currentStore.lmnLocation,
-        lmn_country: currentStore.lmnCountry,
-        lmn_state: currentStore.lmnState,
-        lmn_dhcprange: currentStore.lmnDhcprange,
-        lmn_adminpw: currentStore.lmnAdminpw,
-        lmn_timezone: currentStore.lmnTimezone,
-        lmn_locale: currentStore.lmnLocale,
-        lmn_local_install: currentStore.lmnLocalInstall,
-        lmn_webui_port: currentStore.lmnWebuiPort,
-      });
+      await startLmnPlaybook(
+        'linuxmuster.yml',
+        {
+          lmn_server_ip: currentStore.lmnServerIp,
+          lmn_netmask: currentStore.lmnNetmask,
+          lmn_gateway: currentStore.lmnGateway,
+          lmn_servername: currentStore.lmnServername,
+          lmn_domainname: currentStore.lmnDomainname,
+          lmn_schoolname: currentStore.lmnSchoolname,
+          lmn_location: currentStore.lmnLocation,
+          lmn_country: currentStore.lmnCountry,
+          lmn_state: currentStore.lmnState,
+          lmn_dhcprange: currentStore.lmnDhcprange,
+          lmn_adminpw: currentStore.lmnAdminpw,
+          lmn_timezone: currentStore.lmnTimezone,
+          lmn_locale: currentStore.lmnLocale,
+          lmn_local_install: currentStore.lmnLocalInstall,
+          lmn_webui_port: currentStore.lmnWebuiPort,
+        },
+        AbortSignal.timeout(START_TIMEOUT_MS),
+      );
       return 'started';
     } catch (error) {
       const { status } = error as ApiError;
@@ -263,6 +273,8 @@ const LmnInstallPage = () => {
       if (generation !== generationRef.current) return;
       lastContactRef.current = Date.now();
       setConnection((current) => (current === 'unresponsive' ? 'reconnecting' : current));
+      // A run the server knows: an idle status later means it is gone, not that it still has to start.
+      if (status !== 'idle') startWhenIdleRef.current = false;
       if (status === 'idle' && startWhenIdleRef.current) {
         startWhenIdleRef.current = false;
         resetOutput();
@@ -351,9 +363,10 @@ const LmnInstallPage = () => {
     if (!pollInFlightRef.current) void pollStatus();
   }, [connectOutput, pollStatus]);
 
-  // Auto-fetch config from LMN API as soon as playbook completes
+  // Auto-fetch config from LMN API as soon as playbook completes; once per completion, again on request.
   useEffect(() => {
-    if (store.lmnPlaybookStatus !== 'completed' || configFetched || configuring) return;
+    if (store.lmnPlaybookStatus !== 'completed' || configFetched || configRequestedRef.current) return;
+    configRequestedRef.current = true;
 
     const fetchConfig = async () => {
       setConfiguring(true);
@@ -374,11 +387,6 @@ const LmnInstallPage = () => {
           lmnLdapPort: 636,
           lmnCaCertificate: edulutionConfig.ca_certificate,
         });
-
-        // Shut down the LMN installer API to free port 8000
-        void shutdownLmnInstaller().catch(() => {
-          // May fail if API already terminated
-        });
       } catch {
         setConfigError(t('lmnInstall.configError'));
       } finally {
@@ -387,7 +395,7 @@ const LmnInstallPage = () => {
     };
 
     void fetchConfig();
-  }, [store.lmnPlaybookStatus, configFetched, configuring, store, t]);
+  }, [store.lmnPlaybookStatus, configFetched, configAttempt, store, t]);
 
   // "Next" button: submit config to webinstaller API and navigate
   const handleContinue = useCallback(async () => {
@@ -414,6 +422,10 @@ const LmnInstallPage = () => {
     } finally {
       setSubmitting(false);
     }
+    // Only now: until here a reload follows the finished run again and fetches the configuration anew.
+    void shutdownLmnInstaller().catch(() => {
+      // May fail if API already terminated
+    });
     void navigate('/check');
   }, [navigate, store, edulutionExternalDomain]);
 
@@ -421,7 +433,7 @@ const LmnInstallPage = () => {
     let active = true;
     const run = async () => {
       // Opening the page again (history, reload) must not run linuxmuster-setup a second time.
-      const serverStatus = await getLmnPlaybookStatus()
+      const serverStatus = await getLmnPlaybookStatus(AbortSignal.timeout(STATUS_TIMEOUT_MS))
         .then((result) => result.status)
         .catch(() => null);
       if (!active) return;
@@ -577,7 +589,23 @@ const LmnInstallPage = () => {
               {t('lmnInstall.configuringEdulution')}
             </div>
           )}
-          {configError && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{configError}</div>}
+          {configError && (
+            <div className="flex flex-col gap-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+              {configError}
+              <Button
+                variant="btn-outline"
+                size="md"
+                className="justify-center"
+                disabled={configuring}
+                onClick={() => {
+                  configRequestedRef.current = false;
+                  setConfigAttempt((attempt) => attempt + 1);
+                }}
+              >
+                {t('common.retry')}
+              </Button>
+            </div>
+          )}
           {configFetched && (
             <>
               <div className="flex items-center gap-2 rounded-lg bg-green-50 p-3 text-sm text-green-800">

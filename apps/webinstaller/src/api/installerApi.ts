@@ -262,6 +262,7 @@ const refusalMessage = (body: unknown, status: number): string => {
 export const startLmnPlaybook = (
   playbook: string,
   extraVars: Record<string, unknown> = {},
+  signal?: AbortSignal,
 ): Promise<PlaybookStartResponse> =>
   apiFetch<PlaybookStartResponse>(
     `/api/lmn/playbook/${playbook}/start`,
@@ -269,6 +270,7 @@ export const startLmnPlaybook = (
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ variables: { extra_vars: extraVars } }),
+      signal,
     },
     refusalMessage,
   );

@@ -175,7 +175,7 @@
     "configError": "Failed to fetch edulution configuration. Please check if the linuxmuster.net server is accessible.",
     "reconnecting": "The connection to the linuxmuster.net installer was interrupted and is being restored. The installation on the server is not affected by this.",
     "unresponsive": "The linuxmuster.net installer has not answered for more than {{minutes}} minutes. The installation may still be running. Follow it on the server with:",
-    "runLost": "The linuxmuster.net installer no longer reports a run, e.g. after the server restarted. The installation was interrupted; start it again via “Back to setup”.",
+    "runLost": "The linuxmuster.net installer no longer reports the installation, e.g. after the installer was restarted. It may have been interrupted; start it again via 'Back to setup'.",
     "checkAgain": "Check again"
   },
   "finish": {
