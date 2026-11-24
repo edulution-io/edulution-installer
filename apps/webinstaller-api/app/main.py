@@ -953,35 +953,46 @@ async def lmn_ws_proxy(websocket: WebSocket, path: str):
         await websocket.close(code=1008, reason="LMN-Server nicht verbunden")
         return
 
-    await websocket.accept()
+    import websockets
     target_url = access.url("wss", f"ws/{path}")
+    # Accepted only once the LMN API answers: an opened stream tells the page it is following the run again.
+    try:
+        target_ws = await websockets.connect(target_url, ssl=access.sslContext, additional_headers=access.authHeaders)
+    except Exception:
+        await websocket.close(code=1011)
+        return
+
+    async def forward_to_target():
+        try:
+            while True:
+                msg = await websocket.receive_text()
+                await target_ws.send(msg)
+        except (WebSocketDisconnect, Exception):
+            pass
+
+    async def forward_to_client():
+        try:
+            async for msg in target_ws:
+                await websocket.send_text(msg)
+        except (WebSocketDisconnect, Exception):
+            pass
 
     try:
-        import websockets
-        async with websockets.connect(target_url, ssl=access.sslContext, additional_headers=access.authHeaders) as target_ws:
-            async def forward_to_target():
-                try:
-                    while True:
-                        msg = await websocket.receive_text()
-                        await target_ws.send(msg)
-                except (WebSocketDisconnect, Exception):
-                    pass
-
-            async def forward_to_client():
-                try:
-                    async for msg in target_ws:
-                        await websocket.send_text(msg)
-                except (WebSocketDisconnect, Exception):
-                    pass
-
-            await asyncio.gather(forward_to_target(), forward_to_client())
+        await websocket.accept()
+        # One side ending ends both: with gather, a browser that left kept the LMN connection open.
+        tasks = [asyncio.create_task(forward_to_target()), asyncio.create_task(forward_to_client())]
+        _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
     except Exception:
         pass
     finally:
-        try:
-            await websocket.close()
-        except Exception:
-            pass
+        for side in (target_ws, websocket):
+            try:
+                await side.close()
+            except Exception:
+                pass
 
 
 # --- SPA Static File Serving ---

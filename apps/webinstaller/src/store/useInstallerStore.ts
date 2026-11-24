@@ -84,6 +84,7 @@ interface InstallerState {
   setLmnBootstrapStatus: (status: LmnStatus) => void;
   setLmnPlaybookStatus: (status: LmnStatus) => void;
   appendLmnOutput: (line: string) => void;
+  appendLmnOutputLines: (lines: string[]) => void;
   clearLmnOutput: () => void;
   setLmnRequirementsPassed: (value: boolean) => void;
   setLmnConfig: (config: {
@@ -210,6 +211,16 @@ const useInstallerStore = create<InstallerState>()(
           const id = logIdCounter;
           logIdCounter += 1;
           return { lmnOutputLog: [...state.lmnOutputLog, { id, text: line }] };
+        }),
+
+      appendLmnOutputLines: (lines) =>
+        set((state) => {
+          const entries = lines.map((text) => {
+            const id = logIdCounter;
+            logIdCounter += 1;
+            return { id, text };
+          });
+          return { lmnOutputLog: [...state.lmnOutputLog, ...entries] };
         }),
 
       clearLmnOutput: () => {

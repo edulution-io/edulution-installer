@@ -156,6 +156,8 @@ class MessageType(str, Enum):
     STDERR = "stderr"
     EVENT = "event"
     STATUS = "status"
+    # First message to a stream client: the position its replay starts at.
+    POSITION = "position"
 
 
 class WebSocketMessage(BaseModel):
@@ -163,3 +165,4 @@ class WebSocketMessage(BaseModel):
     data: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     job_id: UUID | None = None
+    seq: int | None = None  # position in the run's output; None for messages outside it
