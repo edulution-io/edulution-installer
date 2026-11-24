@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from update.drift import Report, check, exit_code, fingerprint
+from update.drift import DB_CREDENTIALS_MESSAGE, Report, check, exit_code, fingerprint
 from update.envfile import EnvFile
 from update.installation import (
     COMPOSE,
@@ -65,6 +65,11 @@ def _guard_downgrade(report: Report) -> None:
             5,
             f"Die Installation ist neuer als die Zielversion ({report.target_version}); Downgrade abgelehnt.",
         )
+
+
+def _guard_db_credentials(report: Report) -> None:
+    if report.db_credentials_missing:
+        raise UpdateError(6, DB_CREDENTIALS_MESSAGE)
 
 
 def _guard_template(report: Report, discard: bool) -> None:
@@ -129,6 +134,7 @@ def apply(
     with locked(root):
         report = check(root, target_text, target_version, history, registry)
         _guard_downgrade(report)
+        _guard_db_credentials(report)
         if report.blocked_by:
             ids = ", ".join(m.id for m in report.blocked_by)
             raise UpdateError(30, f"Zuerst muss eine größere Migration ausgeführt werden: {ids}.")
@@ -173,6 +179,7 @@ def migrate(
         _guard_expect(root, expect)
         report = check(root, target_text, target_version, history, registry)
         _guard_downgrade(report)
+        _guard_db_credentials(report)
         # The last pending gating major installs the template; earlier ones only run their data step.
         installs_template = migration.gates_template and not any(
             m.kind == "major" and m.gates_template and m.id not in state.applied and m.id != migration_id

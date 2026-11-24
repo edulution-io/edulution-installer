@@ -3,7 +3,7 @@ import json
 import sys
 from pathlib import Path
 
-from update.drift import check, exit_code, fingerprint, to_json
+from update.drift import DB_CREDENTIALS_MESSAGE, check, exit_code, fingerprint, to_json
 from update.installation import COMPOSE
 from update.migrations import MIGRATIONS
 from update.runner import UpdateError, apply, init, migrate
@@ -33,6 +33,8 @@ def _print_report(report) -> None:
         print("Ausstehende Migrationen:")
         for m in report.pending:
             print(f"  {m.id} ({m.kind})")
+    if report.db_credentials_missing:
+        print("Blockiert: " + DB_CREDENTIALS_MESSAGE)
     if report.blocked_by:
         print("Blockiert durch: " + ", ".join(m.id for m in report.blocked_by))
     if report.available_majors:

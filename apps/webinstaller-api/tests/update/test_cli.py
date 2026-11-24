@@ -3,7 +3,7 @@ import json
 import pytest
 
 from update.__main__ import main
-from update.installation import COMPOSE, State, read_header
+from update.installation import COMPOSE, LOCK, State, read_header
 from update.migrations import MIGRATIONS, Migration
 from update.templates import sha256
 
@@ -221,3 +221,16 @@ def test_init(make_installation, target_text, capsys):
     assert main(["--dir", str(root), "init"]) == 0
     assert read_header((root / COMPOSE).read_text()) == TARGET
     assert main(["--dir", str(root), "check"]) == 0
+
+
+def test_check_names_missing_db_credentials(make_installation, capsys):
+    root = make_installation(header="2.1.0", state=State("2.1.0", []), env="MONGODB_SERVER_URL=mongodb://edu-db:27017/\n")
+    assert main(["--dir", str(root), "check"]) == 6
+    assert "Blockiert: MONGODB_SERVER_URL" in capsys.readouterr().out
+    before = files(root)
+    token = main(["--dir", str(root), "expect"]) or capsys.readouterr().out.strip()
+    assert main(["--dir", str(root), "apply", "--yes", "--expect", token]) == 6
+    assert "Datenbank-Benutzer" in capsys.readouterr().err
+    after = files(root)
+    after.pop(LOCK, None)
+    assert after == before

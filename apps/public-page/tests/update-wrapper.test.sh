@@ -236,7 +236,7 @@ interrupted() { [[ $RC -ne 0 ]] && logged "update apply" && not_logged "compose"
 { STUB_APPLY_KILL=1 run_wrapper --yes; } 2>/dev/null
 expect_case "stopping the script after apply keeps the restart pending" interrupted
 
-for code in 1 3 4 5; do
+for code in 1 3 4 5 6; do
     check_error() {
         rc_is "$code" && not_logged "update apply" && not_logged "compose" && ! grep -q "neuere Version" "$WORK/out"
     }

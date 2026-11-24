@@ -79,7 +79,7 @@ nothing_written() {
     local after
     case $1 in
         # These codes come from checks that run before any file is written.
-        2 | 3 | 4 | 5 | 20 | 30) return 0 ;;
+        2 | 3 | 4 | 5 | 6 | 20 | 30) return 0 ;;
     esac
     after=$(run_update expect 2>/dev/null) && [[ "$after" == "$2" ]]
 }

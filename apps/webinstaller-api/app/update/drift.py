@@ -14,6 +14,7 @@ from update.migrations import (
     blocking_majors,
     pending_normal,
 )
+from update.migrations.m0001_mongo_replica_set import URL_KEY, has_credentials
 from update.templates import sha256
 from update.versions import is_older
 
@@ -32,6 +33,7 @@ class Report:
     expect: str
     diff: str
     restart_pending: bool = False  # update.sh restarted no services after its last apply
+    db_credentials_missing: bool = False  # the update would start the database with access control
 
 
 def _file_hash(path: Path) -> str:
@@ -52,6 +54,23 @@ def _needed(root: Path, pending: list[Migration]) -> list[Migration]:
         return pending  # apply refuses without the env file; until then nothing is known
     ctx = Context(root, env)
     return [m for m in pending if m.needed(ctx)]
+
+
+DB_CREDENTIALS_MESSAGE = (
+    f"{URL_KEY} in {ENV} enthält keinen Benutzer und kein Passwort. Nach dem Update startet die Datenbank "
+    "mit Zugriffskontrolle (Replica Set mit Schlüsseldatei) und edu-api erreicht sie dann nicht mehr. "
+    f"Zuerst einen Datenbank-Benutzer anlegen und in {URL_KEY} eintragen, wie in der Anleitung zum "
+    "MongoDB Replica Set in der edulution-Dokumentation beschrieben."
+)
+
+
+def _url_without_credentials(root: Path) -> bool:
+    try:
+        env = EnvFile.parse((root / ENV).read_bytes().decode("utf-8"))
+    except FileNotFoundError:
+        return False
+    url = env.get(URL_KEY)
+    return url is not None and not has_credentials(url)
 
 
 def check(
@@ -75,6 +94,14 @@ def check(
         status = "modified" if header is not None else "unknown"
 
     pending = pending_normal(state, registry)
+    blocked_by = blocking_majors(state, registry)
+    # Installations set up by hand may run the database without users; a template with a key file
+    # turns on access control, which edu-api then cannot pass.
+    db_credentials_missing = (
+        "--keyFile" in target_text
+        and (status != "current" or bool(pending) or bool(blocked_by))
+        and _url_without_credentials(root)
+    )
     recreate = list(dict.fromkeys(name for m in _needed(root, pending) for name in m.recreate))
     diff = "" if body == target_text else "".join(
         difflib.unified_diff(
@@ -91,17 +118,20 @@ def check(
         header_current=header == target_version,
         downgrade=is_older(target_version, header) or is_older(target_version, state.template_version),
         pending=pending,
-        blocked_by=blocking_majors(state, registry),
+        blocked_by=blocked_by,
         available_majors=available_majors(state, registry),
         recreate=recreate,
         expect=fingerprint(root),
         diff=diff,
+        db_credentials_missing=db_credentials_missing,
     )
 
 
 def exit_code(report: Report) -> int:
     if report.downgrade:
         return 5
+    if report.db_credentials_missing:
+        return 6
     if report.blocked_by:
         return 30
     if report.status in ("modified", "unknown"):
@@ -120,6 +150,7 @@ def to_json(report: Report) -> dict:
         "headerCurrent": report.header_current,
         "downgrade": report.downgrade,
         "restartPending": report.restart_pending,
+        "dbCredentialsMissing": report.db_credentials_missing,
         "pendingMigrations": [
             {"id": m.id, "kind": m.kind, "recreate": list(m.recreate)} for m in report.pending
         ],

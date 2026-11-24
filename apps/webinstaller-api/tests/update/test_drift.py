@@ -113,6 +113,7 @@ def test_json_shape(make_installation, target_text):
     data = to_json(run(root, target_text))
     assert set(data) == {
         "exitCode", "status", "installedVersion", "targetVersion", "headerCurrent", "downgrade", "restartPending",
+        "dbCredentialsMissing",
         "pendingMigrations", "blockedBy", "availableMajorMigrations", "recreate", "expect", "diff",
     }
     assert data["exitCode"] == 10  # the Mongo migration is pending
@@ -184,3 +185,47 @@ def test_headerless_current_body(make_installation, target_text, all_applied):
     assert report.status == "current"
     assert not report.header_current
     assert exit_code(report) == 10
+
+
+NO_CREDENTIALS_ENV = "MONGODB_SERVER_URL=mongodb://edu-db:27017/\n"
+
+
+def test_url_without_credentials_blocks_an_update(make_installation, target_text):
+    root = make_installation(header="2.1.0", state=State("2.1.0", []), env=NO_CREDENTIALS_ENV)
+    report = run(root, target_text)
+    assert report.db_credentials_missing
+    assert exit_code(report) == 6
+    assert to_json(report)["dbCredentialsMissing"] is True
+
+
+def test_url_with_credentials_does_not_block(make_installation, target_text):
+    root = make_installation(header="2.1.0", state=State("2.1.0", []))
+    report = run(root, target_text)
+    assert not report.db_credentials_missing
+    assert exit_code(report) == 10
+
+
+def test_url_without_credentials_on_a_current_installation(make_installation, target_text, all_applied):
+    root = make_installation(header=TARGET, state=all_applied, env=NO_CREDENTIALS_ENV)
+    assert exit_code(run(root, target_text)) == 0
+
+
+def test_url_without_credentials_and_only_the_header_behind(make_installation, target_text, all_applied):
+    root = make_installation(header="2.1.0", state=all_applied, env=NO_CREDENTIALS_ENV)
+    assert exit_code(run(root, target_text)) == 10
+
+
+def test_url_without_credentials_and_a_template_without_key_file(make_installation, target_text):
+    plain = target_text.replace("--keyFile", "--bind_ip_all")
+    root = make_installation(body=plain, header="2.1.0", state=State("2.1.0", []), env=NO_CREDENTIALS_ENV)
+    assert exit_code(run(root, plain)) == 10
+
+
+def test_no_url_does_not_block(make_installation, target_text):
+    root = make_installation(header="2.1.0", state=State("2.1.0", []), env="A=1\n")
+    assert not run(root, target_text).db_credentials_missing
+
+
+def test_downgrade_comes_before_missing_credentials(make_installation, target_text):
+    root = make_installation(header="2.3.0", state=State("2.3.0", []), env=NO_CREDENTIALS_ENV)
+    assert exit_code(run(root, target_text)) == 5

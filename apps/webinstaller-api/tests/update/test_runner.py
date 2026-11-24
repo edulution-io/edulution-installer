@@ -336,3 +336,23 @@ def test_init_keeps_existing_header(make_installation, target_text):
     root = make_installation(header="2.1.0")
     init(root, target_version=TARGET)
     assert (root / COMPOSE).read_text() == f"# edulution-installer template 2.1.0\n{target_text}"
+
+
+def test_apply_refuses_url_without_credentials(outdated, target_text):
+    root, history = outdated
+    (root / ENV).write_text("MONGODB_SERVER_URL=mongodb://edu-db:27017/\n")
+    before = snapshot(root)
+    with pytest.raises(UpdateError) as err:
+        run_apply(root, target_text, history)
+    assert err.value.code == 6
+    assert "MONGODB_SERVER_URL" in err.value.message
+    assert_untouched_except_lock(root, before)
+
+
+def test_migrate_refuses_url_without_credentials(make_installation, target_text):
+    root = make_installation(header="2.1.0", state=State("2.1.0", []), env="MONGODB_SERVER_URL=mongodb://edu-db:27017/\n")
+    before = snapshot(root)
+    with pytest.raises(UpdateError) as err:
+        run_migrate(root, GATE.id, target_text, (*MIGRATIONS, GATE))
+    assert err.value.code == 6
+    assert_untouched_except_lock(root, before)
