@@ -22,6 +22,7 @@ import {
   submitConfiguration,
   shutdownLmnInstaller,
   type ApiError,
+  timeoutSignal,
 } from '../api/installerApi';
 import EdulutionDomainField from '../components/EdulutionDomainField';
 import { defaultEdulutionDomain, isValidEdulutionDomain } from '../utils/edulutionDomain';
@@ -35,9 +36,13 @@ const OUTPUT_TIMEOUT_MS = 60000;
 const MAX_RECONNECT_DELAY_MS = 15000;
 // linuxmuster-setup rebuilds network and services on the server, which may cut the connection for a while.
 const UNRESPONSIVE_AFTER_MS = 120000;
-// How long a run the status reports as ended may take to replay its output up to the end.
+// No output for this long ends a run the status reports as ended; the maximum bounds the wait.
 const FINAL_REPLAY_MS = 10000;
 const FINAL_REPLAY_MAX_MS = 180000;
+// Starting returns at once; without an answer by then the outcome counts as unknown.
+const START_TIMEOUT_MS = 30000;
+// A failed configuration fetch is retried this often with growing pauses (about 2.5 minutes in all).
+const CONFIG_RETRIES = 8;
 
 const LmnInstallPage = () => {
   const navigate = useNavigate();
@@ -48,6 +53,8 @@ const LmnInstallPage = () => {
   const configFetched =
     store.lmnPlaybookStatus === 'completed' && store.lmnBinduserPw !== '' && store.lmnCaCertificate !== '';
   const [configuring, setConfiguring] = useState(false);
+  const configRequestedRef = useRef(false);
+  const [configAttempt, setConfigAttempt] = useState(0);
   const [configError, setConfigError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [edulutionExternalDomain, setEdulutionExternalDomain] = useState(
@@ -71,7 +78,11 @@ const LmnInstallPage = () => {
   const pendingLinesRef = useRef<string[]>([]);
   const flushFrameRef = useRef<number | undefined>(undefined);
   const startWhenIdleRef = useRef(false);
-  // Position in the run's output, the same for the stream and the HTTP fallback; the stream starts over on opening.
+  // The run before a new start: until the start goes through, the server may still report it.
+  const previousJobRef = useRef<string | null>(null);
+  const configFailuresRef = useRef(0);
+  const configRetryTimerRef = useRef<number | undefined>(undefined);
+  // Position in the run's output, by the server's numbering, shared by the stream and the HTTP fallback.
   const outputPositionRef = useRef(0);
   const outputJobRef = useRef<string | null>(null);
   const streamEpochRef = useRef(0);
@@ -136,6 +147,9 @@ const LmnInstallPage = () => {
 
   const handleMessage = useCallback(
     (msg: LmnOutputMessage) => {
+      if (msg.job_id && msg.job_id === previousJobRef.current) return;
+      // A message of another run than the one shown, e.g. started after the stream connected.
+      if (msg.job_id && outputJobRef.current && msg.job_id !== outputJobRef.current) resetOutput();
       // The server numbers the run's messages; one below the position was shown already.
       if (typeof msg.seq === 'number') {
         if (msg.seq < outputPositionRef.current) return;
@@ -153,7 +167,7 @@ const LmnInstallPage = () => {
         }
       }
     },
-    [finish, queueLine],
+    [finish, queueLine, resetOutput],
   );
 
   const connectOutput = useCallback(() => {
@@ -164,6 +178,8 @@ const LmnInstallPage = () => {
 
     ws.onmessage = (event) => {
       lastContactRef.current = Date.now();
+      // Also a replay of lines already shown: the run is still being caught up on.
+      lastOutputRef.current = Date.now();
       let msg: LmnOutputMessage;
       try {
         msg = JSON.parse(event.data as string) as LmnOutputMessage;
@@ -177,9 +193,10 @@ const LmnInstallPage = () => {
         reconnectAttemptRef.current = 0;
         setConnection('connected');
         setFollowingOverHttp(false);
-        if (!msg.job_id || msg.job_id !== outputJobRef.current) resetOutput();
+        if (msg.job_id && msg.job_id === previousJobRef.current) return;
+        if (outputJobRef.current === null || (msg.job_id && msg.job_id !== outputJobRef.current)) resetOutput();
         outputPositionRef.current = Math.max(outputPositionRef.current, Number(msg.data) || 0);
-        outputJobRef.current = msg.job_id ?? null;
+        outputJobRef.current = msg.job_id ?? outputJobRef.current;
         return;
       }
       handleMessage(msg);
@@ -225,23 +242,27 @@ const LmnInstallPage = () => {
   const startPlaybook = useCallback(async (): Promise<'started' | 'unknown' | 'failed'> => {
     try {
       const currentStore = useInstallerStore.getState();
-      await startLmnPlaybook('linuxmuster.yml', {
-        lmn_server_ip: currentStore.lmnServerIp,
-        lmn_netmask: currentStore.lmnNetmask,
-        lmn_gateway: currentStore.lmnGateway,
-        lmn_servername: currentStore.lmnServername,
-        lmn_domainname: currentStore.lmnDomainname,
-        lmn_schoolname: currentStore.lmnSchoolname,
-        lmn_location: currentStore.lmnLocation,
-        lmn_country: currentStore.lmnCountry,
-        lmn_state: currentStore.lmnState,
-        lmn_dhcprange: currentStore.lmnDhcprange,
-        lmn_adminpw: currentStore.lmnAdminpw,
-        lmn_timezone: currentStore.lmnTimezone,
-        lmn_locale: currentStore.lmnLocale,
-        lmn_local_install: currentStore.lmnLocalInstall,
-        lmn_webui_port: currentStore.lmnWebuiPort,
-      });
+      await startLmnPlaybook(
+        'linuxmuster.yml',
+        {
+          lmn_server_ip: currentStore.lmnServerIp,
+          lmn_netmask: currentStore.lmnNetmask,
+          lmn_gateway: currentStore.lmnGateway,
+          lmn_servername: currentStore.lmnServername,
+          lmn_domainname: currentStore.lmnDomainname,
+          lmn_schoolname: currentStore.lmnSchoolname,
+          lmn_location: currentStore.lmnLocation,
+          lmn_country: currentStore.lmnCountry,
+          lmn_state: currentStore.lmnState,
+          lmn_dhcprange: currentStore.lmnDhcprange,
+          lmn_adminpw: currentStore.lmnAdminpw,
+          lmn_timezone: currentStore.lmnTimezone,
+          lmn_locale: currentStore.lmnLocale,
+          lmn_local_install: currentStore.lmnLocalInstall,
+          lmn_webui_port: currentStore.lmnWebuiPort,
+        },
+        timeoutSignal(START_TIMEOUT_MS),
+      );
       return 'started';
     } catch (error) {
       const { status } = error as ApiError;
@@ -258,12 +279,15 @@ const LmnInstallPage = () => {
     const generation = generationRef.current;
     pollInFlightRef.current = true;
     try {
-      const { status } = await getLmnPlaybookStatus(AbortSignal.timeout(STATUS_TIMEOUT_MS));
+      const { status, job_id: jobId } = await getLmnPlaybookStatus(timeoutSignal(STATUS_TIMEOUT_MS));
       // The page was left or the run ended while the request was out.
       if (generation !== generationRef.current) return;
       lastContactRef.current = Date.now();
       setConnection((current) => (current === 'unresponsive' ? 'reconnecting' : current));
-      if (status === 'idle' && startWhenIdleRef.current) {
+      const earlierRun = !!jobId && jobId === previousJobRef.current;
+      // A run the server knows: an idle status later means it is gone, not that it still has to start.
+      if (status !== 'idle' && !earlierRun) startWhenIdleRef.current = false;
+      if ((status === 'idle' || earlierRun) && startWhenIdleRef.current) {
         startWhenIdleRef.current = false;
         resetOutput();
         store.clearLmnFetchedConfig();
@@ -271,6 +295,8 @@ const LmnInstallPage = () => {
         if (generation !== generationRef.current) return;
         if (started === 'failed') stopFollowing();
         else if (started === 'unknown') startWhenIdleRef.current = true;
+      } else if (earlierRun) {
+        // The new start has not reached the server yet.
       } else if (status === 'idle') {
         // The server knows no run any more, e.g. after its installer API restarted.
         finish('failed');
@@ -293,11 +319,12 @@ const LmnInstallPage = () => {
     outputInFlightRef.current = true;
     try {
       const since = outputPositionRef.current;
-      const result = await getLmnOutput(since, AbortSignal.timeout(OUTPUT_TIMEOUT_MS));
+      const result = await getLmnOutput(since, timeoutSignal(OUTPUT_TIMEOUT_MS));
       const stale = generation !== generationRef.current || epoch !== streamEpochRef.current || streamReadyRef.current;
       if (stale) return;
       lastContactRef.current = Date.now();
       setFollowingOverHttp(true);
+      if (result.job_id && result.job_id === previousJobRef.current) return;
       if (result.job_id && result.job_id !== outputJobRef.current) {
         // Another run, or the first answer since the page opened: the output starts over.
         resetOutput();
@@ -351,9 +378,10 @@ const LmnInstallPage = () => {
     if (!pollInFlightRef.current) void pollStatus();
   }, [connectOutput, pollStatus]);
 
-  // Auto-fetch config from LMN API as soon as playbook completes
+  // Auto-fetch config from LMN API as soon as playbook completes; once per completion, again on request.
   useEffect(() => {
-    if (store.lmnPlaybookStatus !== 'completed' || configFetched || configuring) return;
+    if (store.lmnPlaybookStatus !== 'completed' || configFetched || configRequestedRef.current) return;
+    configRequestedRef.current = true;
 
     const fetchConfig = async () => {
       setConfiguring(true);
@@ -374,20 +402,25 @@ const LmnInstallPage = () => {
           lmnLdapPort: 636,
           lmnCaCertificate: edulutionConfig.ca_certificate,
         });
-
-        // Shut down the LMN installer API to free port 8000
-        void shutdownLmnInstaller().catch(() => {
-          // May fail if API already terminated
-        });
-      } catch {
-        setConfigError(t('lmnInstall.configError'));
-      } finally {
         setConfiguring(false);
+      } catch {
+        // A short outage must not outlast the API: once it stops idle, the bind user's handover is gone.
+        if (configFailuresRef.current < CONFIG_RETRIES) {
+          const delay = Math.min(2000 * 2 ** configFailuresRef.current, 30000);
+          configFailuresRef.current += 1;
+          configRetryTimerRef.current = window.setTimeout(() => {
+            configRequestedRef.current = false;
+            setConfigAttempt((attempt) => attempt + 1);
+          }, delay);
+        } else {
+          setConfigError(t('lmnInstall.configError'));
+          setConfiguring(false);
+        }
       }
     };
 
     void fetchConfig();
-  }, [store.lmnPlaybookStatus, configFetched, configuring, store, t]);
+  }, [store.lmnPlaybookStatus, configFetched, configAttempt, store, t]);
 
   // "Next" button: submit config to webinstaller API and navigate
   const handleContinue = useCallback(async () => {
@@ -414,6 +447,10 @@ const LmnInstallPage = () => {
     } finally {
       setSubmitting(false);
     }
+    // Only now: until here a reload follows the finished run again and fetches the configuration anew.
+    void shutdownLmnInstaller().catch(() => {
+      // May fail if API already terminated
+    });
     void navigate('/check');
   }, [navigate, store, edulutionExternalDomain]);
 
@@ -421,9 +458,8 @@ const LmnInstallPage = () => {
     let active = true;
     const run = async () => {
       // Opening the page again (history, reload) must not run linuxmuster-setup a second time.
-      const serverStatus = await getLmnPlaybookStatus()
-        .then((result) => result.status)
-        .catch(() => null);
+      const answer = await getLmnPlaybookStatus(timeoutSignal(STATUS_TIMEOUT_MS)).catch(() => null);
+      const serverStatus = answer?.status ?? null;
       if (!active) return;
       // Once the installer API has been shut down after a successful run, only the store knows the result.
       if (serverStatus === null && useInstallerStore.getState().lmnPlaybookStatus === 'completed') {
@@ -443,6 +479,7 @@ const LmnInstallPage = () => {
         // A new run may target another server, so the configuration of an earlier run no longer applies.
         resetOutput();
         store.clearLmnFetchedConfig();
+        previousJobRef.current = answer?.job_id ?? null;
         // Connected after the start: the server sends the whole output of the run on connecting.
         const started = await startPlaybook();
         if (started === 'failed') return;
@@ -457,6 +494,7 @@ const LmnInstallPage = () => {
       active = false;
       // Leaving the page is not a lost connection.
       stopFollowing();
+      window.clearTimeout(configRetryTimerRef.current);
     };
   }, []);
 
@@ -577,7 +615,24 @@ const LmnInstallPage = () => {
               {t('lmnInstall.configuringEdulution')}
             </div>
           )}
-          {configError && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{configError}</div>}
+          {configError && (
+            <div className="flex flex-col gap-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+              {configError}
+              <Button
+                variant="btn-outline"
+                size="md"
+                className="justify-center"
+                disabled={configuring}
+                onClick={() => {
+                  configFailuresRef.current = 0;
+                  configRequestedRef.current = false;
+                  setConfigAttempt((attempt) => attempt + 1);
+                }}
+              >
+                {t('common.retry')}
+              </Button>
+            </div>
+          )}
           {configFetched && (
             <>
               <div className="flex items-center gap-2 rounded-lg bg-green-50 p-3 text-sm text-green-800">
