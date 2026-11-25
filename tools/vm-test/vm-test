@@ -1,0 +1,720 @@
+#!/usr/bin/env bash
+#
+# Throwaway libvirt VMs for testing the installer by hand: an edulution server (edu) and a
+# linuxmuster server (lmn) in their own NAT network. See README.md next to this script.
+
+set -euo pipefail
+
+PREFIX=edutest
+SUBNET="${VM_TEST_SUBNET:-10.77.0}"
+STATE="${VM_TEST_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}/edulution-vm-test}"
+RUN="$STATE/run"
+CACHE="$STATE/cache"
+PROTOCOL="$STATE/protocol.md"
+# What up created, one "<kind> <name>" or "volume <pool> <name>" per line; down removes only these.
+RESOURCES="$RUN/resources"
+# Subnet and pool of the run, so later commands use them without the environment of 'up'.
+SETTINGS="$RUN/settings"
+POOL="${VM_TEST_POOL:-default}"
+KVM_DEVICE="${VM_TEST_KVM_DEVICE:-/dev/kvm}" # test hook
+V=(virsh -c qemu:///system)
+
+# linuxmuster.net 7.4 needs Ubuntu 26.04.
+UBUNTU_RELEASE=26.04
+IMAGE_BASE_URL="https://cloud-images.ubuntu.com/releases/${UBUNTU_RELEASE}/release"
+IMAGE_FILE="ubuntu-${UBUNTU_RELEASE}-server-cloudimg-amd64.img"
+# Set by up and kept with the run; volume names carry it, so a stale record never matches another run's disks.
+RUN_ID=""
+
+EDU_MEMORY="${VM_TEST_EDU_MEMORY:-6144}"
+LMN_MEMORY="${VM_TEST_LMN_MEMORY:-4608}"
+# Same version as the CI workflows.
+NODE_IMAGE="node:22.23.4-bookworm"
+# One directory per build, so a failed build leaves the last good one as it was.
+SRC_ON_VM=/root/vm-test-src
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+info() { echo "[vm-test] $*" >&2; }
+die() {
+    echo "[vm-test] error: $*" >&2
+    exit 1
+}
+
+usage() {
+    cat >&2 <<EOF
+Usage: vm-test <command>
+
+  up                         Create the network and both VMs and wait until they answer.
+  build [<git-ref>]          Build the installer image from this checkout on the edu VM
+                             (default: the working tree, including uncommitted changes to tracked files).
+  install [--version X.Y.Z | --local]
+                             Start the installer on the edu VM and print the web installer URL.
+                             --local uses the image from 'build'; without options the latest release.
+  status                     Show the VMs, their addresses and the logins.
+  ssh <edu|lmn> [command]    Open a shell on a VM (user edutest, sudo without password).
+  down [--keep-image] [--all]
+                             Remove everything 'up' created and compare the host with the state before.
+                             --all also removes objects named edutest* that this run did not create.
+
+State and protocol: $STATE
+EOF
+}
+
+# Role -> name, address, MAC address.
+vm_name() { echo "${PREFIX}-$1"; }
+vol_name() { echo "${PREFIX}-${RUN_ID}-$1"; }
+vm_ip() {
+    case $1 in
+        edu) echo "${SUBNET}.20" ;;
+        lmn) echo "${SUBNET}.10" ;;
+        *) die "unknown VM '$1', use edu or lmn" ;;
+    esac
+}
+vm_mac() {
+    case $1 in
+        edu) echo "52:54:00:ed:00:20" ;;
+        lmn) echo "52:54:00:ed:00:10" ;;
+    esac
+}
+
+# Extra ssh options before the host, e.g. -t for an interactive shell.
+SSH_EXTRA=()
+
+vm_ssh() {
+    local role=$1
+    shift
+    [[ -f "$RUN/id_ed25519" ]] || die "no environment, run 'vm-test up' first"
+    # The VMs live only in the isolated test network and linuxmuster-setup replaces the host keys,
+    # so their keys are not kept, neither here nor in ~/.ssh.
+    ssh -i "$RUN/id_ed25519" -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+        -o LogLevel=ERROR -o ConnectTimeout=5 -o ServerAliveInterval=15 -o BatchMode=yes \
+        "${SSH_EXTRA[@]}" "edutest@$(vm_ip "$role")" "$@"
+}
+
+# note <change> <undo>: one row in the protocol, written only after the change succeeded.
+note() {
+    # shellcheck disable=SC2016 # the backticks are Markdown
+    printf '| %s | %s | `%s` |\n' "$(date '+%H:%M:%S')" "$1" "$2" >> "$PROTOCOL"
+}
+
+record() {
+    echo "$*" >> "$RESOURCES"
+}
+
+save_settings() {
+    printf 'run=%s\nsubnet=%s\npool=%s\n' "$RUN_ID" "$SUBNET" "$POOL" > "$SETTINGS"
+}
+
+load_settings() {
+    local key value
+    [[ -f $SETTINGS ]] || return 0
+    while IFS='=' read -r key value; do
+        case $key in
+            run) RUN_ID=$value ;;
+            subnet) SUBNET=$value ;;
+            pool) POOL=$value ;;
+        esac
+    done < "$SETTINGS"
+}
+
+# Routes on the host that cover the test network or lie inside it, apart from the default route.
+subnet_routes() {
+    { ip -4 route show table all match "${SUBNET}.0/24"; ip -4 route show table all root "${SUBNET}.0/24"; } \
+        | awk '$1 != "default" && $2 != "default"' || true
+}
+
+note_teardown() {
+    printf '| %s | %s |\n' "$(date '+%H:%M:%S')" "$1" >> "$PROTOCOL"
+}
+
+# Host state that up changes and down has to restore.
+snapshot() {
+    "${V[@]}" list --all --name | sed '/^$/d' | sed 's/^/domain: /'
+    "${V[@]}" net-list --all --name | sed '/^$/d' | sed 's/^/network: /'
+    "${V[@]}" pool-list --all --name | sed '/^$/d' | sed 's/^/pool: /'
+    "${V[@]}" vol-list "$POOL" | awk 'NR > 2 && NF { print "volume: " $1 }'
+    ip -br link | awk '{ sub(/@.*/, "", $1); print "link: " $1 }' | grep -vE ': (veth|vnet|tap)' || true
+    ip -4 route | sed 's/^/route: /'
+    echo "sysctl: net.ipv4.ip_forward=$(cat /proc/sys/net/ipv4/ip_forward 2> /dev/null || echo unknown)"
+}
+
+# Whether an object exists; a libvirt error stops the run instead of reading as "gone".
+has_domain() {
+    local names
+    names=$("${V[@]}" list --all --name) || die "virsh cannot list the VMs"
+    grep -qx -- "$1" <<< "$names"
+}
+
+has_volume() {
+    local names
+    names=$("${V[@]}" vol-list "$1") || die "virsh cannot list pool $1; if it is inactive: virsh -c qemu:///system pool-start $1"
+    awk -v name="$2" 'NR > 2 && $1 == name { found = 1 } END { exit !found }' <<< "$names"
+}
+
+vol_path() {
+    "${V[@]}" vol-path --pool "$POOL" "$1"
+}
+
+# A UUID chosen before the object is defined, so the record never lacks it.
+new_uuid() {
+    cat /proc/sys/kernel/random/uuid
+}
+
+has_network() {
+    local names
+    names=$("${V[@]}" net-list --all --name) || die "virsh cannot list the networks"
+    grep -qx -- "$1" <<< "$names"
+}
+
+leftovers() {
+    "${V[@]}" list --all --name | grep "^${PREFIX}-" || true
+    "${V[@]}" net-list --all --name | grep -x "$PREFIX" || true
+    "${V[@]}" vol-list "$POOL" | awk 'NR > 2 && NF { print $1 }' | grep "^${PREFIX}-" || true
+}
+
+make_seed() {
+    local dir=$1 out=$2
+    local files=("$dir/user-data" "$dir/meta-data" "$dir/network-config")
+    if command -v xorriso > /dev/null; then
+        xorriso -as mkisofs -quiet -output "$out" -volid cidata -joliet -rock "${files[@]}" 2> /dev/null
+    elif command -v genisoimage > /dev/null; then
+        genisoimage -quiet -output "$out" -volid cidata -joliet -rock "${files[@]}"
+    elif command -v cloud-localds > /dev/null; then
+        cloud-localds -N "$dir/network-config" "$out" "$dir/user-data" "$dir/meta-data"
+    else
+        die "xorriso, genisoimage or cloud-localds is needed for the cloud-init seed"
+    fi
+}
+
+write_cloud_init() {
+    local role=$1 dir="$RUN/seed-$1" pub
+    pub=$(cat "$RUN/id_ed25519.pub")
+    mkdir -p "$dir"
+    printf 'instance-id: %s-%s\nlocal-hostname: %s-test\n' "$(vm_name "$role")" "$(date +%s)" "$role" > "$dir/meta-data"
+    {
+        echo "#cloud-config"
+        echo "hostname: ${role}-test"
+        echo "users:"
+        echo "  - name: edutest"
+        echo "    sudo: ALL=(ALL) NOPASSWD:ALL"
+        echo "    shell: /bin/bash"
+        echo "    ssh_authorized_keys: [\"$pub\"]"
+        if [[ $role == lmn ]]; then
+            # The web installer logs in to the linuxmuster server as root with a password.
+            echo "disable_root: false"
+            echo "ssh_pwauth: true"
+            echo "chpasswd:"
+            echo "  expire: false"
+            echo "  users:"
+            echo "    - {name: root, password: \"$(cat "$RUN/lmn-root-password")\", type: text}"
+            echo "write_files:"
+            echo "  - path: /etc/ssh/sshd_config.d/60-vm-test-root.conf"
+            # A literal \n: YAML turns it into the line break.
+            printf '    content: "PermitRootLogin yes\\nPasswordAuthentication yes\\n"\n'
+            echo "runcmd:"
+            echo "  - [systemctl, restart, ssh]"
+        fi
+    } > "$dir/user-data"
+    # No set-name: linuxmuster-setup writes its netplan for the name it sees, and once the playbook has
+    # removed cloud-init only the kernel's name is left.
+    cat > "$dir/network-config" <<EOF
+version: 2
+ethernets:
+  nic0:
+    match: {macaddress: "$(vm_mac "$role")"}
+    addresses: [$(vm_ip "$role")/24]
+    routes: [{to: default, via: ${SUBNET}.1}]
+    nameservers: {addresses: [${SUBNET}.1]}
+EOF
+}
+
+# domain_xml <name> <uuid> <memory> <mac> <seed path> <disk paths...>
+domain_xml() {
+    local name=$1 uuid=$2 memory=$3 mac=$4 seed=$5
+    shift 5
+    local letters=(a b c d) i=0 vol
+    cat <<EOF
+<domain type='kvm'>
+  <name>$name</name>
+  <uuid>$uuid</uuid>
+  <memory unit='MiB'>$memory</memory>
+  <vcpu>2</vcpu>
+  <os><type arch='x86_64' machine='q35'>hvm</type><boot dev='hd'/></os>
+  <features><acpi/><apic/></features>
+  <cpu mode='host-passthrough'/>
+  <clock offset='utc'/>
+  <devices>
+EOF
+    # Files, not pool volumes: with <disk type='volume'> AppArmor's virt-aa-helper does not allow the backing image.
+    for vol in "$@"; do
+        printf "    <disk type='file' device='disk'><driver name='qemu' type='qcow2' discard='unmap'/><source file='%s'/><target dev='vd%s' bus='virtio'/></disk>\n" \
+            "$vol" "${letters[i]}"
+        i=$((i + 1))
+    done
+    cat <<EOF
+    <disk type='file' device='cdrom'><driver name='qemu' type='raw'/><source file='$seed'/><target dev='sda' bus='sata'/><readonly/></disk>
+    <interface type='network'><source network='$PREFIX'/><mac address='$mac'/><model type='virtio'/></interface>
+    <serial type='pty'/>
+    <console type='pty'/>
+    <rng model='virtio'><backend model='random'>/dev/urandom</backend></rng>
+  </devices>
+</domain>
+EOF
+}
+
+create_volume() {
+    local name=$1 size=$2 backing=${3:-}
+    if [[ -n $backing ]]; then
+        "${V[@]}" vol-create-as "$POOL" "$name" "$size" --format qcow2 \
+            --backing-vol "$backing" --backing-vol-format qcow2 > /dev/null
+    else
+        "${V[@]}" vol-create-as "$POOL" "$name" "$size" --format qcow2 > /dev/null
+    fi
+    record volume "$POOL" "$name"
+    note "Volume $name ($size, thin) in pool $POOL" "virsh -c qemu:///system vol-delete --pool $POOL $name"
+}
+
+upload_volume() {
+    local name=$1 file=$2 format=$3
+    "${V[@]}" vol-create-as "$POOL" "$name" "$(stat -c %s "$file")" --format "$format" > /dev/null
+    record volume "$POOL" "$name"
+    note "Volume $name in pool $POOL" "virsh -c qemu:///system vol-delete --pool $POOL $name"
+    "${V[@]}" vol-upload --pool "$POOL" "$name" "$file"
+}
+
+create_vm() {
+    local role=$1 memory=$2
+    shift 2
+    local name seed xml uuid vol path seed_path
+    local -a paths=()
+    name=$(vm_name "$role")
+    seed=$(vol_name "$role-seed.iso")
+    write_cloud_init "$role"
+    make_seed "$RUN/seed-$role" "$RUN/$seed"
+    upload_volume "$seed" "$RUN/$seed" raw
+    xml="$RUN/$name.xml"
+    uuid=$(new_uuid)
+    for vol in "$@"; do
+        path=$(vol_path "$vol")
+        paths+=("$path")
+    done
+    seed_path=$(vol_path "$seed")
+    domain_xml "$name" "$uuid" "$memory" "$(vm_mac "$role")" "$seed_path" "${paths[@]}" > "$xml"
+    record domain "$name" "$uuid"
+    "${V[@]}" define "$xml" > /dev/null
+    note "VM $name defined (${memory} MiB, 2 vCPUs, $(vm_ip "$role"))" "virsh -c qemu:///system undefine $uuid"
+    "${V[@]}" start "$name" > /dev/null
+    note "VM $name started" "virsh -c qemu:///system destroy $uuid"
+}
+
+wait_for_vm() {
+    local role=$1 attempt
+    info "Waiting for $(vm_name "$role") ($(vm_ip "$role")) ..."
+    for attempt in $(seq 1 60); do
+        vm_ssh "$role" true 2> /dev/null && break
+        [[ $attempt -lt 60 ]] || die "$(vm_name "$role") does not answer on SSH; console: virsh -c qemu:///system console $(vm_name "$role")"
+        sleep 5
+    done
+    [[ $(vm_ssh "$role" 'sudo cloud-init status --wait > /dev/null 2>&1; cloud-init status') == *"status: done"* ]] \
+        || die "cloud-init on $(vm_name "$role") did not finish cleanly: vm-test ssh $role sudo cloud-init status --long"
+}
+
+cmd_up() {
+    local tool
+    for tool in virsh ssh ssh-keygen curl sha256sum ip; do
+        command -v "$tool" > /dev/null || die "$tool is missing"
+    done
+    [[ $SUBNET =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || die "VM_TEST_SUBNET takes three octets, e.g. 10.78.0"
+    local routes
+    routes=$(subnet_routes)
+    [[ -z $routes ]] || die "${SUBNET}.0/24 overlaps routes on this host; choose another with VM_TEST_SUBNET:"$'\n'"$routes"
+    [[ ! -e $RUN ]] || die "an environment exists already ($RUN); remove it with 'vm-test down'"
+    [[ -e $KVM_DEVICE ]] || die "$KVM_DEVICE is missing, KVM is not available"
+    "${V[@]}" pool-info "$POOL" > /dev/null 2>&1 || die "no access to libvirt pool '$POOL' on qemu:///system (group libvirt?)"
+    # The VMs use the volumes as files.
+    "${V[@]}" pool-dumpxml "$POOL" | grep -q "<pool type='dir'" || die "pool '$POOL' is not a directory pool; choose one with VM_TEST_POOL"
+    [[ -z $(leftovers) ]] || die "libvirt objects named ${PREFIX}* exist already, from another run or one whose state is gone;" \
+        "'vm-test down --all' removes everything named ${PREFIX}*"
+
+    mkdir -p "$STATE" "$CACHE"
+    (umask 077 && mkdir "$RUN")
+    RUN_ID=$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')
+    save_settings
+    [[ ! -e $PROTOCOL ]] || mv "$PROTOCOL" "$STATE/protocol-$(date -r "$PROTOCOL" '+%Y%m%d-%H%M%S').md"
+    snapshot > "$RUN/baseline.txt"
+    {
+        echo "# vm-test protocol"
+        echo
+        echo "Started $(date '+%Y-%m-%d %H:%M:%S %Z'). Every change to the host is listed with the command that undoes it;"
+        echo "'vm-test down' undoes all of them."
+        echo
+        echo "## Host before"
+        echo
+        echo '```'
+        cat "$RUN/baseline.txt"
+        echo '```'
+        echo
+        echo "## Changes"
+        echo
+        echo "| Time | Change | Undo |"
+        echo "|---|---|---|"
+    } > "$PROTOCOL"
+    trap '[[ $? -eq 0 ]] || info "up did not finish; vm-test down removes what it created (see $PROTOCOL)"' EXIT
+
+    info "Downloading the Ubuntu ${UBUNTU_RELEASE} cloud image (cached in $CACHE) ..."
+    curl -fsSL -o "$CACHE/SHA256SUMS" "$IMAGE_BASE_URL/SHA256SUMS"
+    if ! (cd "$CACHE" && grep -E " \*?${IMAGE_FILE}\$" SHA256SUMS | sha256sum -c --status 2> /dev/null); then
+        curl -fSL --progress-bar -o "$CACHE/$IMAGE_FILE" "$IMAGE_BASE_URL/$IMAGE_FILE"
+        (cd "$CACHE" && grep -E " \*?${IMAGE_FILE}\$" SHA256SUMS | sha256sum -c --status) \
+            || die "checksum of $IMAGE_FILE does not match"
+    fi
+
+    info "Creating volumes ..."
+    local base
+    base=$(vol_name base.qcow2)
+    upload_volume "$base" "$CACHE/$IMAGE_FILE" qcow2
+    "${V[@]}" pool-refresh "$POOL" > /dev/null
+    create_volume "$(vol_name edu.qcow2)" 30G "$base"
+    create_volume "$(vol_name lmn.qcow2)" 25G "$base"
+    create_volume "$(vol_name lmn-data.qcow2)" 25G
+
+    info "Creating network $PREFIX (${SUBNET}.0/24, NAT, no DHCP) ..."
+    local net_uuid
+    net_uuid=$(new_uuid)
+    cat > "$RUN/network.xml" <<EOF
+<network>
+  <name>$PREFIX</name>
+  <uuid>$net_uuid</uuid>
+  <forward mode='nat'/>
+  <bridge name='virbr-$PREFIX' stp='on' delay='0'/>
+  <ip address='${SUBNET}.1' netmask='255.255.255.0'/>
+</network>
+EOF
+    record network "$PREFIX" "$net_uuid"
+    "${V[@]}" net-define "$RUN/network.xml" > /dev/null
+    note "libvirt network $PREFIX defined (NAT ${SUBNET}.0/24, bridge virbr-$PREFIX)" "virsh -c qemu:///system net-undefine $net_uuid"
+    local forward
+    forward=$(cat /proc/sys/net/ipv4/ip_forward 2> /dev/null || true)
+    "${V[@]}" net-start "$PREFIX" > /dev/null
+    note "libvirt network $PREFIX started (bridge, dnsmasq for DNS, NAT rules)" "virsh -c qemu:///system net-destroy $net_uuid"
+    # libvirt turns on IPv4 forwarding for a NAT network and leaves it on.
+    if [[ $forward == 0 && $(cat /proc/sys/net/ipv4/ip_forward 2> /dev/null || true) == 1 ]]; then
+        note "IPv4 forwarding turned on by libvirt" "sudo sysctl -w net.ipv4.ip_forward=0"
+    fi
+
+    info "Creating VMs ..."
+    ssh-keygen -q -t ed25519 -N '' -C vm-test -f "$RUN/id_ed25519"
+    (umask 077 && head -c 18 /dev/urandom | base64 | tr -d '/+=' > "$RUN/lmn-root-password")
+    create_vm lmn "$LMN_MEMORY" "$(vol_name lmn.qcow2)" "$(vol_name lmn-data.qcow2)"
+    create_vm edu "$EDU_MEMORY" "$(vol_name edu.qcow2)"
+
+    wait_for_vm lmn
+    wait_for_vm edu
+    trap - EXIT
+    info "Ready."
+    cmd_status
+}
+
+cmd_status() {
+    [[ -d $RUN ]] || die "no environment, run 'vm-test up' first"
+    local role
+    for role in edu lmn; do
+        printf '%-12s %-12s %s\n' "$(vm_name "$role")" "$(vm_ip "$role")" \
+            "$("${V[@]}" domstate "$(vm_name "$role")" 2> /dev/null || echo missing)"
+    done
+    echo
+    if [[ -f $RUN/lmn-root-password ]]; then
+        echo "linuxmuster server for the web installer: $(vm_ip lmn), user root, password $(cat "$RUN/lmn-root-password")"
+        echo "  (after linuxmuster-setup the root password is the admin password entered in the web installer)"
+    fi
+    [[ ! -f $RUN/image ]] || echo "Image built on edu: $(cut -d' ' -f1 "$RUN/image") (vm-test install --local)"
+    [[ ! -f $RUN/installer-url ]] || echo "Web installer: $(cat "$RUN/installer-url")"
+    echo "Protocol: $PROTOCOL"
+}
+
+cmd_build() {
+    [[ -d $RUN ]] || die "no environment, run 'vm-test up' first"
+    command -v git > /dev/null || die "git is missing"
+    command -v flock > /dev/null || die "flock is missing"
+    local ref=${1:-} commit tag src
+    if [[ -z $ref ]]; then
+        # A commit of the working tree without touching the index or the stash list.
+        commit=$(git -C "$REPO_ROOT" stash create)
+        commit=${commit:-$(git -C "$REPO_ROOT" rev-parse HEAD)}
+        if [[ -n $(git -C "$REPO_ROOT" ls-files --others --exclude-standard) ]]; then
+            info "Untracked files are not part of the build; 'git add' them first if they belong to it."
+        fi
+    else
+        commit=$(git -C "$REPO_ROOT" rev-parse --verify "${ref}^{commit}")
+    fi
+    # Builds of one run follow each other, as each removes the sources of the others when it is done.
+    exec 8> "$RUN/build.lock"
+    flock -n 8 || die "another build of this environment is running"
+    # No leading "v": the installer strips it from --version.
+    tag="edutest-$(git -C "$REPO_ROOT" rev-parse --short "$commit")"
+    src="$SRC_ON_VM/$tag-$(date +%Y%m%d%H%M%S)-$$"
+
+    info "Copying $commit to edu ..."
+    git -C "$REPO_ROOT" archive --format=tar "$commit" \
+        | vm_ssh edu "sudo rm -rf $src && sudo mkdir -p $src && sudo tar -x -C $src"
+
+    info "Building the web installer and image $tag on edu (takes a few minutes) ..."
+    vm_ssh edu "sudo bash -s -- $(printf '%q ' "$src" "$NODE_IMAGE" "$tag")" <<'EOF'
+set -euo pipefail
+src=$1 node_image=$2 tag=$3
+if ! command -v docker > /dev/null; then
+    # The installer's own way, so it later takes its "Docker is installed" path.
+    apt-get update -qq
+    apt-get install -y -qq ca-certificates curl gnupg lsb-release > /dev/null
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+    chmod a+r /etc/apt/keyrings/docker.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
+        > /etc/apt/sources.list.d/docker.list
+    apt-get update -qq
+    apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin > /dev/null
+fi
+# The installer writes its daemon.json (storage driver overlay2) and restarts Docker; an image built
+# before that in another store would be gone. So the build runs with the installer's daemon.json.
+# The last block is the one for an installed Docker, which is the case here.
+awk '/<<DOCKEREOF > \/etc\/docker\/daemon.json/ { on = 1; buf = ""; next }
+    on && /^DOCKEREOF/ { on = 0; last = buf; next } on { buf = buf $0 ORS } END { printf "%s", last }' \
+    "$src/apps/public-page/public/installer" > /tmp/vm-test-daemon.json
+[[ -s /tmp/vm-test-daemon.json ]] || { echo "no daemon.json found in the installer" >&2; exit 1; }
+if ! cmp -s /tmp/vm-test-daemon.json /etc/docker/daemon.json; then
+    mv /tmp/vm-test-daemon.json /etc/docker/daemon.json
+    systemctl restart docker
+fi
+docker run --rm -e NX_DAEMON=false -e CI=true -v "$src:/src" -w /src "$node_image" \
+    sh -c 'npm ci --no-audit --no-fund --loglevel=error && npx nx build webinstaller'
+rm -rf "$src/node_modules"
+docker build -q --build-arg INSTALLER_VERSION="$tag" -t "ghcr.io/edulution-io/edulution-installer:$tag" "$src"
+EOF
+    # Tag and sources in one file, replaced at once, so install never pairs one build's image with another's sources.
+    printf '%s %s\n' "$tag" "$src" > "$RUN/image.new"
+    mv "$RUN/image.new" "$RUN/image"
+    # Only now, so the recorded build always has its sources.
+    vm_ssh edu "sudo find $SRC_ON_VM -mindepth 1 -maxdepth 1 ! -name ${src##*/} -exec rm -rf {} +" \
+        || info "older builds in $SRC_ON_VM on edu could not be removed"
+    info "Image ghcr.io/edulution-io/edulution-installer:$tag is ready; start it with 'vm-test install --local'."
+}
+
+cmd_install() {
+    [[ -d $RUN ]] || die "no environment, run 'vm-test up' first"
+    local command tag src attempt url=""
+    case ${1:-} in
+        "")
+            command="curl -fsSL https://get.edulution.io/installer -o /root/installer && bash /root/installer"
+            ;;
+        --version)
+            [[ -n ${2:-} ]] || die "--version needs a version, e.g. --version 2.2.3"
+            command="curl -fsSL https://get.edulution.io/installer -o /root/installer && bash /root/installer --version $(printf '%q' "$2")"
+            ;;
+        --local)
+            [[ -f $RUN/image ]] || die "no image built, run 'vm-test build' first"
+            read -r tag src < "$RUN/image"
+            # As in the E2E workflow: the tag exists neither in the registry nor on GitHub, so docker
+            # takes the local image and the templates come from the copied checkout.
+            command="EDULUTION_TEMPLATE_URL=file://$src/apps/public-page/public/download bash $src/apps/public-page/public/installer --version $tag"
+            ;;
+        *) die "unknown option '$1'" ;;
+    esac
+    if vm_ssh edu 'sudo test -e /root/installer.log'; then
+        die "the installer has run on edu already; for a fresh run: vm-test down && vm-test up"
+    fi
+
+    info "Starting the installer on edu (log: /root/installer.log) ..."
+    vm_ssh edu "sudo bash -s -- $(printf '%q' "$command")" <<'EOF'
+setsid nohup bash -c "$1; echo \$? > /root/installer.rc" > /root/installer.log 2>&1 < /dev/null &
+EOF
+    for attempt in $(seq 1 120); do
+        url=$(vm_ssh edu "sudo grep -m1 -oE 'https://$(vm_ip edu):443/\\?token=[0-9a-f]+' /root/installer.log" 2> /dev/null || true)
+        [[ -z $url ]] || break
+        if vm_ssh edu 'sudo test -e /root/installer.rc' 2> /dev/null; then
+            vm_ssh edu 'sudo tail -20 /root/installer.log' >&2 || true
+            die "the installer stopped before the web installer came up"
+        fi
+        [[ $attempt -lt 120 ]] || die "no web installer URL after 20 minutes: vm-test ssh edu sudo tail /root/installer.log"
+        sleep 10
+    done
+    echo "$url" > "$RUN/installer-url"
+    echo "Web installer: $url"
+    echo "  The certificate is self-signed; accept it in the browser."
+    echo "  linuxmuster server: $(vm_ip lmn), user root, password $(cat "$RUN/lmn-root-password")"
+}
+
+# owned <kind> [<pool>] <name> [<uuid>]: true if the object exists and, given a UUID, is the one recorded.
+owned() {
+    local uuid
+    case $1 in
+        domain)
+            has_domain "$2" || return 1
+            [[ -n ${3:-} ]] || return 0
+            uuid=$("${V[@]}" domuuid "$2") || die "virsh cannot read the UUID of VM $2"
+            [[ $uuid == "$3" ]]
+            ;;
+        volume) has_volume "$2" "$3" ;;
+        network)
+            has_network "$2" || return 1
+            [[ -n ${3:-} ]] || return 0
+            uuid=$("${V[@]}" net-uuid "$2") || die "virsh cannot read the UUID of network $2"
+            [[ $uuid == "$3" ]]
+            ;;
+        *) die "unknown entry in $RESOURCES: $*" ;;
+    esac
+}
+
+# remove <kind> [<pool>] <name> [<uuid>]: removes one object if owned says it is this run's.
+remove() {
+    owned "$@" || return 0
+    case $1 in
+        domain)
+            # By UUID where recorded, so a VM that took the name in the meantime is not hit.
+            "${V[@]}" destroy "${3:-$2}" > /dev/null 2>&1 || true
+            "${V[@]}" undefine "${3:-$2}" > /dev/null
+            log_down "VM $2 stopped and removed"
+            ;;
+        volume)
+            "${V[@]}" vol-delete --pool "$2" "$3" > /dev/null
+            log_down "Volume $3 deleted from pool $2"
+            ;;
+        network)
+            "${V[@]}" net-destroy "${3:-$2}" > /dev/null 2>&1 || true
+            "${V[@]}" net-undefine "${3:-$2}" > /dev/null
+            log_down "Network $2 stopped and removed (bridge, dnsmasq, NAT rules)"
+            ;;
+    esac
+}
+
+cmd_down() {
+    local keep_image=0 all=0 name vol line rest had_protocol=0
+    local -a names volumes lines fields
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --keep-image) keep_image=1 ;;
+            --all) all=1 ;;
+            *) die "unknown option '$1'" ;;
+        esac
+        shift
+    done
+    if [[ $all -eq 0 && ! -f $RESOURCES ]]; then
+        rest=$(leftovers)
+        if [[ -n $rest ]]; then
+            local msg="this run created none of these; they belong to another run or one whose state is gone:"$'\n'"$rest"$'\n'"'vm-test down --all' removes them"
+            # Without a run there is nothing else to do; a run that stopped early still has its files to remove.
+            [[ -d $RUN ]] || die "$msg"
+            info "$msg"
+        fi
+    fi
+    if [[ -f $PROTOCOL ]]; then
+        had_protocol=1
+        {
+            echo
+            echo "## Teardown"
+            echo
+            echo "| Time | Undone |"
+            echo "|---|---|"
+        } >> "$PROTOCOL"
+    fi
+    log_down() {
+        info "$1"
+        [[ $had_protocol -eq 0 ]] || note_teardown "$1"
+    }
+
+    # Last created first: VMs before their disks, overlays before the base image.
+    if [[ -f $RESOURCES ]]; then
+        mapfile -t lines < <(tac "$RESOURCES")
+        for line in "${lines[@]}"; do
+            read -r -a fields <<< "$line"
+            remove "${fields[@]}"
+        done
+        # The record goes only once nothing in it is left, so 'down' can be run again.
+        for line in "${lines[@]}"; do
+            read -r -a fields <<< "$line"
+            ! owned "${fields[@]}" || die "still present: $line; run 'vm-test down' again"
+        done
+        if [[ $all -eq 0 ]]; then
+            rest=$(leftovers)
+            [[ -z $rest ]] || info "objects named ${PREFIX}* that this run did not create remain:"$'\n'"$rest"
+        fi
+    fi
+    if [[ $all -eq 1 ]]; then
+        mapfile -t names < <("${V[@]}" list --all --name | grep "^${PREFIX}-" || true)
+        for name in "${names[@]}"; do
+            remove domain "$name"
+        done
+        mapfile -t volumes < <("${V[@]}" vol-list "$POOL" | awk 'NR > 2 && NF { print $1 }' | grep "^${PREFIX}-" \
+            | awk '/-base\.qcow2$/ { last[++n] = $0; next } { print } END { for (i = 1; i <= n; i++) print last[i] }' || true)
+        for vol in "${volumes[@]}"; do
+            remove volume "$POOL" "$vol"
+        done
+        remove network "$PREFIX"
+        rest=$(leftovers)
+        [[ -z $rest ]] || die "still present: $rest"
+    fi
+
+    if [[ -f $RUN/baseline.txt ]]; then
+        snapshot > "$STATE/after.txt"
+        local diff_out
+        diff_out=$(diff "$RUN/baseline.txt" "$STATE/after.txt" || true)
+        rm -f "$STATE/after.txt"
+        if [[ $had_protocol -eq 1 ]]; then
+            {
+                echo
+                echo "## Host after, compared with before"
+                echo
+                echo '```'
+                echo "${diff_out:-no difference}"
+                echo '```'
+            } >> "$PROTOCOL"
+        fi
+        if [[ -n $diff_out ]]; then
+            info "The host differs from before 'up' (VPN or Docker routes can change on their own):"
+            echo "$diff_out" >&2
+        else
+            info "Host state matches the state before 'up'."
+        fi
+    fi
+    # Key, passwords, cloud-init seeds.
+    rm -rf "$RUN"
+    [[ $keep_image -eq 1 ]] || rm -rf "$CACHE"
+    if [[ $had_protocol -eq 1 ]]; then
+        local done_protocol
+        done_protocol="$STATE/protocol-$(date '+%Y%m%d-%H%M%S').md"
+        mv "$PROTOCOL" "$done_protocol"
+        info "Protocol: $done_protocol"
+    fi
+}
+
+main() {
+    local command=${1:-}
+    [[ $# -eq 0 ]] || shift
+    [[ $command == up ]] || load_settings
+    case $command in
+        up) cmd_up ;;
+        build) cmd_build "$@" ;;
+        install) cmd_install "$@" ;;
+        status) cmd_status ;;
+        ssh)
+            [[ $# -ge 1 ]] || die "ssh needs edu or lmn"
+            local role=$1
+            shift
+            vm_ip "$role" > /dev/null
+            if [[ $# -eq 0 ]]; then
+                SSH_EXTRA=(-t)
+                vm_ssh "$role"
+            else
+                vm_ssh "$role" "$@"
+            fi
+            ;;
+        down) cmd_down "$@" ;;
+        -h | --help | help) usage ;;
+        *)
+            usage
+            exit 2
+            ;;
+    esac
+}
+
+main "$@"

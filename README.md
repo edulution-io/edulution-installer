@@ -86,6 +86,10 @@ docker compose up --build     # Build & run container
 
 The web installer runs on `https://localhost:443/?token=<token>`. The token is taken from `INSTALLER_TOKEN`; without it, the API generates one and prints it at startup (`docker compose logs`).
 
+### Test on VMs
+
+[`tools/vm-test`](tools/vm-test/README.md) sets up two throwaway KVM machines, an edulution server and a linuxmuster server. On them, a branch goes through the whole installation, including the linuxmuster setup, before it is released.
+
 ## Deployment
 
 - **Public Page** — Automatically deployed to GitHub Pages via GitHub Actions on push to `main` or `dev`
