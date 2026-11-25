@@ -41,6 +41,7 @@ case $1 in
         ;;
     vol-create-as) touch "$d/volumes/$2/$3" ;;
     vol-upload) true ;;
+    vol-path) echo "/var/lib/libvirt/images/$4" ;;
     vol-delete) rm "$d/volumes/$3/$4" ;;
     define) xml_value uuid "$2" > "$d/domains/$(xml_value name "$2")" ;;
     start) true ;;

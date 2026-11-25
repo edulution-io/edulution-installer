@@ -152,6 +152,10 @@ has_volume() {
     awk -v name="$2" 'NR > 2 && $1 == name { found = 1 } END { exit !found }' <<< "$names"
 }
 
+vol_path() {
+    "${V[@]}" vol-path --pool "$POOL" "$1"
+}
+
 # A UUID chosen before the object is defined, so the record never lacks it.
 new_uuid() {
     cat /proc/sys/kernel/random/uuid
@@ -240,13 +244,14 @@ domain_xml() {
   <clock offset='utc'/>
   <devices>
 EOF
+    # Files, not pool volumes: with <disk type='volume'> AppArmor's virt-aa-helper does not allow the backing image.
     for vol in "$@"; do
-        printf "    <disk type='volume' device='disk'><driver name='qemu' type='qcow2' discard='unmap'/><source pool='%s' volume='%s'/><target dev='vd%s' bus='virtio'/></disk>\n" \
-            "$POOL" "$vol" "${letters[i]}"
+        printf "    <disk type='file' device='disk'><driver name='qemu' type='qcow2' discard='unmap'/><source file='%s'/><target dev='vd%s' bus='virtio'/></disk>\n" \
+            "$(vol_path "$vol")" "${letters[i]}"
         i=$((i + 1))
     done
     cat <<EOF
-    <disk type='volume' device='cdrom'><driver name='qemu' type='raw'/><source pool='$POOL' volume='$seed'/><target dev='sda' bus='sata'/><readonly/></disk>
+    <disk type='file' device='cdrom'><driver name='qemu' type='raw'/><source file='$(vol_path "$seed")'/><target dev='sda' bus='sata'/><readonly/></disk>
     <interface type='network'><source network='$PREFIX'/><mac address='$mac'/><model type='virtio'/></interface>
     <serial type='pty'/>
     <console type='pty'/>
