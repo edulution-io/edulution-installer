@@ -286,10 +286,6 @@ main() {
         fi
     fi
 
-    if [[ $COMPOSE_ONLY -eq 0 ]]; then
-        prepare_restart_check
-    fi
-
     if [[ $CHECK_ONLY -eq 1 ]]; then
         check_args=(check)
         [[ $JSON -eq 0 ]] || check_args+=(--json)
@@ -301,13 +297,16 @@ main() {
         [[ $rc -ne 5 || -z "$ADOPTED" ]] || adopted_downgrade_hint
         old_image_hint "$rc"
         # An older release in use reports the pending restart without the database user check of this one.
-        if [[ $rc -eq 10 && -e "$RESTART_PENDING" && "$RESTART_CHECK_IMAGE" != "$EDULUTION_INSTALLER_IMAGE" ]]; then
-            if ! run_image "$RESTART_CHECK_IMAGE" restart-check > /dev/null; then
-                db_user_hint
-                exit 6
-            fi
+        if [[ $rc -eq 10 && -e "$RESTART_PENDING" && "$OWN_IMAGE" != "$EDULUTION_INSTALLER_IMAGE" ]] \
+            && newer "$OWN_VERSION" "$EDULUTION_INSTALLER_VERSION"; then
+            prepare_restart_check
+            check_before_restart
         fi
         exit "$rc"
+    fi
+
+    if [[ $COMPOSE_ONLY -eq 0 ]]; then
+        prepare_restart_check
     fi
 
     # Taken before check: if the files change after it, apply refuses with exit 4 instead of

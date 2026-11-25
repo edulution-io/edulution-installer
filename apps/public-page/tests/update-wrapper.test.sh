@@ -557,6 +557,18 @@ check_older_ok() { rc_is 10 && logged "edulution-installer:2.2.3 python -m updat
 PENDING=2.2.2 run_stamped --check
 expect_case "--check with an older pending release and a database user reports 10" check_older_ok
 
+check_preflight_error() { rc_is 125 && ! grep -q "MONGODB_USERNAME" "$WORK/out" && grep -q "Code 125" "$WORK/out"; }
+PENDING=2.2.2 STUB_RESTART_CHECK_RC=125 run_stamped --check
+expect_case "--check reports a restart check that does not run with its code, not as a missing user" check_preflight_error
+
+check_version_alone() { rc_is 10 && not_logged "edulution-installer:2.2.3" && [[ "$(cat "$WORK/stdout")" == report ]]; }
+STUB_PULL_FAIL=:2.2.3 STUB_INSPECT_RC=1 run_stamped_split --version 2.2.2 --check --json
+expect_case "--check with an older --version and no pending restart needs only that release" check_version_alone
+
+check_compose_only() { rc_is 10 && not_logged "restart-check"; }
+PENDING=2.2.2 run_stamped --check --compose-only
+expect_case "--check --compose-only with a pending restart checks without the restart check" check_compose_only
+
 check_own_release() { rc_is 10 && not_logged "restart-check"; }
 PENDING=1 run_stamped --check
 expect_case "--check with the script's own release leaves the database user to its check" check_own_release
