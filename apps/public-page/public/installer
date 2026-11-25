@@ -257,7 +257,12 @@ remove_ssh_installer_access() {
         restart_ssh
     fi
 }
-trap remove_ssh_installer_access EXIT
+# Ohne das Skript uebernimmt niemand die Konfiguration des Web-Installers: Er endet mit ihm.
+cleanup_installer() {
+    docker rm -f edulution-installer > /dev/null 2>&1
+    remove_ssh_installer_access
+}
+trap cleanup_installer EXIT
 # Bei SIGHUP (abgebrochene SSH-Sitzung) und SIGTERM laeuft die EXIT-Trap sonst nicht zuverlaessig.
 trap 'exit 1' HUP TERM
 
@@ -392,6 +397,9 @@ docker pull "${EDULUTION_INSTALLER_IMAGE}" 2>&1 > /dev/zero
 # Uebergabe per Umgebung, damit der Token nicht in der Prozessliste steht.
 INSTALLER_TOKEN=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
 
+# Ein Web-Installer eines abgebrochenen Laufs belegt sonst Port und Namen.
+docker rm -f edulution-installer > /dev/null 2>&1
+
 # BOOTSTRAP_BRANCH nur bei --version: Images bis 2.0 laden bootstrap.sh noch von GitHub.
 INSTALLER_TOKEN="${INSTALLER_TOKEN}" docker run -d --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ \
     -e INSTALLER_TOKEN \
@@ -443,21 +451,14 @@ cat <<EOF
 
 EOF
 
-# Warte bis die Konfiguration vom Web-Installer erstellt wurde
+# Warte bis die Konfiguration vom Web-Installer erstellt wurde. Ohne feste Grenze: Der Web-Installer
+# beendet sich selbst, wenn er lange nicht benutzt wird.
 echo "[*] Warte auf Abschluss der Web-Installation..."
-attempt=0
 while [ ! -f "${DIRECTORY}edulution.env" ]; do
-    attempt=$((attempt+1))
-
     # Prüfe ob Container noch läuft
     if ! docker ps | grep -q edulution-installer; then
-        echo "[!] Der Web-Installer wurde unerwartet beendet!"
+        echo "[!] Der Web-Installer läuft nicht mehr, der Grund steht am Ende seines Protokolls:"
         docker logs edulution-installer
-        exit 1
-    fi
-
-    if [ $attempt -ge 1200 ]; then
-        echo "[!] Timeout: Die Installation wurde nicht innerhalb von 60 Minuten abgeschlossen!"
         exit 1
     fi
 

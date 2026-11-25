@@ -45,6 +45,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from envtools import generateSecret, openPrivate, envValue
+from activity import IdleWatch
 
 
 BASE_PATH = Path(__file__).parent
@@ -249,6 +250,8 @@ if not INSTALLER_TOKEN:
     print(f"INSTALLER_TOKEN nicht gesetzt, Zugang ueber ?token={INSTALLER_TOKEN}", flush=True)
 
 SESSION_COOKIE = "edulution_installer_session"
+IDLE = IdleWatch()
+IDLE.start()
 
 
 def hasInstallerToken(value):
@@ -289,6 +292,7 @@ class RequireInstallerToken:
         if scope["type"] == "http" and hasInstallerToken(connection.query_params.get("token")):
             response = exchangeTokenForSession(scope)
         elif hasInstallerToken(connection.cookies.get(SESSION_COOKIE)):
+            IDLE.touch()
             return await self.app(scope, receive, send)
         elif scope["type"] == "websocket":
             response = WebSocketClose(code=1008)

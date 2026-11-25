@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSpinner } from '@fortawesome/free-solid-svg-icons';
+import { faSpinner, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
 import { Button } from '@edulution-io/ui-kit';
 import { startInstallation, shutdownInstaller } from '../api/installerApi';
 import useInstallerStore from '../store/useInstallerStore';
@@ -13,6 +13,7 @@ const REDIRECT_FALLBACK_MS = 600000;
 const FinishPage = () => {
   const [started, setStarted] = useState(false);
   const [showManualLink, setShowManualLink] = useState(false);
+  const [error, setError] = useState('');
   const { t } = useTranslation();
   const redirectedRef = useRef(false);
 
@@ -33,7 +34,13 @@ const FinishPage = () => {
 
     const run = async () => {
       try {
-        await startInstallation();
+        const response = await startInstallation();
+        if (!response.status) {
+          // No edulution to go to: the timers below must not redirect.
+          redirectedRef.current = true;
+          setError(response.message);
+          return;
+        }
       } catch {
         // Errors may occur if backend processes the request asynchronously
       }
@@ -82,6 +89,21 @@ const FinishPage = () => {
       clearTimeout(linkTimeout);
     };
   }, []);
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center gap-6">
+        <h3 className="text-lg font-bold text-foreground">{t('finish.failed')}</h3>
+        <div className="flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-800">
+          <FontAwesomeIcon
+            icon={faCircleXmark}
+            className="text-red-500"
+          />
+          {error}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center gap-6">
