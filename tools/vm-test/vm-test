@@ -7,6 +7,8 @@ set -euo pipefail
 
 PREFIX=edutest
 SUBNET="${VM_TEST_SUBNET:-10.77.0}"
+# A DNS server for the VMs instead of the gateway, which then answers no DNS (as in #178).
+DNS="${VM_TEST_DNS:-}"
 STATE="${VM_TEST_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}/edulution-vm-test}"
 RUN="$STATE/run"
 CACHE="$STATE/cache"
@@ -225,7 +227,7 @@ ethernets:
     match: {macaddress: "$(vm_mac "$role")"}
     addresses: [$(vm_ip "$role")/24]
     routes: [{to: default, via: ${SUBNET}.1}]
-    nameservers: {addresses: [${SUBNET}.1]}
+    nameservers: {addresses: [${DNS:-${SUBNET}.1}]}
 EOF
 }
 
@@ -326,6 +328,7 @@ cmd_up() {
         command -v "$tool" > /dev/null || die "$tool is missing"
     done
     [[ $SUBNET =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || die "VM_TEST_SUBNET takes three octets, e.g. 10.78.0"
+    [[ -z $DNS || $DNS =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || die "VM_TEST_DNS takes an IPv4 address, e.g. 9.9.9.9"
     local routes
     routes=$(subnet_routes)
     [[ -z $routes ]] || die "${SUBNET}.0/24 overlaps routes on this host; choose another with VM_TEST_SUBNET:"$'\n'"$routes"
@@ -387,6 +390,7 @@ cmd_up() {
   <name>$PREFIX</name>
   <uuid>$net_uuid</uuid>
   <forward mode='nat'/>
+$([[ -z $DNS ]] || echo "  <dns enable='no'/>")
   <bridge name='virbr-$PREFIX' stp='on' delay='0'/>
   <ip address='${SUBNET}.1' netmask='255.255.255.0'/>
 </network>
