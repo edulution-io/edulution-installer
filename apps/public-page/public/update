@@ -17,6 +17,9 @@ DIRECTORY="${DIRECTORY%/}/"
 TTY_FILE="${EDULUTION_UPDATE_TTY:-/dev/tty}"
 # Set once apply has written the files and removed after the services restarted, so a later run finishes the restart.
 RESTART_PENDING="${DIRECTORY}.update-restart-pending"
+# Per run, so a --check next to a running update leaves its file alone.
+RESOLVED_CONFIG=""
+UPDATE_ENV=()
 
 use_version() {
     local version="${1#v}"
@@ -56,7 +59,7 @@ run_update() {
     if [[ -e /etc/localtime ]]; then
         mounts+=(-v /etc/localtime:/etc/localtime:ro)
     fi
-    docker run --rm "${mounts[@]}" "$EDULUTION_INSTALLER_IMAGE" python -m update "$@"
+    docker run --rm "${mounts[@]}" "${UPDATE_ENV[@]}" "$EDULUTION_INSTALLER_IMAGE" python -m update "$@"
 }
 
 restart_hint() {
@@ -74,12 +77,50 @@ restart_services() {
     rm -f "$RESTART_PENDING"
 }
 
+# edu-api's environment as Compose resolves it (edulution.env, docker-compose.override.yml, interpolation),
+# for the check of the database user. It holds secrets: mktemp creates it readable by root only, and it is
+# removed on exit. Handed over in the environment, which images without this check ignore.
+resolve_config() {
+    UPDATE_ENV=()
+    if [[ -z "$RESOLVED_CONFIG" ]]; then
+        RESOLVED_CONFIG=$(mktemp "${DIRECTORY}.update-resolved-config.XXXXXX") || { RESOLVED_CONFIG=""; return 0; }
+    fi
+    if docker compose --project-directory "$DIRECTORY" config --format json > "$RESOLVED_CONFIG" 2>/dev/null \
+        && [[ -s "$RESOLVED_CONFIG" ]]; then
+        UPDATE_ENV=(-e "EDULUTION_UPDATE_RESOLVED_CONFIG=/edulution-ui/${RESOLVED_CONFIG##*/}")
+    else
+        : > "$RESOLVED_CONFIG"
+    fi
+}
+
+# The restart starts what the files describe: a database with a key file needs the user edu-api logs in with.
+# It goes ahead only on a result the check gives when nothing blocks; the marker stays otherwise.
+check_before_restart() {
+    local rc=0
+    resolve_config
+    run_update check --restart-pending > /dev/null || rc=$?
+    case $rc in
+        0 | 10 | 20 | 30) ;;
+        6)
+            echo "[!] edu-api erhält MONGODB_USERNAME und MONGODB_PASSWORD nicht beide mit Wert, die Datenbank startet"
+            echo "    aber mit Zugriffskontrolle. Der Neustart wird nicht ausgeführt. Zuerst einen Datenbank-Benutzer"
+            echo "    anlegen und eintragen, dann das Update erneut aufrufen."
+            exit 6
+            ;;
+        *)
+            echo "[!] Die Prüfung vor dem Neustart ist fehlgeschlagen (Code ${rc}), der Neustart wird nicht ausgeführt."
+            echo "    Ein erneuter Aufruf des Updates versucht es noch einmal."
+            exit "$rc"
+            ;;
+    esac
+}
+
 # nothing_written <rc> <token>: true if the failed apply or migrate left the files as they were.
 nothing_written() {
     local after
     case $1 in
         # These codes come from checks that run before any file is written.
-        2 | 3 | 4 | 5 | 20 | 30) return 0 ;;
+        2 | 3 | 4 | 5 | 6 | 20 | 30) return 0 ;;
     esac
     after=$(run_update expect 2>/dev/null) && [[ "$after" == "$2" ]]
 }
@@ -88,6 +129,10 @@ main() {
     # The script's own messages go to stderr and fd 4 keeps stdout for the container's output,
     # so --check --json prints nothing but the JSON on stdout.
     exec 4>&1 1>&2
+    trap '[[ -z "$RESOLVED_CONFIG" ]] || rm -f "$RESOLVED_CONFIG"' EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
 
     CHECK_ONLY=0
     JSON=0
@@ -166,6 +211,7 @@ main() {
         check_args=(check)
         [[ $JSON -eq 0 ]] || check_args+=(--json)
         [[ ! -e "$RESTART_PENDING" ]] || check_args+=(--restart-pending)
+        resolve_config
         rc=0
         run_update "${check_args[@]}" >&4 || rc=$?
         [[ $rc -ne 5 ]] || downgrade_hint
@@ -190,6 +236,7 @@ main() {
         exit "$rc"
     fi
 
+    resolve_config
     rc=0
     run_update check >&4 || rc=$?
     case $rc in
@@ -201,6 +248,7 @@ main() {
                     echo "Die Dateien sind aktuell; der Neustart der Dienste steht noch aus:"
                     restart_hint
                 else
+                    check_before_restart
                     echo "Die Dateien sind aktuell; der Neustart der Dienste nach dem letzten Update wird nachgeholt."
                     restart_services
                     echo "Update abgeschlossen."
@@ -284,6 +332,8 @@ main() {
         exit 0
     fi
 
+    # Also after an update that only set the version header: what the restart starts is checked here.
+    check_before_restart
     restart_services
     if [[ -n "$MIGRATION" ]]; then
         echo "Migration ${MIGRATION} abgeschlossen."

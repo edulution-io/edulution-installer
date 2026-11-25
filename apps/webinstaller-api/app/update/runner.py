@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from update.drift import Report, check, exit_code, fingerprint
+from update.drift import DB_CREDENTIALS_MESSAGE, Report, check, db_credentials_missing, exit_code, fingerprint
 from update.envfile import EnvFile
 from update.installation import (
     COMPOSE,
@@ -67,6 +67,11 @@ def _guard_downgrade(report: Report) -> None:
         )
 
 
+def _guard_db_credentials(report: Report) -> None:
+    if report.db_credentials_missing:
+        raise UpdateError(6, DB_CREDENTIALS_MESSAGE)
+
+
 def _guard_template(report: Report, discard: bool) -> None:
     if report.status in ("modified", "unknown") and not discard:
         raise UpdateError(20, f"{COMPOSE} enthält lokale Änderungen; --discard-local-changes fehlt.")
@@ -125,10 +130,12 @@ def apply(
     history: frozenset[str],
     registry=MIGRATIONS,
     now: datetime | None = None,
+    service_env: dict[str, str] | None = None,
 ) -> Outcome:
     with locked(root):
-        report = check(root, target_text, target_version, history, registry)
+        report = check(root, target_text, target_version, history, registry, service_env=service_env)
         _guard_downgrade(report)
+        _guard_db_credentials(report)
         if report.blocked_by:
             ids = ", ".join(m.id for m in report.blocked_by)
             raise UpdateError(30, f"Zuerst muss eine größere Migration ausgeführt werden: {ids}.")
@@ -159,6 +166,7 @@ def migrate(
     registry=MIGRATIONS,
     now: datetime | None = None,
     discard_local_changes: bool = False,
+    service_env: dict[str, str] | None = None,
 ) -> Outcome:
     with locked(root):
         migration = next((m for m in registry if m.id == migration_id), None)
@@ -171,13 +179,17 @@ def migrate(
         if missing:
             raise UpdateError(2, f"Zuerst erforderlich: {', '.join(missing)}.")
         _guard_expect(root, expect)
-        report = check(root, target_text, target_version, history, registry)
+        report = check(root, target_text, target_version, history, registry, service_env=service_env)
         _guard_downgrade(report)
         # The last pending gating major installs the template; earlier ones only run their data step.
         installs_template = migration.gates_template and not any(
             m.kind == "major" and m.gates_template and m.id not in state.applied and m.id != migration_id
             for m in registry
         )
+        # The restart after the migration starts the target or, after a data step alone, the installed files.
+        compose_after = target_text if installs_template else (root / COMPOSE).read_bytes().decode("utf-8")
+        if db_credentials_missing(root, compose_after, service_env):
+            raise UpdateError(6, DB_CREDENTIALS_MESSAGE)
         if installs_template:
             _guard_template(report, discard_local_changes)
 

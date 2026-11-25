@@ -28,7 +28,7 @@ curl -fsSL https://get.edulution.io/update | sudo bash -s -- --compose-only --ye
 
 Other options: `--version X.Y.Z` (update to that release), `--check --json` (machine-readable report on stdout, the script's own messages go to stderr), `--discard-local-changes` (replace a locally modified `docker-compose.yml`) and `--migration ID` (run a major migration listed in the check output).
 
-Tools that run the installer image directly instead of this script get the same exit codes, except for the pending restart, which only this script tracks.
+Tools that run the installer image directly instead of this script get the same exit codes, with two exceptions. The pending restart is tracked only by this script. For exit code 6, this script hands the container edu-api's environment as `docker compose config --format json` resolves it. A direct run reads `edulution.env` alone, unless `EDULUTION_UPDATE_RESOLVED_CONFIG` names such a file inside the container.
 
 Keep local changes in `docker-compose.override.yml`, not in `docker-compose.yml`: the update replaces `docker-compose.yml` as a whole. Before every change the previous files are copied to `/srv/docker/edulution-ui/docker-compose-backups/` (readable by root only, as the copies of `edulution.env` hold its secrets). Old backups are not removed automatically; delete the ones you no longer need.
 
@@ -43,6 +43,7 @@ Keep local changes in `docker-compose.override.yml`, not in `docker-compose.yml`
 | 3 | Another update is running |
 | 4 | Files changed since the check |
 | 5 | Downgrade refused: the installation is newer than the target release (`--check` reports it before anything runs; pick the release with `--version`) |
+| 6 | edu-api does not get both `MONGODB_USERNAME` and `MONGODB_PASSWORD` with a value (as `docker compose config` resolves them from `edulution.env` and `docker-compose.override.yml`), while the update or the restart would start the database with access control; create a database user and enter it first |
 
 Any other non-zero code (for example Docker's 125 to 127) means the update container could not be started.
 
