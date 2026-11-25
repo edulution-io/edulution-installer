@@ -329,3 +329,10 @@ def test_restart_check_writes_nothing(make_installation, capsys):
     main(["--dir", str(root), "restart-check"])
     assert files(root) == before
     capsys.readouterr()
+
+
+def test_restart_check_without_compose_file_fails(tmp_path, capsys):
+    # update.sh then leaves the restart out and keeps the marker.
+    (tmp_path / "edulution.env").write_text("MONGODB_PASSWORD=pw\n")
+    assert main(["--dir", str(tmp_path), "restart-check"]) == 1
+    assert "Datei nicht gefunden" in capsys.readouterr().err

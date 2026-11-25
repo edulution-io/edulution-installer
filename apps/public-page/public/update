@@ -13,6 +13,8 @@ EDULUTION_INSTALLER_IMAGE="ghcr.io/edulution-io/edulution-installer:latest"
 EDULUTION_INSTALLER_VERSION="dev"
 OWN_IMAGE=$EDULUTION_INSTALLER_IMAGE
 OWN_VERSION=$EDULUTION_INSTALLER_VERSION
+# The image of the database user check before a restart, set by prepare_restart_check.
+RESTART_CHECK_IMAGE=""
 # Test hooks: directory, terminal and root check.
 DIRECTORY="${EDULUTION_UPDATE_DIR:-$DIRECTORY}"
 DIRECTORY="${DIRECTORY%/}/"
@@ -21,6 +23,8 @@ TTY_FILE="${EDULUTION_UPDATE_TTY:-/dev/tty}"
 # It names the release whose files it wrote.
 RESTART_PENDING="${DIRECTORY}.update-restart-pending"
 VERSION_GIVEN=0
+# The release a pending restart named and this run took over.
+ADOPTED=""
 # Per run, so a --check next to a running update leaves its file alone.
 RESOLVED_CONFIG=""
 UPDATE_ENV=()
@@ -34,6 +38,12 @@ use_version() {
     EDULUTION_INSTALLER_IMAGE="ghcr.io/edulution-io/edulution-installer:${version}"
     EDULUTION_INSTALLER_VERSION="${version}"
     echo "Version ${version} wird verwendet (Image ${EDULUTION_INSTALLER_IMAGE})."
+}
+
+# The files are newer than the release the marker names: it is left from a restart done by other means.
+adopted_downgrade_hint() {
+    echo "    Die Markierung ${RESTART_PENDING} nennt ${ADOPTED}, die Dateien sind aber neuer. Wurden die Dienste"
+    echo "    seitdem neu gestartet, die Markierung entfernen und das Update erneut aufrufen: rm -f ${RESTART_PENDING}"
 }
 
 downgrade_hint() {
@@ -109,27 +119,36 @@ resolve_config() {
     fi
 }
 
-# The restart starts what the files describe: a database with a key file needs the user edu-api logs in with.
-# The check runs with the newer of this script's release and the one in use, as an older release may lack it;
-# the marker stays unless it passes.
-check_before_restart() {
-    local rc=0 image=$EDULUTION_INSTALLER_IMAGE
+# The database user check before a restart runs with the newer of this script's release and the one in use,
+# as an older release may lack it. Loaded before anything is written, so a missing image changes nothing.
+prepare_restart_check() {
+    RESTART_CHECK_IMAGE=$EDULUTION_INSTALLER_IMAGE
     if [[ "$OWN_IMAGE" != "$EDULUTION_INSTALLER_IMAGE" ]] && newer "$OWN_VERSION" "$EDULUTION_INSTALLER_VERSION"; then
-        image=$OWN_IMAGE
-        if ! docker pull "$image" && ! docker image inspect "$image" >/dev/null 2>&1; then
-            echo "[!] Das Image ${image} für die Prüfung vor dem Neustart konnte nicht geladen werden,"
-            echo "    der Neustart wird nicht ausgeführt. Ein erneuter Aufruf des Updates versucht es noch einmal."
+        RESTART_CHECK_IMAGE=$OWN_IMAGE
+        if ! docker pull "$OWN_IMAGE" && ! docker image inspect "$OWN_IMAGE" >/dev/null 2>&1; then
+            echo "[!] Das Image ${OWN_IMAGE} für die Prüfung vor dem Neustart konnte nicht geladen werden,"
+            echo "    es wurde nichts geändert. Ein erneuter Aufruf des Updates versucht es noch einmal."
             exit 1
         fi
     fi
+}
+
+db_user_hint() {
+    echo "[!] edu-api erhält MONGODB_USERNAME und MONGODB_PASSWORD nicht beide mit Wert, die Datenbank startet"
+    echo "    aber mit Zugriffskontrolle. Der Neustart wird nicht ausgeführt. Zuerst einen Datenbank-Benutzer"
+    echo "    anlegen und eintragen, dann das Update erneut aufrufen."
+}
+
+# The restart starts what the files describe: a database with a key file needs the user edu-api logs in with.
+# The marker stays unless the check passes.
+check_before_restart() {
+    local rc=0
     resolve_config
-    run_image "$image" restart-check > /dev/null || rc=$?
+    run_image "$RESTART_CHECK_IMAGE" restart-check > /dev/null || rc=$?
     case $rc in
         0) ;;
         6)
-            echo "[!] edu-api erhält MONGODB_USERNAME und MONGODB_PASSWORD nicht beide mit Wert, die Datenbank startet"
-            echo "    aber mit Zugriffskontrolle. Der Neustart wird nicht ausgeführt. Zuerst einen Datenbank-Benutzer"
-            echo "    anlegen und eintragen, dann das Update erneut aufrufen."
+            db_user_hint
             exit 6
             ;;
         *)
@@ -243,10 +262,14 @@ main() {
         if [[ "$recorded" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ && "$recorded" != "$EDULUTION_INSTALLER_VERSION" ]]; then
             if [[ $VERSION_GIVEN -eq 0 ]]; then
                 echo "Der Neustart der Dienste nach dem Update auf ${recorded} steht noch aus."
+                ADOPTED=$recorded
                 use_version "$recorded"
             elif [[ $CHECK_ONLY -eq 0 ]]; then
                 echo "[!] Der Neustart der Dienste nach dem Update auf ${recorded} steht noch aus. Zuerst diesen abschließen:"
                 echo "    curl -fsSL https://get.edulution.io/update | sudo bash -s -- --version ${recorded}"
+                echo "    Oder stattdessen die Dateien von ${EDULUTION_INSTALLER_VERSION} schreiben und danach ohne"
+                echo "    --compose-only neu starten:"
+                echo "    curl -fsSL https://get.edulution.io/update | sudo bash -s -- --version ${EDULUTION_INSTALLER_VERSION} --compose-only"
                 exit 2
             fi
         fi
@@ -263,6 +286,10 @@ main() {
         fi
     fi
 
+    if [[ $COMPOSE_ONLY -eq 0 ]]; then
+        prepare_restart_check
+    fi
+
     if [[ $CHECK_ONLY -eq 1 ]]; then
         check_args=(check)
         [[ $JSON -eq 0 ]] || check_args+=(--json)
@@ -271,7 +298,15 @@ main() {
         rc=0
         run_update "${check_args[@]}" >&4 || rc=$?
         [[ $rc -ne 5 ]] || downgrade_hint
+        [[ $rc -ne 5 || -z "$ADOPTED" ]] || adopted_downgrade_hint
         old_image_hint "$rc"
+        # An older release in use reports the pending restart without the database user check of this one.
+        if [[ $rc -eq 10 && -e "$RESTART_PENDING" && "$RESTART_CHECK_IMAGE" != "$EDULUTION_INSTALLER_IMAGE" ]]; then
+            if ! run_image "$RESTART_CHECK_IMAGE" restart-check > /dev/null; then
+                db_user_hint
+                exit 6
+            fi
+        fi
         exit "$rc"
     fi
 
@@ -309,6 +344,7 @@ main() {
             ;;
         5)
             downgrade_hint
+            [[ -z "$ADOPTED" ]] || adopted_downgrade_hint
             exit 5
             ;;
         10) ;;

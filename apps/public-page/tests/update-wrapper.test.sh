@@ -362,7 +362,10 @@ check_follows_recorded() { rc_is 10 && logged "pull ghcr.io/edulution-io/eduluti
 PENDING=2.2.2 run_stamped --check
 expect_case "--check with a pending restart checks against the recorded release" check_follows_recorded
 
-other_version_refused() { rc_is 2 && not_logged "pull" && not_logged "run " && grep -q -- "--version 2.2.2" "$WORK/out"; }
+other_version_refused() {
+    rc_is 2 && not_logged "pull" && not_logged "run " && grep -q -- "--version 2.2.2" "$WORK/out" \
+        && grep -q -- "--version 2.2.4 --compose-only" "$WORK/out" && [[ $(cat "$PENDING_FILE") == 2.2.2 ]]
+}
 PENDING=2.2.2 run_stamped --version 2.2.4 --yes
 expect_case "--version other than the recorded one is refused while a restart is pending" other_version_refused
 
@@ -520,6 +523,73 @@ PATH="$WORK/bin:$PATH" STUB_LOG="$LOG" EDULUTION_UPDATE_DIR="$WORK/dir" EDULUTIO
 cat "$WORK/stdout" "$WORK/stderr" > "$WORK/out"
 chmod 600 "$PENDING_FILE"
 expect_case "--check --json reports even if the marker cannot be read" unreadable_marker
+
+compose_only_other() {
+    rc_is 0 && logged "edulution-installer:2.2.4 python -m update apply" && not_logged "edulution-installer:2.2.2" \
+        && [[ $(cat "$PENDING_FILE") == 2.2.4 ]]
+}
+PENDING=2.2.2 run_stamped --version 2.2.4 --compose-only --yes
+expect_case "--compose-only with another --version replaces a pending restart, as the refusal says" compose_only_other
+
+own_image_first() { rc_is 1 && not_logged "update expect" && not_logged "update apply" && [[ $(cat "$PENDING_FILE") == 2.2.2 ]]; }
+PENDING=2.2.2 STUB_PULL_FAIL=:2.2.3 STUB_INSPECT_RC=1 run_stamped --yes
+expect_case "without the script's own image nothing is written" own_image_first
+own_image_first_version() { rc_is 1 && not_logged "update apply" && [[ ! -e $PENDING_FILE ]]; }
+STUB_PULL_FAIL=:2.2.3 STUB_INSPECT_RC=1 run_stamped --version 2.2.2 --yes
+expect_case "without the script's own image an older --version writes nothing" own_image_first_version
+
+run_stamped_split() {
+    reset
+    PATH="$WORK/bin:$PATH" STUB_LOG="$LOG" EDULUTION_UPDATE_DIR="$WORK/dir" \
+        EDULUTION_UPDATE_SKIP_ROOT_CHECK=1 bash "$STAMPED" "$@" > "$WORK/stdout" 2> "$WORK/stderr" || RC=$?
+    cat "$WORK/stdout" "$WORK/stderr" > "$WORK/out"
+}
+
+check_older_blocked() {
+    rc_is 6 && [[ "$(cat "$WORK/stdout")" == report ]] && grep -q "MONGODB_USERNAME" "$WORK/stderr" \
+        && logged "edulution-installer:2.2.2 python -m update check --json --restart-pending" \
+        && logged "edulution-installer:2.2.3 python -m update restart-check"
+}
+PENDING=2.2.2 STUB_RESTART_CHECK_RC=6 run_stamped_split --check --json
+expect_case "--check with an older pending release reports 6 if the restart would be blocked" check_older_blocked
+
+check_older_ok() { rc_is 10 && logged "edulution-installer:2.2.3 python -m update restart-check"; }
+PENDING=2.2.2 run_stamped --check
+expect_case "--check with an older pending release and a database user reports 10" check_older_ok
+
+check_own_release() { rc_is 10 && not_logged "restart-check"; }
+PENDING=1 run_stamped --check
+expect_case "--check with the script's own release leaves the database user to its check" check_own_release
+
+stale_marker() { rc_is 5 && grep -q "rm -f $WORK/dir/.update-restart-pending" "$WORK/out" && not_logged "update apply"; }
+PENDING=2.2.2 STUB_CHECK_RC=5 run_stamped --yes
+expect_case "a marker older than the files names its removal" stale_marker
+PENDING=2.2.2 STUB_CHECK_RC=5 run_stamped --check
+expect_case "--check with a marker older than the files names its removal" stale_marker
+
+migrate_recorded() {
+    rc_is 0 && logged "edulution-installer:2.2.2 python -m update migrate --id X" \
+        && logged "edulution-installer:2.2.3 python -m update restart-check" && [[ ! -e $PENDING_FILE ]]
+}
+PENDING=2.2.2 STUB_CHECK_RC=30 run_stamped --migration X --yes
+expect_case "--migration with a pending older restart migrates with that release and checks with its own" migrate_recorded
+
+# As released: the script's own image is pinned by digest, not by tag.
+DIGEST="sha256:$(printf '%064d' 0)"
+DIGEST_SCRIPT="$WORK/update-digest"
+sed -e "s|^EDULUTION_INSTALLER_IMAGE=.*|EDULUTION_INSTALLER_IMAGE=\"ghcr.io/edulution-io/edulution-installer@${DIGEST}\"|" \
+    -e 's|^EDULUTION_INSTALLER_VERSION=.*|EDULUTION_INSTALLER_VERSION="2.2.3"|' "$WRAPPER" > "$DIGEST_SCRIPT"
+run_digest() {
+    reset
+    PATH="$WORK/bin:$PATH" STUB_LOG="$LOG" EDULUTION_UPDATE_DIR="$WORK/dir" \
+        EDULUTION_UPDATE_SKIP_ROOT_CHECK=1 bash "$DIGEST_SCRIPT" "$@" > "$WORK/out" 2>&1 || RC=$?
+}
+digest_check() { rc_is 0 && logged "pull ghcr.io/edulution-io/edulution-installer@$DIGEST" && logged "@$DIGEST python -m update restart-check"; }
+PENDING=2.2.2 STUB_CHECK_RC=0 run_digest --yes
+expect_case "a released script checks an older pending restart with its pinned image" digest_check
+digest_same() { rc_is 0 && not_logged "@sha256" && logged "edulution-installer:2.2.3 python -m update restart-check"; }
+run_digest --version 2.2.3 --yes
+expect_case "--version naming the script's own release uses that tag alone" digest_same
 
 if [[ $fails -ne 0 ]]; then
     echo "$fails case(s) failed"
