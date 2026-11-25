@@ -16,7 +16,7 @@ Use it for every pull request that touches the installer flow: the `installer` s
 - Linux with KVM, libvirt and access to `qemu:///system` (user in the `libvirt` group)
 - `xorriso`, `genisoimage` or `cloud-localds` for the cloud-init seed
 - About 11 GB free RAM (edu 6 GiB, lmn 4.5 GiB; set `VM_TEST_EDU_MEMORY` / `VM_TEST_LMN_MEMORY` in MiB)
-- About 40 GB free in the libvirt pool `default`. The disks are thin, so a full run uses about that much. Their nominal size is 80 GB.
+- About 40 GB free in the libvirt pool `default`, or the directory pool that `VM_TEST_POOL` names. The disks are thin, so a full run uses about that much. Their nominal size is 80 GB.
 
 Nothing is installed on the host. The tool creates only libvirt objects whose names start with `edutest`, plus its own directory `~/.local/state/edulution-vm-test`. Two things stay after `down`, as libvirt handles them: IPv4 forwarding, which libvirt turns on for a NAT network and leaves on (the protocol records it with the command that turns it off again, and the comparison after `down` shows it), and the VM logs in `/var/log/libvirt/qemu/edutest-*.log`.
 
@@ -41,7 +41,7 @@ tools/vm-test/vm-test install --local
 tools/vm-test/vm-test down
 ```
 
-`build <git-ref>` builds a branch, tag or commit instead of the working tree. Each build gets its own source directory on the VM; if a build fails, `install --local` keeps using the last good one. Untracked files are not part of a build; `git add` them first. A build installs Docker on the edu VM, so the installer takes its "Docker is already installed" path there.
+`build <git-ref>` builds a branch, tag or commit instead of the working tree. Each build gets its own source directory on the VM; if a build fails, `install --local` keeps using the last good one. A successful build removes the sources of earlier ones, so do not build while an `install --local` runs. Untracked files are not part of a build; `git add` them first. A build installs Docker on the edu VM, so the installer takes its "Docker is already installed" path there.
 
 Other commands:
 
@@ -61,13 +61,13 @@ tools/vm-test/vm-test ssh edu sudo tail -f /root/installer.log
 | SSH password | printed by `install` and `status` |
 | Admin password | any password that meets the linuxmuster rules, e.g. upper and lower case, a digit and a special character |
 
-After `linuxmuster-setup`, the root password on the lmn VM is the admin password from the web installer. `vm-test ssh lmn` uses its key and keeps working. When the web installer asks to restart the linuxmuster server, run `vm-test ssh lmn 'sudo systemctl reboot'`, wait until `vm-test ssh lmn true` answers again, then continue with "Next". The edulution address is `10.77.0.20`. The VMs have no QEMU guest agent channel, so the playbook's task that starts the agent waits 90 seconds and is then ignored.
+After `linuxmuster-setup`, the root password on the lmn VM is the admin password from the web installer. `vm-test ssh lmn` uses its key and keeps working. When the web installer asks to restart the linuxmuster server, run `vm-test ssh lmn 'sudo systemctl reboot'`, wait until `vm-test ssh lmn true` answers again, then continue with "Next". The edulution address is the edu VM's, `10.77.0.20` unless `VM_TEST_SUBNET` says otherwise (`vm-test status` shows it). The VMs have no QEMU guest agent channel, so the playbook's task that starts the agent waits 90 seconds and is then ignored.
 
 ## What to test
 
 The basic run: install, linuxmuster setup, edulution stack up, login works. Depending on the change, also:
 
-- **Lost connection:** close the browser tab while `linuxmuster-setup` runs and open `https://10.77.0.20/lmn-install` again (the URL with the token leads to the start page). The page continues the same run, shows the full log once without duplicate lines, and does not start a second run. Check with `vm-test ssh lmn "sudo grep -c 'POST /api/playbook/linuxmuster.yml/start' /opt/edulution-installer/api.log"` (expected: 1).
+- **Lost connection:** close the browser tab while `linuxmuster-setup` runs and open `https://<edu address>/lmn-install` again (the URL with the token leads to the start page). The page continues the same run, shows the full log once without duplicate lines, and does not start a second run. Check with `vm-test ssh lmn "sudo grep -c 'POST /api/playbook/linuxmuster.yml/start' /opt/edulution-installer/api.log"` (expected: 1).
 - **Reload after the run:** reload the page after the run finished and before "Next". The configuration is fetched again. The LMN installer API stops only on "Next".
 - **Second run on the same server:** run the installer again against the installed lmn VM. `install` starts only one run per environment; for a second one, remove its log first: `vm-test ssh edu 'sudo rm /root/installer.log /root/installer.rc'`, then `vm-test install` again. Existing configuration such as `/etc/edulution-fileproxy/config.yml` stays as it was.
 - **fileproxy:** `vm-test ssh lmn "curl -sk -o /dev/null -w '%{http_code}\n' https://127.0.0.1/webdav/"` answers `401`.

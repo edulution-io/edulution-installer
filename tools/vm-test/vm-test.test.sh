@@ -35,6 +35,7 @@ case $1 in
     pool-list) ls "$d/volumes" ;;
     pool-info) [[ -d $d/volumes/$2 ]] ;;
     pool-refresh) true ;;
+    pool-dumpxml) echo "<pool type='${STUB_POOL_TYPE:-dir}'>" ;;
     vol-list)
         printf ' Name Path\n----------\n'
         for f in "$d/volumes/$2"/*; do [[ ! -e $f ]] || echo " ${f##*/} /x"; done
@@ -252,6 +253,11 @@ inner_route() { [[ $RC -ne 0 ]] && grep -q "10.77.0.128/25 dev wg0" "$WORK/out" 
 reset
 STUB_ROUTE_ROOT="10.77.0.128/25 dev wg0 scope link" run_vmtest up
 expect_case "up refuses a subnet that holds a narrower route" inner_route
+
+not_dir_pool() { [[ $RC -ne 0 ]] && grep -q "not a directory pool" "$WORK/out" && [[ ! -e $RUN_DIR ]]; }
+reset
+STUB_POOL_TYPE=logical run_vmtest up
+expect_case "up refuses a pool that is not a directory" not_dir_pool
 
 bad_subnet() { [[ $RC -ne 0 ]] && grep -q "three octets" "$WORK/out"; }
 reset

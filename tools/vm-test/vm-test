@@ -229,6 +229,7 @@ ethernets:
 EOF
 }
 
+# domain_xml <name> <uuid> <memory> <mac> <seed path> <disk paths...>
 domain_xml() {
     local name=$1 uuid=$2 memory=$3 mac=$4 seed=$5
     shift 5
@@ -248,11 +249,11 @@ EOF
     # Files, not pool volumes: with <disk type='volume'> AppArmor's virt-aa-helper does not allow the backing image.
     for vol in "$@"; do
         printf "    <disk type='file' device='disk'><driver name='qemu' type='qcow2' discard='unmap'/><source file='%s'/><target dev='vd%s' bus='virtio'/></disk>\n" \
-            "$(vol_path "$vol")" "${letters[i]}"
+            "$vol" "${letters[i]}"
         i=$((i + 1))
     done
     cat <<EOF
-    <disk type='file' device='cdrom'><driver name='qemu' type='raw'/><source file='$(vol_path "$seed")'/><target dev='sda' bus='sata'/><readonly/></disk>
+    <disk type='file' device='cdrom'><driver name='qemu' type='raw'/><source file='$seed'/><target dev='sda' bus='sata'/><readonly/></disk>
     <interface type='network'><source network='$PREFIX'/><mac address='$mac'/><model type='virtio'/></interface>
     <serial type='pty'/>
     <console type='pty'/>
@@ -285,7 +286,8 @@ upload_volume() {
 create_vm() {
     local role=$1 memory=$2
     shift 2
-    local name seed xml uuid
+    local name seed xml uuid vol path seed_path
+    local -a paths=()
     name=$(vm_name "$role")
     seed=$(vol_name "$role-seed.iso")
     write_cloud_init "$role"
@@ -293,12 +295,17 @@ create_vm() {
     upload_volume "$seed" "$RUN/$seed" raw
     xml="$RUN/$name.xml"
     uuid=$(new_uuid)
-    domain_xml "$name" "$uuid" "$memory" "$(vm_mac "$role")" "$seed" "$@" > "$xml"
+    for vol in "$@"; do
+        path=$(vol_path "$vol")
+        paths+=("$path")
+    done
+    seed_path=$(vol_path "$seed")
+    domain_xml "$name" "$uuid" "$memory" "$(vm_mac "$role")" "$seed_path" "${paths[@]}" > "$xml"
     record domain "$name" "$uuid"
     "${V[@]}" define "$xml" > /dev/null
-    note "VM $name defined (${memory} MiB, 2 vCPUs, $(vm_ip "$role"))" "virsh -c qemu:///system undefine $name"
+    note "VM $name defined (${memory} MiB, 2 vCPUs, $(vm_ip "$role"))" "virsh -c qemu:///system undefine $uuid"
     "${V[@]}" start "$name" > /dev/null
-    note "VM $name started" "virsh -c qemu:///system destroy $name"
+    note "VM $name started" "virsh -c qemu:///system destroy $uuid"
 }
 
 wait_for_vm() {
@@ -325,6 +332,8 @@ cmd_up() {
     [[ ! -e $RUN ]] || die "an environment exists already ($RUN); remove it with 'vm-test down'"
     [[ -e $KVM_DEVICE ]] || die "$KVM_DEVICE is missing, KVM is not available"
     "${V[@]}" pool-info "$POOL" > /dev/null 2>&1 || die "no access to libvirt pool '$POOL' on qemu:///system (group libvirt?)"
+    # The VMs use the volumes as files.
+    "${V[@]}" pool-dumpxml "$POOL" | grep -q "<pool type='dir'" || die "pool '$POOL' is not a directory pool; choose one with VM_TEST_POOL"
     [[ -z $(leftovers) ]] || die "libvirt objects named ${PREFIX}* exist already, from another run or one whose state is gone;" \
         "'vm-test down --all' removes everything named ${PREFIX}*"
 
@@ -384,11 +393,11 @@ cmd_up() {
 EOF
     record network "$PREFIX" "$net_uuid"
     "${V[@]}" net-define "$RUN/network.xml" > /dev/null
-    note "libvirt network $PREFIX defined (NAT ${SUBNET}.0/24, bridge virbr-$PREFIX)" "virsh -c qemu:///system net-undefine $PREFIX"
+    note "libvirt network $PREFIX defined (NAT ${SUBNET}.0/24, bridge virbr-$PREFIX)" "virsh -c qemu:///system net-undefine $net_uuid"
     local forward
     forward=$(cat /proc/sys/net/ipv4/ip_forward 2> /dev/null || true)
     "${V[@]}" net-start "$PREFIX" > /dev/null
-    note "libvirt network $PREFIX started (bridge, dnsmasq for DNS, NAT rules)" "virsh -c qemu:///system net-destroy $PREFIX"
+    note "libvirt network $PREFIX started (bridge, dnsmasq for DNS, NAT rules)" "virsh -c qemu:///system net-destroy $net_uuid"
     # libvirt turns on IPv4 forwarding for a NAT network and leaves it on.
     if [[ $forward == 0 && $(cat /proc/sys/net/ipv4/ip_forward 2> /dev/null || true) == 1 ]]; then
         note "IPv4 forwarding turned on by libvirt" "sudo sysctl -w net.ipv4.ip_forward=0"
@@ -427,6 +436,7 @@ cmd_status() {
 cmd_build() {
     [[ -d $RUN ]] || die "no environment, run 'vm-test up' first"
     command -v git > /dev/null || die "git is missing"
+    command -v flock > /dev/null || die "flock is missing"
     local ref=${1:-} commit tag src
     if [[ -z $ref ]]; then
         # A commit of the working tree without touching the index or the stash list.
@@ -467,7 +477,9 @@ if ! command -v docker > /dev/null; then
 fi
 # The installer writes its daemon.json (storage driver overlay2) and restarts Docker; an image built
 # before that in another store would be gone. So the build runs with the installer's daemon.json.
-awk '/<<DOCKEREOF > \/etc\/docker\/daemon.json/ { on = 1; next } on && /^DOCKEREOF/ { exit } on' \
+# The last block is the one for an installed Docker, which is the case here.
+awk '/<<DOCKEREOF > \/etc\/docker\/daemon.json/ { on = 1; buf = ""; next }
+    on && /^DOCKEREOF/ { on = 0; last = buf; next } on { buf = buf $0 ORS } END { printf "%s", last }' \
     "$src/apps/public-page/public/installer" > /tmp/vm-test-daemon.json
 [[ -s /tmp/vm-test-daemon.json ]] || { echo "no daemon.json found in the installer" >&2; exit 1; }
 if ! cmp -s /tmp/vm-test-daemon.json /etc/docker/daemon.json; then
