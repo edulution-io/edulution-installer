@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-from update.drift import DB_CREDENTIALS_MESSAGE, check, exit_code, fingerprint, to_json
+from update.drift import DB_CREDENTIALS_MESSAGE, check, db_credentials_missing, exit_code, fingerprint, to_json
 from update.installation import COMPOSE
 from update.migrations import MIGRATIONS
 from update.runner import UpdateError, apply, init, migrate
@@ -97,6 +97,12 @@ def _run(args) -> int:
         else:
             _print_report(report)
         return exit_code(report)
+    if args.command == "restart-check":
+        # What a restart starts is the installed files, whichever release wrote them.
+        if db_credentials_missing(root, (root / COMPOSE).read_bytes().decode("utf-8"), _service_env()):
+            print("Blockiert: " + DB_CREDENTIALS_MESSAGE)
+            return 6
+        return 0
     if args.command == "expect":
         print(fingerprint(root))
         return 0
@@ -146,6 +152,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.add_argument("--restart-pending", action="store_true", help="update.sh: Neustart steht noch aus")
 
+    sub.add_parser("restart-check", help="update.sh: vor dem Neustart den Datenbank-Benutzer prüfen")
     sub.add_parser("expect", help="Fingerabdruck der Dateien ausgeben")
 
     p = sub.add_parser("apply", help="Update anwenden")

@@ -11,12 +11,21 @@ DIRECTORY="/srv/docker/edulution-ui/"
 # Image und Version dieses Skripts. Ein Release ersetzt beide Zeilen durch den veroeffentlichten Digest und seine Version.
 EDULUTION_INSTALLER_IMAGE="ghcr.io/edulution-io/edulution-installer:latest"
 EDULUTION_INSTALLER_VERSION="dev"
+OWN_IMAGE=$EDULUTION_INSTALLER_IMAGE
+OWN_VERSION=$EDULUTION_INSTALLER_VERSION
+# The image of the database user check before a restart, set by prepare_restart_check.
+RESTART_CHECK_IMAGE=""
 # Test hooks: directory, terminal and root check.
 DIRECTORY="${EDULUTION_UPDATE_DIR:-$DIRECTORY}"
 DIRECTORY="${DIRECTORY%/}/"
 TTY_FILE="${EDULUTION_UPDATE_TTY:-/dev/tty}"
 # Set once apply has written the files and removed after the services restarted, so a later run finishes the restart.
+# It names the release whose files it wrote.
 RESTART_PENDING="${DIRECTORY}.update-restart-pending"
+VERSION_GIVEN=0
+# The release a pending restart names, and the one this run took over from it.
+RECORDED=""
+ADOPTED=""
 # Per run, so a --check next to a running update leaves its file alone.
 RESOLVED_CONFIG=""
 UPDATE_ENV=()
@@ -30,6 +39,12 @@ use_version() {
     EDULUTION_INSTALLER_IMAGE="ghcr.io/edulution-io/edulution-installer:${version}"
     EDULUTION_INSTALLER_VERSION="${version}"
     echo "Version ${version} wird verwendet (Image ${EDULUTION_INSTALLER_IMAGE})."
+}
+
+# The files are newer than the release the marker names: it is left from a restart done by other means.
+adopted_downgrade_hint() {
+    echo "    Die Markierung ${RESTART_PENDING} nennt ${ADOPTED}, die Dateien sind aber neuer. Wurden die Dienste"
+    echo "    seitdem neu gestartet, die Markierung entfernen und das Update erneut aufrufen: rm -f ${RESTART_PENDING}"
 }
 
 downgrade_hint() {
@@ -53,17 +68,29 @@ usage() {
     echo "              [--discard-local-changes] [--migration <ID>]"
 }
 
-run_update() {
-    local mounts=(-v "${DIRECTORY}:/edulution-ui")
+# newer <a> <b>: true if release a is newer than release b ("dev" counts as the newest).
+newer() {
+    local a=${1//-/\~} b=${2//-/\~}
+    [[ "$a" != "$b" && $(printf '%s\n' "$a" "$b" | sort -V | tail -n 1) == "$a" ]]
+}
+
+# run_image <image> <args...>
+run_image() {
+    local image=$1 mounts=(-v "${DIRECTORY}:/edulution-ui")
+    shift
     # Backups are named after the local time; without the file the container runs on UTC.
     if [[ -e /etc/localtime ]]; then
         mounts+=(-v /etc/localtime:/etc/localtime:ro)
     fi
-    docker run --rm "${mounts[@]}" "${UPDATE_ENV[@]}" "$EDULUTION_INSTALLER_IMAGE" python -m update "$@"
+    docker run --rm "${mounts[@]}" "${UPDATE_ENV[@]}" "$image" python -m update "$@"
+}
+
+run_update() {
+    run_image "$EDULUTION_INSTALLER_IMAGE" "$@"
 }
 
 restart_hint() {
-    echo "    docker compose --project-directory ${DIRECTORY} pull && docker compose --project-directory ${DIRECTORY} up -d"
+    echo "    docker compose --project-directory ${DIRECTORY} pull && docker compose --project-directory ${DIRECTORY} up -d && rm -f ${RESTART_PENDING}"
 }
 
 restart_services() {
@@ -93,18 +120,36 @@ resolve_config() {
     fi
 }
 
+# The database user check before a restart runs with the newer of this script's release and the one in use,
+# as an older release may lack it. Loaded before anything is written, so a missing image changes nothing.
+prepare_restart_check() {
+    RESTART_CHECK_IMAGE=$EDULUTION_INSTALLER_IMAGE
+    if [[ "$OWN_IMAGE" != "$EDULUTION_INSTALLER_IMAGE" ]] && newer "$OWN_VERSION" "$EDULUTION_INSTALLER_VERSION"; then
+        RESTART_CHECK_IMAGE=$OWN_IMAGE
+        if ! docker pull "$OWN_IMAGE" && ! docker image inspect "$OWN_IMAGE" >/dev/null 2>&1; then
+            echo "[!] Das Image ${OWN_IMAGE} für die Prüfung vor dem Neustart konnte nicht geladen werden,"
+            echo "    es wurde nichts geändert. Ein erneuter Aufruf des Updates versucht es noch einmal."
+            exit 1
+        fi
+    fi
+}
+
+db_user_hint() {
+    echo "[!] edu-api erhält MONGODB_USERNAME und MONGODB_PASSWORD nicht beide mit Wert, die Datenbank startet"
+    echo "    aber mit Zugriffskontrolle. Der Neustart wird nicht ausgeführt. Zuerst einen Datenbank-Benutzer"
+    echo "    anlegen und eintragen, dann das Update erneut aufrufen."
+}
+
 # The restart starts what the files describe: a database with a key file needs the user edu-api logs in with.
-# It goes ahead only on a result the check gives when nothing blocks; the marker stays otherwise.
+# The marker stays unless the check passes.
 check_before_restart() {
     local rc=0
     resolve_config
-    run_update check --restart-pending > /dev/null || rc=$?
+    run_image "$RESTART_CHECK_IMAGE" restart-check > /dev/null || rc=$?
     case $rc in
-        0 | 10 | 20 | 30) ;;
+        0) ;;
         6)
-            echo "[!] edu-api erhält MONGODB_USERNAME und MONGODB_PASSWORD nicht beide mit Wert, die Datenbank startet"
-            echo "    aber mit Zugriffskontrolle. Der Neustart wird nicht ausgeführt. Zuerst einen Datenbank-Benutzer"
-            echo "    anlegen und eintragen, dann das Update erneut aufrufen."
+            db_user_hint
             exit 6
             ;;
         *)
@@ -145,10 +190,12 @@ main() {
         case $1 in
             --version)
                 use_version "${2:-}"
+                VERSION_GIVEN=1
                 shift 2
                 ;;
             --version=*)
                 use_version "${1#*=}"
+                VERSION_GIVEN=1
                 shift
                 ;;
             --check) CHECK_ONLY=1; shift ;;
@@ -196,6 +243,40 @@ main() {
         exit 1
     fi
 
+    # The container's lock covers only its own run; this one keeps a second script from
+    # changing the restart marker between this one reading it and finishing its steps.
+    if [[ $CHECK_ONLY -eq 0 ]]; then
+        exec 9> "${DIRECTORY}.update-script.lock"
+        if ! flock -n 9; then
+            echo "[!] Ein anderes Update läuft bereits."
+            exit 3
+        fi
+    fi
+
+    # The pending restart belongs to the release that wrote the files: checked against a newer one,
+    # the run would apply that template instead of only restarting. --compose-only restarts nothing
+    # and writes the files of its own release.
+    if [[ -s "$RESTART_PENDING" && $COMPOSE_ONLY -eq 0 ]]; then
+        # A --check holds no lock, so a running update may remove the marker in between.
+        recorded=$(head -n 1 "$RESTART_PENDING" 2>/dev/null) || recorded=""
+        recorded=${recorded//[[:space:]]/}
+        [[ ! "$recorded" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || RECORDED=$recorded
+        if [[ "$recorded" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ && "$recorded" != "$EDULUTION_INSTALLER_VERSION" ]]; then
+            if [[ $VERSION_GIVEN -eq 0 ]]; then
+                echo "Der Neustart der Dienste nach dem Update auf ${recorded} steht noch aus."
+                ADOPTED=$recorded
+                use_version "$recorded"
+            elif [[ $CHECK_ONLY -eq 0 ]]; then
+                echo "[!] Der Neustart der Dienste nach dem Update auf ${recorded} steht noch aus. Zuerst diesen abschließen:"
+                echo "    curl -fsSL https://get.edulution.io/update | sudo bash -s -- --version ${recorded}"
+                echo "    Oder stattdessen die Dateien von ${EDULUTION_INSTALLER_VERSION} schreiben und danach ohne"
+                echo "    --compose-only neu starten:"
+                echo "    curl -fsSL https://get.edulution.io/update | sudo bash -s -- --version ${EDULUTION_INSTALLER_VERSION} --compose-only"
+                exit 2
+            fi
+        fi
+    fi
+
     echo "edulution update (Installer ${EDULUTION_INSTALLER_VERSION})"
 
     if ! docker pull "$EDULUTION_INSTALLER_IMAGE"; then
@@ -215,16 +296,20 @@ main() {
         rc=0
         run_update "${check_args[@]}" >&4 || rc=$?
         [[ $rc -ne 5 ]] || downgrade_hint
+        [[ $rc -ne 5 || -z "$ADOPTED" ]] || adopted_downgrade_hint
         old_image_hint "$rc"
+        # An older release whose files wait for their restart reports it without the database user check of
+        # this one. Only then: otherwise its run writes other files first, which this check cannot see.
+        if [[ $rc -eq 10 && -n "$RECORDED" && "$RECORDED" == "$EDULUTION_INSTALLER_VERSION" ]] \
+            && [[ "$OWN_IMAGE" != "$EDULUTION_INSTALLER_IMAGE" ]] && newer "$OWN_VERSION" "$EDULUTION_INSTALLER_VERSION"; then
+            prepare_restart_check
+            check_before_restart
+        fi
         exit "$rc"
     fi
 
-    # The container's lock covers only its own run; this one keeps a second script from
-    # changing the restart marker while this one is between its steps.
-    exec 9> "${DIRECTORY}.update-script.lock"
-    if ! flock -n 9; then
-        echo "[!] Ein anderes Update läuft bereits."
-        exit 3
+    if [[ $COMPOSE_ONLY -eq 0 ]]; then
+        prepare_restart_check
     fi
 
     # Taken before check: if the files change after it, apply refuses with exit 4 instead of
@@ -252,12 +337,16 @@ main() {
                     echo "Die Dateien sind aktuell; der Neustart der Dienste nach dem letzten Update wird nachgeholt."
                     restart_services
                     echo "Update abgeschlossen."
+                    if newer "$OWN_VERSION" "$EDULUTION_INSTALLER_VERSION"; then
+                        echo "Version ${OWN_VERSION} ist verfügbar; ein weiterer Aufruf des Updates wendet sie an."
+                    fi
                 fi
                 exit 0
             fi
             ;;
         5)
             downgrade_hint
+            [[ -z "$ADOPTED" ]] || adopted_downgrade_hint
             exit 5
             ;;
         10) ;;
@@ -310,8 +399,12 @@ main() {
 
     # Set before the container writes anything, so an interruption after the writes keeps the restart pending.
     had_pending=0
-    [[ ! -e "$RESTART_PENDING" ]] || had_pending=1
-    touch "$RESTART_PENDING"
+    previous=""
+    if [[ -e "$RESTART_PENDING" ]]; then
+        had_pending=1
+        previous=$(cat "$RESTART_PENDING")
+    fi
+    printf '%s\n' "$EDULUTION_INSTALLER_VERSION" > "$RESTART_PENDING"
 
     rc=0
     if [[ -n "$MIGRATION" ]]; then
@@ -320,8 +413,13 @@ main() {
         run_update apply "${args[@]}" >&4 || rc=$?
     fi
     if [[ $rc -ne 0 ]]; then
-        if [[ $had_pending -eq 0 ]] && nothing_written "$rc" "$token"; then
-            rm -f "$RESTART_PENDING"
+        if nothing_written "$rc" "$token"; then
+            # The files on disk are still those of the earlier marker, if any.
+            if [[ $had_pending -eq 0 ]]; then
+                rm -f "$RESTART_PENDING"
+            else
+                { [[ -z "$previous" ]] || printf '%s\n' "$previous"; } > "$RESTART_PENDING"
+            fi
         fi
         exit "$rc"
     fi
