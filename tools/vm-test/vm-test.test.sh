@@ -309,8 +309,8 @@ run_vmtest down
 expect_case "an up that stops at net-start has recorded the network, and down removes it" network_failed
 
 failed_rebuild() {
-    [[ $RC -eq 0 ]] && [[ $(cut -d' ' -f1 "$RUN_DIR/image") == "vmtest-$COMMIT_A" ]] \
-        && logged "/root/vm-test-src/vmtest-$COMMIT_A-[0-9-]*/apps/public-page/public/installer.*--version.*vmtest-$COMMIT_A" \
+    [[ $RC -eq 0 ]] && [[ $(cut -d' ' -f1 "$RUN_DIR/image") == "edutest-$COMMIT_A" ]] \
+        && logged "/root/vm-test-src/edutest-$COMMIT_A-[0-9-]*/apps/public-page/public/installer.*--version.*edutest-$COMMIT_A" \
         && not_logged "$COMMIT_B"
 }
 reset

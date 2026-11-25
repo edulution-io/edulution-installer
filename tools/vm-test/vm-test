@@ -440,7 +440,8 @@ cmd_build() {
     # Builds of one run follow each other, as each removes the sources of the others when it is done.
     exec 8> "$RUN/build.lock"
     flock -n 8 || die "another build of this environment is running"
-    tag="vmtest-$(git -C "$REPO_ROOT" rev-parse --short "$commit")"
+    # No leading "v": the installer strips it from --version.
+    tag="edutest-$(git -C "$REPO_ROOT" rev-parse --short "$commit")"
     src="$SRC_ON_VM/$tag-$(date +%Y%m%d%H%M%S)-$$"
 
     info "Copying $commit to edu ..."
@@ -462,6 +463,15 @@ if ! command -v docker > /dev/null; then
         > /etc/apt/sources.list.d/docker.list
     apt-get update -qq
     apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin > /dev/null
+fi
+# The installer writes its daemon.json (storage driver overlay2) and restarts Docker; an image built
+# before that in another store would be gone. So the build runs with the installer's daemon.json.
+awk '/<<DOCKEREOF > \/etc\/docker\/daemon.json/ { on = 1; next } on && /^DOCKEREOF/ { exit } on' \
+    "$src/apps/public-page/public/installer" > /tmp/vm-test-daemon.json
+[[ -s /tmp/vm-test-daemon.json ]] || { echo "no daemon.json found in the installer" >&2; exit 1; }
+if ! cmp -s /tmp/vm-test-daemon.json /etc/docker/daemon.json; then
+    mv /tmp/vm-test-daemon.json /etc/docker/daemon.json
+    systemctl restart docker
 fi
 docker run --rm -e NX_DAEMON=false -e CI=true -v "$src:/src" -w /src "$node_image" \
     sh -c 'npm ci --no-audit --no-fund --loglevel=error && npx nx build webinstaller'
