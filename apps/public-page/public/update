@@ -23,7 +23,8 @@ TTY_FILE="${EDULUTION_UPDATE_TTY:-/dev/tty}"
 # It names the release whose files it wrote.
 RESTART_PENDING="${DIRECTORY}.update-restart-pending"
 VERSION_GIVEN=0
-# The release a pending restart named and this run took over.
+# The release a pending restart names, and the one this run took over from it.
+RECORDED=""
 ADOPTED=""
 # Per run, so a --check next to a running update leaves its file alone.
 RESOLVED_CONFIG=""
@@ -259,6 +260,7 @@ main() {
         # A --check holds no lock, so a running update may remove the marker in between.
         recorded=$(head -n 1 "$RESTART_PENDING" 2>/dev/null) || recorded=""
         recorded=${recorded//[[:space:]]/}
+        [[ ! "$recorded" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || RECORDED=$recorded
         if [[ "$recorded" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ && "$recorded" != "$EDULUTION_INSTALLER_VERSION" ]]; then
             if [[ $VERSION_GIVEN -eq 0 ]]; then
                 echo "Der Neustart der Dienste nach dem Update auf ${recorded} steht noch aus."
@@ -296,9 +298,10 @@ main() {
         [[ $rc -ne 5 ]] || downgrade_hint
         [[ $rc -ne 5 || -z "$ADOPTED" ]] || adopted_downgrade_hint
         old_image_hint "$rc"
-        # An older release in use reports the pending restart without the database user check of this one.
-        if [[ $rc -eq 10 && -e "$RESTART_PENDING" && "$OWN_IMAGE" != "$EDULUTION_INSTALLER_IMAGE" ]] \
-            && newer "$OWN_VERSION" "$EDULUTION_INSTALLER_VERSION"; then
+        # An older release whose files wait for their restart reports it without the database user check of
+        # this one. Only then: otherwise its run writes other files first, which this check cannot see.
+        if [[ $rc -eq 10 && -n "$RECORDED" && "$RECORDED" == "$EDULUTION_INSTALLER_VERSION" ]] \
+            && [[ "$OWN_IMAGE" != "$EDULUTION_INSTALLER_IMAGE" ]] && newer "$OWN_VERSION" "$EDULUTION_INSTALLER_VERSION"; then
             prepare_restart_check
             check_before_restart
         fi

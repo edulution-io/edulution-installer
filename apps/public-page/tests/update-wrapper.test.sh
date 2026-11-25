@@ -569,6 +569,21 @@ check_compose_only() { rc_is 10 && not_logged "restart-check"; }
 PENDING=2.2.2 run_stamped --check --compose-only
 expect_case "--check --compose-only with a pending restart checks without the restart check" check_compose_only
 
+check_compose_only_older() { rc_is 10 && not_logged "restart-check"; }
+PENDING=2.2.2 STUB_RESTART_CHECK_RC=6 run_stamped --check --compose-only --version 2.2.2
+expect_case "--check --compose-only with an older release previews a run without restart" check_compose_only_older
+
+check_legacy_marker() { rc_is 10 && not_logged "restart-check"; }
+PENDING=1 STUB_RESTART_CHECK_RC=6 run_stamped --check --version 2.2.2
+expect_case "--check with an empty marker and an older --version checks no restart" check_legacy_marker
+
+check_no_own_image() {
+    rc_is 1 && [[ "$(cat "$WORK/stdout")" == report ]] && [[ $(cat "$PENDING_FILE") == 2.2.2 ]] \
+        && grep -q "Prüfung vor dem Neustart" "$WORK/stderr"
+}
+PENDING=2.2.2 STUB_PULL_FAIL=:2.2.3 STUB_INSPECT_RC=1 run_stamped_split --check --json
+expect_case "--check without the script's own image keeps the report on stdout and exits 1" check_no_own_image
+
 check_own_release() { rc_is 10 && not_logged "restart-check"; }
 PENDING=1 run_stamped --check
 expect_case "--check with the script's own release leaves the database user to its check" check_own_release
