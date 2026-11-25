@@ -24,7 +24,11 @@ cat > "$WORK/bin/virsh" <<'STUB'
 echo "virsh $*" >> "$STUB_LOG"
 [[ " ${STUB_VIRSH_FAIL:-} " != *" $1 "* ]] || exit 1
 d=$STUB_VIRT
-xml_name() { sed -n 's|.*<name>\(.*\)</name>.*|\1|p' "$1" | head -1; }
+xml_value() { sed -n "s|.*<$1>\\(.*\\)</$1>.*|\\1|p" "$2" | head -1; }
+# by_id <dir> <name or uuid>: the object's file, as virsh takes either.
+by_id() {
+    if [[ -e $d/$1/$2 ]]; then echo "$d/$1/$2"; else grep -lx -- "$2" "$d/$1"/* 2> /dev/null | head -1; fi
+}
 case $1 in
     list) ls "$d/domains" ;;
     net-list) ls "$d/networks" ;;
@@ -38,17 +42,17 @@ case $1 in
     vol-create-as) touch "$d/volumes/$2/$3" ;;
     vol-upload) true ;;
     vol-delete) rm "$d/volumes/$3/$4" ;;
-    define) n=$(xml_name "$2"); echo "u-$n" > "$d/domains/$n" ;;
+    define) xml_value uuid "$2" > "$d/domains/$(xml_value name "$2")" ;;
     start) true ;;
     domstate) [[ -e $d/domains/$2 ]] && echo running ;;
     domuuid) cat "$d/domains/$2" ;;
-    destroy) [[ -e $d/domains/$2 ]] ;;
-    undefine) rm "$d/domains/$2" ;;
-    net-define) n=$(xml_name "$2"); echo "u-$n" > "$d/networks/$n" ;;
+    destroy) [[ -n $(by_id domains "$2") ]] ;;
+    undefine) f=$(by_id domains "$2"); [[ -n $f ]] && rm "$f" ;;
+    net-define) xml_value uuid "$2" > "$d/networks/$(xml_value name "$2")" ;;
     net-start) true ;;
     net-uuid) cat "$d/networks/$2" ;;
     net-destroy) true ;;
-    net-undefine) rm "$d/networks/$2" ;;
+    net-undefine) f=$(by_id networks "$2"); [[ -n $f ]] && rm "$f" ;;
     *) exit 99 ;;
 esac
 STUB
@@ -267,11 +271,12 @@ recorded_up() {
 volume default edutest-$id-edu.qcow2
 volume default edutest-$id-lmn.qcow2
 volume default edutest-$id-lmn-data.qcow2
-network edutest u-edutest
+network edutest $(cat "$WORK/virt/networks/edutest")
 volume default edutest-$id-lmn-seed.iso
-domain edutest-lmn u-edutest-lmn
+domain edutest-lmn $(cat "$WORK/virt/domains/edutest-lmn")
 volume default edutest-$id-edu-seed.iso
-domain edutest-edu u-edutest-edu" ]]
+domain edutest-edu $(cat "$WORK/virt/domains/edutest-edu")" ]] \
+        && [[ $(grep -c '^domain edutest-[a-z]* [0-9a-f-]\{36\}$' "$RUN_DIR/resources") -eq 2 ]]
 }
 reset
 prepare_image
@@ -280,17 +285,18 @@ expect_case "up records every object right after creating it" recorded_up
 
 teardown_order() {
     [[ $RC -eq 0 ]] && [[ -z $(find "$WORK/virt" -type f) ]] \
-        && [[ $(line_of "undefine edutest-edu") -lt $(line_of "vol-delete.*edu-seed") ]] \
+        && [[ $(line_of "undefine $edu_uuid") -lt $(line_of "vol-delete.*edu-seed") ]] \
         && [[ $(line_of "vol-delete.*lmn-seed") -lt $(line_of "net-undefine") ]] \
         && [[ $(line_of "net-undefine") -lt $(line_of "vol-delete.*-lmn.qcow2") ]] \
         && [[ $(grep -n "vol-delete" "$LOG" | tail -1) == *-base.qcow2* ]]
 }
 : > "$LOG"
+edu_uuid=$(cat "$WORK/virt/domains/edutest-edu" 2> /dev/null)
 run_vmtest down
 expect_case "down after a full up removes VMs, seeds, network and disks in that order" teardown_order
 
 network_failed() {
-    [[ $RC -eq 0 ]] && [[ -z $(find "$WORK/virt" -type f) ]] && logged "net-undefine edutest"
+    [[ $RC -eq 0 ]] && [[ -z $(find "$WORK/virt" -type f) ]] && logged "net-undefine"
 }
 reset
 prepare_image
@@ -302,7 +308,7 @@ run_vmtest down
 expect_case "an up that stops at net-start has recorded the network, and down removes it" network_failed
 
 failed_rebuild() {
-    [[ $RC -eq 0 ]] && [[ $(cat "$RUN_DIR/image-tag") == "vmtest-$COMMIT_A" ]] \
+    [[ $RC -eq 0 ]] && [[ $(cut -d' ' -f1 "$RUN_DIR/image") == "vmtest-$COMMIT_A" ]] \
         && logged "/root/vm-test-src/vmtest-$COMMIT_A-[0-9-]*/apps/public-page/public/installer.*--version.*vmtest-$COMMIT_A" \
         && not_logged "$COMMIT_B"
 }
@@ -320,7 +326,7 @@ expect_case "after a failed rebuild, install --local uses the last good build an
 
 prune_after_record() {
     local src
-    src=$(cat "$RUN_DIR/image-src")
+    src=$(cut -d' ' -f2 "$RUN_DIR/image")
     [[ $RC -eq 0 ]] && logged "find /root/vm-test-src .* ! -name ${src##*/} " \
         && [[ $(line_of "bash -s -- .*node:") -lt $(line_of "find /root/vm-test-src") ]]
 }
@@ -328,6 +334,47 @@ reset
 own_run
 run_vmtest build "$COMMIT_A"
 expect_case "older builds on the VM are removed only after the new one is recorded" prune_after_record
+
+uuid_unreadable() { [[ $RC -ne 0 ]] && [[ -f $RUN_DIR/resources ]] && exists domains/edutest-edu; }
+reset edutest-edu
+own_run "domain edutest-edu u-edutest-edu"
+STUB_VIRSH_FAIL=domuuid run_vmtest down
+expect_case "down stops and keeps the record if a VM's UUID cannot be read" uuid_unreadable
+
+network_replaced() { [[ $RC -eq 0 ]] && exists networks/edutest && not_logged "net-undefine"; }
+reset
+echo u-other > "$WORK/virt/networks/edutest"
+own_run "network edutest u-from-an-earlier-run"
+run_vmtest down
+expect_case "down leaves a network of the recorded name that another run created since" network_replaced
+
+up_leftovers() { [[ $RC -ne 0 ]] && grep -q -- "--all" "$WORK/out" && [[ ! -e $RUN_DIR ]] && not_logged "curl"; }
+reset edutest-edu
+run_vmtest up
+expect_case "up refuses while objects named edutest exist" up_leftovers
+
+up_twice() { [[ $RC -ne 0 ]] && grep -q "exists already" "$WORK/out" && [[ -f $RUN_DIR/resources ]] && not_logged "virsh"; }
+reset
+own_run "volume default edutest-1-edu.qcow2"
+run_vmtest up
+expect_case "up refuses while an environment of this state directory exists" up_twice
+
+# More than a pipe holds: the lookup must not lose the volume to SIGPIPE.
+big_pool() { [[ $RC -eq 0 ]] && ! exists volumes/default/edutest-1-edu.qcow2 && [[ ! -e $RUN_DIR ]]; }
+reset -- default/edutest-1-edu.qcow2
+(cd "$WORK/virt/volumes/default" && for i in $(seq 1 4000); do : > "zz-volume-with-a-long-name-$i.qcow2"; done)
+own_run "volume default edutest-1-edu.qcow2"
+run_vmtest down
+expect_case "down finds its volume in a large pool" big_pool
+
+build_locked() { [[ $RC -ne 0 ]] && grep -q "another build" "$WORK/out" && not_logged "tar -x"; }
+reset
+own_run
+exec 7> "$RUN_DIR/build.lock"
+flock 7
+run_vmtest build "$COMMIT_A"
+exec 7>&-
+expect_case "a second build of the same environment stops while one runs" build_locked
 
 if [[ $fails -ne 0 ]]; then
     echo "$fails case(s) failed"

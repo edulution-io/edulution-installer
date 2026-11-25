@@ -148,8 +148,13 @@ has_domain() {
 
 has_volume() {
     local names
-    names=$("${V[@]}" vol-list "$1") || die "virsh cannot list pool $1"
-    awk 'NR > 2 && NF { print $1 }' <<< "$names" | grep -qx -- "$2"
+    names=$("${V[@]}" vol-list "$1") || die "virsh cannot list pool $1; if it is inactive: virsh -c qemu:///system pool-start $1"
+    awk -v name="$2" 'NR > 2 && $1 == name { found = 1 } END { exit !found }' <<< "$names"
+}
+
+# A UUID chosen before the object is defined, so the record never lacks it.
+new_uuid() {
+    cat /proc/sys/kernel/random/uuid
 }
 
 has_network() {
@@ -220,12 +225,13 @@ EOF
 }
 
 domain_xml() {
-    local name=$1 memory=$2 mac=$3 seed=$4
-    shift 4
+    local name=$1 uuid=$2 memory=$3 mac=$4 seed=$5
+    shift 5
     local letters=(a b c d) i=0 vol
     cat <<EOF
 <domain type='kvm'>
   <name>$name</name>
+  <uuid>$uuid</uuid>
   <memory unit='MiB'>$memory</memory>
   <vcpu>2</vcpu>
   <os><type arch='x86_64' machine='q35'>hvm</type><boot dev='hd'/></os>
@@ -273,16 +279,17 @@ upload_volume() {
 create_vm() {
     local role=$1 memory=$2
     shift 2
-    local name seed xml
+    local name seed xml uuid
     name=$(vm_name "$role")
     seed=$(vol_name "$role-seed.iso")
     write_cloud_init "$role"
     make_seed "$RUN/seed-$role" "$RUN/$seed"
     upload_volume "$seed" "$RUN/$seed" raw
     xml="$RUN/$name.xml"
-    domain_xml "$name" "$memory" "$(vm_mac "$role")" "$seed" "$@" > "$xml"
+    uuid=$(new_uuid)
+    domain_xml "$name" "$uuid" "$memory" "$(vm_mac "$role")" "$seed" "$@" > "$xml"
+    record domain "$name" "$uuid"
     "${V[@]}" define "$xml" > /dev/null
-    record domain "$name" "$("${V[@]}" domuuid "$name")"
     note "VM $name defined (${memory} MiB, 2 vCPUs, $(vm_ip "$role"))" "virsh -c qemu:///system undefine $name"
     "${V[@]}" start "$name" > /dev/null
     note "VM $name started" "virsh -c qemu:///system destroy $name"
@@ -358,16 +365,19 @@ cmd_up() {
     create_volume "$(vol_name lmn-data.qcow2)" 25G
 
     info "Creating network $PREFIX (${SUBNET}.0/24, NAT, no DHCP) ..."
+    local net_uuid
+    net_uuid=$(new_uuid)
     cat > "$RUN/network.xml" <<EOF
 <network>
   <name>$PREFIX</name>
+  <uuid>$net_uuid</uuid>
   <forward mode='nat'/>
   <bridge name='virbr-$PREFIX' stp='on' delay='0'/>
   <ip address='${SUBNET}.1' netmask='255.255.255.0'/>
 </network>
 EOF
+    record network "$PREFIX" "$net_uuid"
     "${V[@]}" net-define "$RUN/network.xml" > /dev/null
-    record network "$PREFIX" "$("${V[@]}" net-uuid "$PREFIX")"
     note "libvirt network $PREFIX defined (NAT ${SUBNET}.0/24, bridge virbr-$PREFIX)" "virsh -c qemu:///system net-undefine $PREFIX"
     local forward
     forward=$(cat /proc/sys/net/ipv4/ip_forward 2> /dev/null || true)
@@ -403,7 +413,7 @@ cmd_status() {
         echo "linuxmuster server for the web installer: $(vm_ip lmn), user root, password $(cat "$RUN/lmn-root-password")"
         echo "  (after linuxmuster-setup the root password is the admin password entered in the web installer)"
     fi
-    [[ ! -f $RUN/image-tag ]] || echo "Image built on edu: $(cat "$RUN/image-tag") (vm-test install --local)"
+    [[ ! -f $RUN/image ]] || echo "Image built on edu: $(cut -d' ' -f1 "$RUN/image") (vm-test install --local)"
     [[ ! -f $RUN/installer-url ]] || echo "Web installer: $(cat "$RUN/installer-url")"
     echo "Protocol: $PROTOCOL"
 }
@@ -422,6 +432,9 @@ cmd_build() {
     else
         commit=$(git -C "$REPO_ROOT" rev-parse --verify "${ref}^{commit}")
     fi
+    # Builds of one run follow each other, as each removes the sources of the others when it is done.
+    exec 8> "$RUN/build.lock"
+    flock -n 8 || die "another build of this environment is running"
     tag="vmtest-$(git -C "$REPO_ROOT" rev-parse --short "$commit")"
     src="$SRC_ON_VM/$tag-$(date +%Y%m%d%H%M%S)-$$"
 
@@ -450,8 +463,9 @@ docker run --rm -e NX_DAEMON=false -e CI=true -v "$src:/src" -w /src "$node_imag
 rm -rf "$src/node_modules"
 docker build -q --build-arg INSTALLER_VERSION="$tag" -t "ghcr.io/edulution-io/edulution-installer:$tag" "$src"
 EOF
-    echo "$tag" > "$RUN/image-tag"
-    echo "$src" > "$RUN/image-src"
+    # Tag and sources in one file, replaced at once, so install never pairs one build's image with another's sources.
+    printf '%s %s\n' "$tag" "$src" > "$RUN/image.new"
+    mv "$RUN/image.new" "$RUN/image"
     # Only now, so the recorded build always has its sources.
     vm_ssh edu "sudo find $SRC_ON_VM -mindepth 1 -maxdepth 1 ! -name ${src##*/} -exec rm -rf {} +" \
         || info "older builds in $SRC_ON_VM on edu could not be removed"
@@ -470,9 +484,8 @@ cmd_install() {
             command="curl -fsSL https://get.edulution.io/installer -o /root/installer && bash /root/installer --version $(printf '%q' "$2")"
             ;;
         --local)
-            [[ -f $RUN/image-tag && -f $RUN/image-src ]] || die "no image built, run 'vm-test build' first"
-            tag=$(cat "$RUN/image-tag")
-            src=$(cat "$RUN/image-src")
+            [[ -f $RUN/image ]] || die "no image built, run 'vm-test build' first"
+            read -r tag src < "$RUN/image"
             # As in the E2E workflow: the tag exists neither in the registry nor on GitHub, so docker
             # takes the local image and the templates come from the copied checkout.
             command="EDULUTION_TEMPLATE_URL=file://$src/apps/public-page/public/download bash $src/apps/public-page/public/installer --version $tag"
@@ -505,10 +518,21 @@ EOF
 
 # owned <kind> [<pool>] <name> [<uuid>]: true if the object exists and, given a UUID, is the one recorded.
 owned() {
+    local uuid
     case $1 in
-        domain) has_domain "$2" && [[ -z ${3:-} || $("${V[@]}" domuuid "$2") == "$3" ]] ;;
+        domain)
+            has_domain "$2" || return 1
+            [[ -n ${3:-} ]] || return 0
+            uuid=$("${V[@]}" domuuid "$2") || die "virsh cannot read the UUID of VM $2"
+            [[ $uuid == "$3" ]]
+            ;;
         volume) has_volume "$2" "$3" ;;
-        network) has_network "$2" && [[ -z ${3:-} || $("${V[@]}" net-uuid "$2") == "$3" ]] ;;
+        network)
+            has_network "$2" || return 1
+            [[ -n ${3:-} ]] || return 0
+            uuid=$("${V[@]}" net-uuid "$2") || die "virsh cannot read the UUID of network $2"
+            [[ $uuid == "$3" ]]
+            ;;
         *) die "unknown entry in $RESOURCES: $*" ;;
     esac
 }
@@ -518,8 +542,9 @@ remove() {
     owned "$@" || return 0
     case $1 in
         domain)
-            "${V[@]}" destroy "$2" > /dev/null 2>&1 || true
-            "${V[@]}" undefine "$2" > /dev/null
+            # By UUID where recorded, so a VM that took the name in the meantime is not hit.
+            "${V[@]}" destroy "${3:-$2}" > /dev/null 2>&1 || true
+            "${V[@]}" undefine "${3:-$2}" > /dev/null
             log_down "VM $2 stopped and removed"
             ;;
         volume)
@@ -527,8 +552,8 @@ remove() {
             log_down "Volume $3 deleted from pool $2"
             ;;
         network)
-            "${V[@]}" net-destroy "$2" > /dev/null 2>&1 || true
-            "${V[@]}" net-undefine "$2" > /dev/null
+            "${V[@]}" net-destroy "${3:-$2}" > /dev/null 2>&1 || true
+            "${V[@]}" net-undefine "${3:-$2}" > /dev/null
             log_down "Network $2 stopped and removed (bridge, dnsmasq, NAT rules)"
             ;;
     esac
