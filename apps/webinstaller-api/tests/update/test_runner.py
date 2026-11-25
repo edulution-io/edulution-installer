@@ -362,8 +362,21 @@ def test_migrate_refuses_missing_db_user(make_installation, target_text):
     assert_untouched_except_lock(root, before)
 
 
+DATA = Migration("0098-data", "major", (), lambda c: True, lambda c: c.env.set_if_absent("NG", "1"))
+
+
 def test_migrate_without_template_runs_despite_missing_db_user(make_installation, target_text):
-    data = Migration("0098-data", "major", (), lambda c: True, lambda c: c.env.set_if_absent("NG", "1"))
+    # The restart after a data step starts the installed files, which run the database without a key file.
+    plain = target_text.replace("--keyFile", "--bind_ip_all")
+    root = make_installation(body=plain, header="2.1.0", state=State("2.1.0", []), env=NO_DB_USER_ENV)
+    run_migrate(root, DATA.id, target_text, (*MIGRATIONS, DATA, GATE))
+    assert load_state(root).applied == [DATA.id]
+
+
+def test_migrate_without_template_refuses_when_the_installed_files_need_the_db_user(make_installation, target_text):
     root = make_installation(header="2.1.0", state=State("2.1.0", []), env=NO_DB_USER_ENV)
-    run_migrate(root, data.id, target_text, (*MIGRATIONS, data))
-    assert load_state(root).applied == [data.id]
+    before = snapshot(root)
+    with pytest.raises(UpdateError) as err:
+        run_migrate(root, DATA.id, target_text, (*MIGRATIONS, DATA, GATE))
+    assert err.value.code == 6
+    assert_untouched_except_lock(root, before)

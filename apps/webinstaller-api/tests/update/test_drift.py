@@ -239,8 +239,30 @@ def test_missing_db_user_blocks_a_pending_restart(make_installation, target_text
 
 
 def test_missing_db_user_and_only_the_header_behind(make_installation, target_text, all_applied):
+    # Writing the header is followed by a restart, so the check blocks before it is written.
     root = make_installation(header="2.1.0", state=all_applied, env=NO_DB_USER_ENV)
-    assert exit_code(run(root, target_text)) == 10
+    assert exit_code(run(root, target_text)) == 6
+    headerless = make_installation(state=all_applied, env=NO_DB_USER_ENV)
+    assert exit_code(run(headerless, target_text)) == 6
+
+
+GATE = Migration("0099-gate", "major", (), lambda c: True, lambda c: None, gates_template=True)
+
+
+def test_missing_db_user_while_blocked_by_a_major_migration(make_installation, target_text):
+    # The update cannot install the target, so it reports the migration; the migration checks for itself.
+    root = make_installation(header="2.1.0", state=State("2.1.0", []), env=NO_DB_USER_ENV)
+    assert exit_code(run(root, target_text, registry=(GATE,))) == 30
+
+
+def test_pending_restart_while_blocked_checks_the_installed_files(make_installation, target_text):
+    plain = target_text.replace("--keyFile", "--bind_ip_all")
+    without_key_file = make_installation(body=plain, header="2.1.0", state=State("2.1.0", []), env=NO_DB_USER_ENV)
+    report = check(without_key_file, target_text, TARGET, frozenset(), (GATE,), restart_pending=True)
+    assert exit_code(report) == 30
+    with_key_file = make_installation(header="2.1.0", state=State("2.1.0", []), env=NO_DB_USER_ENV)
+    report = check(with_key_file, target_text, TARGET, frozenset(), (GATE,), restart_pending=True)
+    assert exit_code(report) == 6
 
 
 def test_missing_db_user_and_a_template_without_key_file(make_installation, target_text):

@@ -17,8 +17,9 @@ DIRECTORY="${DIRECTORY%/}/"
 TTY_FILE="${EDULUTION_UPDATE_TTY:-/dev/tty}"
 # Set once apply has written the files and removed after the services restarted, so a later run finishes the restart.
 RESTART_PENDING="${DIRECTORY}.update-restart-pending"
-RESOLVED_CONFIG="${DIRECTORY}.update-resolved-config.json"
-CONFIG_ARGS=()
+# Per run, so a --check next to a running update leaves its file alone.
+RESOLVED_CONFIG=""
+UPDATE_ENV=()
 
 use_version() {
     local version="${1#v}"
@@ -58,7 +59,7 @@ run_update() {
     if [[ -e /etc/localtime ]]; then
         mounts+=(-v /etc/localtime:/etc/localtime:ro)
     fi
-    docker run --rm "${mounts[@]}" "$EDULUTION_INSTALLER_IMAGE" python -m update "$@"
+    docker run --rm "${mounts[@]}" "${UPDATE_ENV[@]}" "$EDULUTION_INSTALLER_IMAGE" python -m update "$@"
 }
 
 restart_hint() {
@@ -77,15 +78,18 @@ restart_services() {
 }
 
 # edu-api's environment as Compose resolves it (edulution.env, docker-compose.override.yml, interpolation),
-# for the check of the database user. It holds secrets: readable by root only and removed on exit.
+# for the check of the database user. It holds secrets: mktemp creates it readable by root only, and it is
+# removed on exit. Handed over in the environment, which images without this check ignore.
 resolve_config() {
-    CONFIG_ARGS=()
-    rm -f "$RESOLVED_CONFIG"
-    if (umask 077 && docker compose --project-directory "$DIRECTORY" config --format json > "$RESOLVED_CONFIG") 2>/dev/null \
+    UPDATE_ENV=()
+    if [[ -z "$RESOLVED_CONFIG" ]]; then
+        RESOLVED_CONFIG=$(mktemp "${DIRECTORY}.update-resolved-config.XXXXXX") || { RESOLVED_CONFIG=""; return 0; }
+    fi
+    if docker compose --project-directory "$DIRECTORY" config --format json > "$RESOLVED_CONFIG" 2>/dev/null \
         && [[ -s "$RESOLVED_CONFIG" ]]; then
-        CONFIG_ARGS=(--resolved-config "/edulution-ui/${RESOLVED_CONFIG##*/}")
+        UPDATE_ENV=(-e "EDULUTION_UPDATE_RESOLVED_CONFIG=/edulution-ui/${RESOLVED_CONFIG##*/}")
     else
-        rm -f "$RESOLVED_CONFIG"
+        : > "$RESOLVED_CONFIG"
     fi
 }
 
@@ -94,7 +98,7 @@ resolve_config() {
 check_before_restart() {
     local rc=0
     resolve_config
-    run_update check --restart-pending "${CONFIG_ARGS[@]}" > /dev/null || rc=$?
+    run_update check --restart-pending > /dev/null || rc=$?
     case $rc in
         0 | 10 | 20 | 30) ;;
         6)
@@ -125,8 +129,10 @@ main() {
     # The script's own messages go to stderr and fd 4 keeps stdout for the container's output,
     # so --check --json prints nothing but the JSON on stdout.
     exec 4>&1 1>&2
-    trap 'rm -f "$RESOLVED_CONFIG"' EXIT
-    trap 'exit 143' TERM INT HUP
+    trap '[[ -z "$RESOLVED_CONFIG" ]] || rm -f "$RESOLVED_CONFIG"' EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
 
     CHECK_ONLY=0
     JSON=0
@@ -206,7 +212,6 @@ main() {
         [[ $JSON -eq 0 ]] || check_args+=(--json)
         [[ ! -e "$RESTART_PENDING" ]] || check_args+=(--restart-pending)
         resolve_config
-        check_args+=("${CONFIG_ARGS[@]}")
         rc=0
         run_update "${check_args[@]}" >&4 || rc=$?
         [[ $rc -ne 5 ]] || downgrade_hint
@@ -233,7 +238,7 @@ main() {
 
     resolve_config
     rc=0
-    run_update check "${CONFIG_ARGS[@]}" >&4 || rc=$?
+    run_update check >&4 || rc=$?
     case $rc in
         0)
             if [[ -z "$MIGRATION" ]]; then
@@ -302,7 +307,6 @@ main() {
 
     args=(--yes "--expect=${token}")
     [[ $DISCARD -eq 1 ]] && args+=(--discard-local-changes)
-    args+=("${CONFIG_ARGS[@]}")
 
     # Set before the container writes anything, so an interruption after the writes keeps the restart pending.
     had_pending=0

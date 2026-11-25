@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from update.drift import DB_CREDENTIALS_MESSAGE, Report, check, exit_code, fingerprint
+from update.drift import DB_CREDENTIALS_MESSAGE, Report, check, db_credentials_missing, exit_code, fingerprint
 from update.envfile import EnvFile
 from update.installation import (
     COMPOSE,
@@ -186,8 +186,11 @@ def migrate(
             m.kind == "major" and m.gates_template and m.id not in state.applied and m.id != migration_id
             for m in registry
         )
+        # The restart after the migration starts the target or, after a data step alone, the installed files.
+        compose_after = target_text if installs_template else (root / COMPOSE).read_bytes().decode("utf-8")
+        if db_credentials_missing(root, compose_after, service_env):
+            raise UpdateError(6, DB_CREDENTIALS_MESSAGE)
         if installs_template:
-            _guard_db_credentials(report)
             _guard_template(report, discard_local_changes)
 
         env = _read_env(root)

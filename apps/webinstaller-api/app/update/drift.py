@@ -76,6 +76,11 @@ def _db_user_missing(root: Path, service_env: dict[str, str] | None) -> bool:
     return not all(env.get(key) for key in DB_USER_KEYS)
 
 
+def db_credentials_missing(root: Path, compose_text: str, service_env: dict[str, str] | None) -> bool:
+    """True if the compose file starts the database with access control and edu-api lacks its user."""
+    return "--keyFile" in compose_text and _db_user_missing(root, service_env)
+
+
 def check(
     root: Path,
     target_text: str,
@@ -101,12 +106,14 @@ def check(
     pending = pending_normal(state, registry)
     blocked_by = blocking_majors(state, registry)
     # Installations set up by hand may run the database without users; a template with a key file
-    # turns on access control, which edu-api then cannot pass. A pending restart would start it.
-    db_credentials_missing = (
-        "--keyFile" in target_text
-        and (status != "current" or bool(pending) or bool(blocked_by) or restart_pending)
-        and _db_user_missing(root, service_env)
-    )
+    # turns on access control, which edu-api then cannot pass. Checked against what the next restart
+    # starts, before anything is written: any change, even of the header alone, is followed by one.
+    if blocked_by:
+        # Only a major migration installs the target; until then a restart starts the installed files.
+        db_missing = restart_pending and db_credentials_missing(root, text, service_env)
+    else:
+        changes = status != "current" or header != target_version or bool(pending) or restart_pending
+        db_missing = changes and db_credentials_missing(root, target_text, service_env)
     recreate = list(dict.fromkeys(name for m in _needed(root, pending) for name in m.recreate))
     diff = "" if body == target_text else "".join(
         difflib.unified_diff(
@@ -129,7 +136,7 @@ def check(
         expect=fingerprint(root),
         diff=diff,
         restart_pending=restart_pending,
-        db_credentials_missing=db_credentials_missing,
+        db_credentials_missing=db_missing,
     )
 
 

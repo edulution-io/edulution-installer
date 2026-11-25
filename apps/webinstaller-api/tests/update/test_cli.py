@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from update.__main__ import main
+from update.__main__ import RESOLVED_CONFIG_ENV, main
 from update.installation import COMPOSE, LOCK, State, read_header
 from update.migrations import MIGRATIONS, Migration
 from update.templates import sha256
@@ -238,40 +238,68 @@ def test_check_names_missing_db_user(make_installation, capsys):
     assert after == before
 
 
-def resolved_config(tmp_path, environment):
+def resolved_config(tmp_path, monkeypatch, environment):
     path = tmp_path / "compose-config.json"
     path.write_text(json.dumps({"services": {"edu-api": {"environment": environment}}}))
-    return str(path)
+    monkeypatch.setenv(RESOLVED_CONFIG_ENV, str(path))
 
 
-def test_check_takes_edu_api_environment_from_compose(make_installation, tmp_path, capsys):
+def test_check_takes_edu_api_environment_from_compose(make_installation, tmp_path, monkeypatch, capsys):
     root = make_installation(header="2.1.0", state=State("2.1.0", []), env="MONGODB_PASSWORD=pw\n")
     # From docker-compose.override.yml, which edulution.env does not show.
-    given = resolved_config(tmp_path, {"MONGODB_USERNAME": "root", "MONGODB_PASSWORD": "pw"})
-    assert main(["--dir", str(root), "check", "--resolved-config", given]) == 10
-    # ${MONGO_USER:-} that Compose resolved to empty.
-    empty = resolved_config(tmp_path, {"MONGODB_USERNAME": "", "MONGODB_PASSWORD": "pw"})
-    assert main(["--dir", str(root), "check", "--resolved-config", empty]) == 6
-    unset = resolved_config(tmp_path, {"MONGODB_USERNAME": None, "MONGODB_PASSWORD": "pw"})
-    assert main(["--dir", str(root), "check", "--resolved-config", unset]) == 6
+    resolved_config(tmp_path, monkeypatch, {"MONGODB_USERNAME": "root", "MONGODB_PASSWORD": "pw"})
+    assert main(["--dir", str(root), "check"]) == 10
     capsys.readouterr()
 
 
-def test_check_without_usable_resolved_config_reads_the_env_file(make_installation, tmp_path, capsys):
+def test_check_takes_blanked_values_from_compose(make_installation, tmp_path, monkeypatch, capsys):
+    # edulution.env has both, so only the resolved config can make the check fail.
+    root = make_installation(
+        header="2.1.0", state=State("2.1.0", []), env="MONGODB_USERNAME=root\nMONGODB_PASSWORD=pw\n"
+    )
+    assert main(["--dir", str(root), "check"]) == 10
+    # ${MONGO_USER:-} that Compose resolved to empty.
+    resolved_config(tmp_path, monkeypatch, {"MONGODB_USERNAME": "", "MONGODB_PASSWORD": "pw"})
+    assert main(["--dir", str(root), "check"]) == 6
+    # A bare "- MONGODB_USERNAME" without a value in the host environment.
+    resolved_config(tmp_path, monkeypatch, {"MONGODB_USERNAME": None, "MONGODB_PASSWORD": "pw"})
+    assert main(["--dir", str(root), "check"]) == 6
+    capsys.readouterr()
+
+
+def test_check_without_usable_resolved_config_reads_the_env_file(make_installation, tmp_path, monkeypatch, capsys):
     root = make_installation(header="2.1.0", state=State("2.1.0", []))
     broken = tmp_path / "broken.json"
     broken.write_text("{")
-    assert main(["--dir", str(root), "check", "--resolved-config", str(broken)]) == 10
+    monkeypatch.setenv(RESOLVED_CONFIG_ENV, str(broken))
+    assert main(["--dir", str(root), "check"]) == 10
     no_service = tmp_path / "other.json"
     no_service.write_text(json.dumps({"services": {"edu-db": {}}}))
-    assert main(["--dir", str(root), "check", "--resolved-config", str(no_service)]) == 10
+    monkeypatch.setenv(RESOLVED_CONFIG_ENV, str(no_service))
+    assert main(["--dir", str(root), "check"]) == 10
+    monkeypatch.setenv(RESOLVED_CONFIG_ENV, str(tmp_path / "missing.json"))
+    assert main(["--dir", str(root), "check"]) == 10
     capsys.readouterr()
 
 
-def test_apply_takes_edu_api_environment_from_compose(make_installation, tmp_path, capsys):
+def test_apply_takes_edu_api_environment_from_compose(make_installation, tmp_path, monkeypatch, capsys):
     root = make_installation(header="2.1.0", state=State("2.1.0", []), env="MONGODB_PASSWORD=pw\n")
-    given = resolved_config(tmp_path, ["MONGODB_USERNAME=root", "MONGODB_PASSWORD=pw"])
+    resolved_config(tmp_path, monkeypatch, ["MONGODB_USERNAME=root", "MONGODB_PASSWORD=pw"])
     main(["--dir", str(root), "expect"])
     token = capsys.readouterr().out.strip()
-    assert main(["--dir", str(root), "apply", "--yes", "--expect", token, "--resolved-config", given]) == 0
+    assert main(["--dir", str(root), "apply", "--yes", "--expect", token]) == 0
+    capsys.readouterr()
+
+
+def test_header_only_update_without_db_user_is_refused_before_writing(make_installation, all_applied, capsys):
+    # Apart from the header the files are current; apply would write it, and the restart would follow.
+    root = make_installation(header="2.1.0", state=all_applied, env="MONGODB_PASSWORD=pw\n")
+    assert main(["--dir", str(root), "check"]) == 6
+    before = files(root)
+    main(["--dir", str(root), "expect"])
+    token = capsys.readouterr().out.strip()
+    assert main(["--dir", str(root), "apply", "--yes", "--expect", token]) == 6
+    after = files(root)
+    after.pop(LOCK, None)
+    assert after == before
     capsys.readouterr()

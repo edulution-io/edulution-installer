@@ -29,7 +29,14 @@ case $1 in
             exit 1
         fi
         [[ "$*" != *"python -c import update"* ]] || exit 0
-        while [[ $# -gt 0 && $1 != update ]]; do shift; done
+        while [[ $# -gt 0 && $1 != update ]]; do
+            # What the container would find: mode and content of the resolved config while it runs.
+            if [[ $1 == -e && ${2:-} == EDULUTION_UPDATE_RESOLVED_CONFIG=/edulution-ui/* ]]; then
+                f="$EDULUTION_UPDATE_DIR/${2#*=/edulution-ui/}"
+                if [[ -s $f ]]; then echo "seen $(stat -c %a "$f") $(cat "$f")"; else echo "seen missing"; fi >> "$STUB_LOG.seen"
+            fi
+            shift
+        done
         [[ $# -gt 0 ]] || exit 98
         shift
         case $1 in
@@ -49,7 +56,7 @@ case $1 in
                 ;;
             apply)
                 # Simulates the wrapper being stopped right after apply wrote the files.
-                [[ -z "${STUB_APPLY_KILL:-}" ]] || kill -TERM "$PPID"
+                [[ -z "${STUB_APPLY_KILL:-}" ]] || kill "-$STUB_APPLY_KILL" "$PPID"
                 exit "${STUB_APPLY_RC:-0}"
                 ;;
             migrate) [[ -z "${STUB_MIGRATE_OUT:-}" ]] || echo "$STUB_MIGRATE_OUT"; exit "${STUB_MIGRATE_RC:-0}" ;;
@@ -69,6 +76,7 @@ PENDING_FILE="$WORK/dir/.update-restart-pending"
 # reset: clears the log and the restart marker; PENDING=1 sets the marker for the case.
 reset() {
     : > "$LOG"
+    : > "$LOG.seen"
     RC=0
     rm -f "$PENDING_FILE"
     [[ -z "${PENDING:-}" ]] || touch "$PENDING_FILE"
@@ -242,10 +250,12 @@ expect_case "an image without the update tool names --version" old_image
 STUB_NO_MODULE=1 run_wrapper --version 2.0.0 --check
 expect_case "--check with an image without the update tool names --version" old_image
 
-interrupted() { [[ $RC -ne 0 ]] && logged "update apply" && not_logged "compose" && [[ -e $PENDING_FILE ]]; }
 # The braces keep bash's own report about the stopped wrapper out of the test output.
-{ STUB_APPLY_KILL=1 run_wrapper --yes; } 2>/dev/null
-expect_case "stopping the script after apply keeps the restart pending" interrupted
+for signal in TERM:143 INT:130 HUP:129; do
+    interrupted() { rc_is "${signal#*:}" && logged "update apply" && not_logged "compose" && [[ -e $PENDING_FILE ]]; }
+    { STUB_APPLY_KILL=${signal%:*} run_wrapper --yes; } 2>/dev/null
+    expect_case "SIG${signal%:*} after apply keeps the restart pending and exits ${signal#*:}" interrupted
+done
 
 for code in 1 3 4 5 6; do
     check_error() {
@@ -321,26 +331,46 @@ apply_refused_6() { rc_is 6 && not_logged "compose" && [[ ! -e $PENDING_FILE ]];
 STUB_APPLY_RC=6 run_wrapper --yes
 expect_case "apply refusing with 6 leaves no pending restart" apply_refused_6
 
-CONFIG_IN_CONTAINER="--resolved-config /edulution-ui/.update-resolved-config.json"
+CONFIG_ENV="-e EDULUTION_UPDATE_RESOLVED_CONFIG=/edulution-ui/.update-resolved-config."
+no_config_left() { ! compgen -G "$WORK/dir/.update-resolved-config*" > /dev/null; }
+# Every container run that got the file found it readable by root only and filled.
+config_seen() {
+    [[ $(grep -c "" "$LOG.seen") -eq $1 ]] && ! grep -qv "^seen 600 {" "$LOG.seen"
+}
 
 passes_resolved_config() {
-    rc_is 0 && logged "update check $CONFIG_IN_CONTAINER" && logged "update apply --yes --expect=a:b $CONFIG_IN_CONTAINER" \
-        && logged "update check --restart-pending $CONFIG_IN_CONTAINER" && [[ ! -e $WORK/dir/.update-resolved-config.json ]]
+    rc_is 0 && logged "$CONFIG_ENV.* update check$" && logged "$CONFIG_ENV.* update apply --yes --expect=a:b$" \
+        && logged "$CONFIG_ENV.* update check --restart-pending$" && config_seen 3 && no_config_left
 }
 run_wrapper --yes
-expect_case "the resolved Compose config goes to check, apply and the restart check, and is removed" passes_resolved_config
+expect_case "the resolved Compose config reaches check, apply and the restart check, and is removed" passes_resolved_config
 
-check_passes_config() { logged "update check $CONFIG_IN_CONTAINER" && [[ ! -e $WORK/dir/.update-resolved-config.json ]]; }
+no_option() { ! grep -q -- "--resolved-config" "$LOG"; }
+no_option_for_old_images() { rc_is 0 && no_option; }
+run_wrapper --yes
+expect_case "the resolved Compose config goes in the environment, not as an option older images reject" \
+    no_option_for_old_images
+
+check_passes_config() { logged "$CONFIG_ENV.* update check$" && config_seen 1 && no_config_left; }
 STUB_CHECK_RC=0 run_wrapper --check
 expect_case "--check passes the resolved Compose config" check_passes_config
 
-no_config() { rc_is 0 && not_logged "resolved-config" && logged "compose --project-directory $WORK/dir/ up -d"; }
+no_config() {
+    rc_is 0 && not_logged "EDULUTION_UPDATE_RESOLVED_CONFIG" && config_seen 0 && no_config_left \
+        && logged "compose --project-directory $WORK/dir/ up -d"
+}
 STUB_RESOLVED_CONFIG_RC=1 run_wrapper --yes
-expect_case "without a Compose config the checks read edulution.env" no_config
+expect_case "without a Compose config the container gets no resolved config" no_config
 
-header_only_blocked() { rc_is 6 && logged "update apply" && not_logged "compose" && [[ -e $PENDING_FILE ]]; }
+touch "$WORK/dir/.update-resolved-config.json"
+foreign_file_kept() { rc_is 0 && [[ -e "$WORK/dir/.update-resolved-config.json" ]]; }
+STUB_CHECK_RC=0 run_wrapper --check
+expect_case "a run leaves the resolved config of another run alone" foreign_file_kept
+rm -f "$WORK/dir/.update-resolved-config.json"
+
+restart_check_blocks() { rc_is 6 && logged "update apply" && not_logged "compose" && [[ -e $PENDING_FILE ]]; }
 STUB_PENDING_CHECK_RC=6 run_wrapper --yes
-expect_case "the restart after an update is checked and not carried out without a database user" header_only_blocked
+expect_case "a restart check that reports 6 after apply keeps the restart pending" restart_check_blocks
 
 preflight_failed() { rc_is 125 && not_logged "compose" && [[ -e $PENDING_FILE ]] && grep -q "Code 125" "$WORK/out"; }
 PENDING=1 STUB_CHECK_RC=0 STUB_PENDING_CHECK_RC=125 run_wrapper --yes
