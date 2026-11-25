@@ -303,3 +303,29 @@ def test_header_only_update_without_db_user_is_refused_before_writing(make_insta
     after.pop(LOCK, None)
     assert after == before
     capsys.readouterr()
+
+
+def test_restart_check_reads_the_installed_files(make_installation, target_text, capsys):
+    # Files an older release wrote, whatever this release's template holds.
+    root = make_installation(header="2.1.0", state=State("2.1.0", []), env="MONGODB_PASSWORD=pw\n")
+    assert main(["--dir", str(root), "restart-check"]) == 6
+    assert "Blockiert: edu-api erhält MONGODB_USERNAME" in capsys.readouterr().out
+    plain = make_installation(body=target_text.replace("--keyFile", "--bind_ip_all"), env="MONGODB_PASSWORD=pw\n")
+    assert main(["--dir", str(plain), "restart-check"]) == 0
+
+
+def test_restart_check_takes_edu_api_environment_from_compose(make_installation, tmp_path, monkeypatch, capsys):
+    root = make_installation(header="2.1.0", state=State("2.1.0", []), env="MONGODB_PASSWORD=pw\n")
+    resolved_config(tmp_path, monkeypatch, {"MONGODB_USERNAME": "root", "MONGODB_PASSWORD": "pw"})
+    assert main(["--dir", str(root), "restart-check"]) == 0
+    resolved_config(tmp_path, monkeypatch, {"MONGODB_USERNAME": "", "MONGODB_PASSWORD": "pw"})
+    assert main(["--dir", str(root), "restart-check"]) == 6
+    capsys.readouterr()
+
+
+def test_restart_check_writes_nothing(make_installation, capsys):
+    root = make_installation(header="2.1.0", state=State("2.1.0", []), env="MONGODB_PASSWORD=pw\n")
+    before = files(root)
+    main(["--dir", str(root), "restart-check"])
+    assert files(root) == before
+    capsys.readouterr()

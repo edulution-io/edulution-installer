@@ -11,6 +11,8 @@ DIRECTORY="/srv/docker/edulution-ui/"
 # Image und Version dieses Skripts. Ein Release ersetzt beide Zeilen durch den veroeffentlichten Digest und seine Version.
 EDULUTION_INSTALLER_IMAGE="ghcr.io/edulution-io/edulution-installer:latest"
 EDULUTION_INSTALLER_VERSION="dev"
+OWN_IMAGE=$EDULUTION_INSTALLER_IMAGE
+OWN_VERSION=$EDULUTION_INSTALLER_VERSION
 # Test hooks: directory, terminal and root check.
 DIRECTORY="${EDULUTION_UPDATE_DIR:-$DIRECTORY}"
 DIRECTORY="${DIRECTORY%/}/"
@@ -55,13 +57,25 @@ usage() {
     echo "              [--discard-local-changes] [--migration <ID>]"
 }
 
-run_update() {
-    local mounts=(-v "${DIRECTORY}:/edulution-ui")
+# newer <a> <b>: true if release a is newer than release b ("dev" counts as the newest).
+newer() {
+    local a=${1//-/\~} b=${2//-/\~}
+    [[ "$a" != "$b" && $(printf '%s\n' "$a" "$b" | sort -V | tail -n 1) == "$a" ]]
+}
+
+# run_image <image> <args...>
+run_image() {
+    local image=$1 mounts=(-v "${DIRECTORY}:/edulution-ui")
+    shift
     # Backups are named after the local time; without the file the container runs on UTC.
     if [[ -e /etc/localtime ]]; then
         mounts+=(-v /etc/localtime:/etc/localtime:ro)
     fi
-    docker run --rm "${mounts[@]}" "${UPDATE_ENV[@]}" "$EDULUTION_INSTALLER_IMAGE" python -m update "$@"
+    docker run --rm "${mounts[@]}" "${UPDATE_ENV[@]}" "$image" python -m update "$@"
+}
+
+run_update() {
+    run_image "$EDULUTION_INSTALLER_IMAGE" "$@"
 }
 
 restart_hint() {
@@ -96,13 +110,22 @@ resolve_config() {
 }
 
 # The restart starts what the files describe: a database with a key file needs the user edu-api logs in with.
-# It goes ahead only on a result the check gives when nothing blocks; the marker stays otherwise.
+# The check runs with the newer of this script's release and the one in use, as an older release may lack it;
+# the marker stays unless it passes.
 check_before_restart() {
-    local rc=0
+    local rc=0 image=$EDULUTION_INSTALLER_IMAGE
+    if [[ "$OWN_IMAGE" != "$EDULUTION_INSTALLER_IMAGE" ]] && newer "$OWN_VERSION" "$EDULUTION_INSTALLER_VERSION"; then
+        image=$OWN_IMAGE
+        if ! docker pull "$image" && ! docker image inspect "$image" >/dev/null 2>&1; then
+            echo "[!] Das Image ${image} für die Prüfung vor dem Neustart konnte nicht geladen werden,"
+            echo "    der Neustart wird nicht ausgeführt. Ein erneuter Aufruf des Updates versucht es noch einmal."
+            exit 1
+        fi
+    fi
     resolve_config
-    run_update check --restart-pending > /dev/null || rc=$?
+    run_image "$image" restart-check > /dev/null || rc=$?
     case $rc in
-        0 | 10 | 20 | 30) ;;
+        0) ;;
         6)
             echo "[!] edu-api erhält MONGODB_USERNAME und MONGODB_PASSWORD nicht beide mit Wert, die Datenbank startet"
             echo "    aber mit Zugriffskontrolle. Der Neustart wird nicht ausgeführt. Zuerst einen Datenbank-Benutzer"
@@ -213,9 +236,9 @@ main() {
     # The pending restart belongs to the release that wrote the files: checked against a newer one,
     # the run would apply that template instead of only restarting. --compose-only restarts nothing
     # and writes the files of its own release.
-    OWN_VERSION=$EDULUTION_INSTALLER_VERSION
     if [[ -s "$RESTART_PENDING" && $COMPOSE_ONLY -eq 0 ]]; then
-        recorded=$(head -n 1 "$RESTART_PENDING")
+        # A --check holds no lock, so a running update may remove the marker in between.
+        recorded=$(head -n 1 "$RESTART_PENDING" 2>/dev/null) || recorded=""
         recorded=${recorded//[[:space:]]/}
         if [[ "$recorded" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ && "$recorded" != "$EDULUTION_INSTALLER_VERSION" ]]; then
             if [[ $VERSION_GIVEN -eq 0 ]]; then
@@ -277,7 +300,7 @@ main() {
                     echo "Die Dateien sind aktuell; der Neustart der Dienste nach dem letzten Update wird nachgeholt."
                     restart_services
                     echo "Update abgeschlossen."
-                    if [[ "$EDULUTION_INSTALLER_VERSION" != "$OWN_VERSION" ]]; then
+                    if newer "$OWN_VERSION" "$EDULUTION_INSTALLER_VERSION"; then
                         echo "Version ${OWN_VERSION} ist verfügbar; ein weiterer Aufruf des Updates wendet sie an."
                     fi
                 fi

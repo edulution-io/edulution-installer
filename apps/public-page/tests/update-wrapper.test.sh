@@ -20,7 +20,11 @@ if [[ $1 == compose && " $* " == *" config "* ]]; then
 fi
 echo "$*" >> "$STUB_LOG"
 case $1 in
-    pull) echo "pull progress"; exit "${STUB_PULL_RC:-0}" ;;
+    pull)
+        echo "pull progress"
+        [[ -z "${STUB_PULL_FAIL:-}" || $2 != *"$STUB_PULL_FAIL" ]] || exit 1
+        exit "${STUB_PULL_RC:-0}"
+        ;;
     image) exit "${STUB_INSPECT_RC:-0}" ;;
     compose) exit "${STUB_COMPOSE_RC:-0}" ;;
     run)
@@ -42,9 +46,9 @@ case $1 in
         case $1 in
             check)
                 echo "report"
-                [[ $* != *--restart-pending* || -z "${STUB_PENDING_CHECK_RC:-}" ]] || exit "$STUB_PENDING_CHECK_RC"
                 exit "${STUB_CHECK_RC:-10}"
                 ;;
+            restart-check) exit "${STUB_RESTART_CHECK_RC:-0}" ;;
             expect)
                 # A second expect sees the files as apply left them.
                 if [[ -n "${STUB_EXPECT_AFTER:-}" && $(grep -c "update expect" "$STUB_LOG") -gt 1 ]]; then
@@ -343,9 +347,12 @@ restart_failed_records() { rc_is 1 && [[ $(cat "$PENDING_FILE") == 2.2.3 ]]; }
 STUB_COMPOSE_RC=1 run_stamped --yes
 expect_case "a failed restart leaves the marker with the script's version" restart_failed_records
 
+# The check before the restart runs with the newer of the two releases, here the script's own.
 follows_recorded() {
     rc_is 0 && logged "pull ghcr.io/edulution-io/edulution-installer:2.2.2" \
-        && not_logged "edulution-installer:2.2.3" && not_logged "update apply" \
+        && logged "edulution-installer:2.2.2 python -m update check$" \
+        && not_logged "edulution-installer:2.2.3 python -m update check" && not_logged "update apply" \
+        && logged "edulution-installer:2.2.3 python -m update restart-check" \
         && logged "compose --project-directory $WORK/dir/ up -d" && [[ ! -e $PENDING_FILE ]]
 }
 PENDING=2.2.2 STUB_CHECK_RC=0 run_stamped --yes
@@ -395,7 +402,13 @@ restored() { rc_is 4 && [[ -e $PENDING_FILE && ! -s $PENDING_FILE ]]; }
 PENDING=1 STUB_APPLY_RC=4 run_stamped --yes
 expect_case "an apply that wrote nothing restores the earlier marker" restored
 
-locked_before_marker() { rc_is 3 && not_logged "pull" && [[ $(cat "$PENDING_FILE") == 2.2.2 ]]; }
+restored_release() { rc_is 4 && logged "update apply" && [[ $(cat "$PENDING_FILE") == 2.2.2 ]]; }
+PENDING=2.2.2 STUB_APPLY_RC=4 run_stamped --compose-only --yes
+expect_case "an apply that wrote nothing restores the release the earlier marker names" restored_release
+
+locked_before_marker() {
+    rc_is 3 && not_logged "pull" && ! grep -q "steht noch aus" "$WORK/out" && [[ $(cat "$PENDING_FILE") == 2.2.2 ]]
+}
 exec 8> "$WORK/dir/.update-script.lock"
 flock 8
 PENDING=2.2.2 run_stamped --yes
@@ -403,11 +416,11 @@ exec 8>&-
 expect_case "the lock is taken before the marker is read" locked_before_marker
 
 pending_no_db_user() { rc_is 6 && not_logged "compose" && [[ -e $PENDING_FILE ]] && grep -q "MONGODB_USERNAME" "$WORK/out"; }
-PENDING=1 STUB_CHECK_RC=0 STUB_PENDING_CHECK_RC=6 run_wrapper --yes
+PENDING=1 STUB_CHECK_RC=0 STUB_RESTART_CHECK_RC=6 run_wrapper --yes
 expect_case "a pending restart without a database user is not carried out" pending_no_db_user
 
-pending_with_db_user() { rc_is 0 && logged "update check --restart-pending" && logged "compose --project-directory $WORK/dir/ up -d"; }
-PENDING=1 STUB_CHECK_RC=0 STUB_PENDING_CHECK_RC=10 run_wrapper --yes
+pending_with_db_user() { rc_is 0 && logged "update restart-check" && logged "compose --project-directory $WORK/dir/ up -d"; }
+PENDING=1 STUB_CHECK_RC=0 run_wrapper --yes
 expect_case "a pending restart is checked once more and then carried out" pending_with_db_user
 
 apply_refused_6() { rc_is 6 && not_logged "compose" && [[ ! -e $PENDING_FILE ]]; }
@@ -423,7 +436,7 @@ config_seen() {
 
 passes_resolved_config() {
     rc_is 0 && logged "$CONFIG_ENV.* update check$" && logged "$CONFIG_ENV.* update apply --yes --expect=a:b$" \
-        && logged "$CONFIG_ENV.* update check --restart-pending$" && config_seen 3 && no_config_left
+        && logged "$CONFIG_ENV.* update restart-check$" && config_seen 3 && no_config_left
 }
 run_wrapper --yes
 expect_case "the resolved Compose config reaches check, apply and the restart check, and is removed" passes_resolved_config
@@ -452,12 +465,61 @@ expect_case "a run leaves the resolved config of another run alone" foreign_file
 rm -f "$WORK/dir/.update-resolved-config.json"
 
 restart_check_blocks() { rc_is 6 && logged "update apply" && not_logged "compose" && [[ -e $PENDING_FILE ]]; }
-STUB_PENDING_CHECK_RC=6 run_wrapper --yes
+STUB_RESTART_CHECK_RC=6 run_wrapper --yes
 expect_case "a restart check that reports 6 after apply keeps the restart pending" restart_check_blocks
 
 preflight_failed() { rc_is 125 && not_logged "compose" && [[ -e $PENDING_FILE ]] && grep -q "Code 125" "$WORK/out"; }
-PENDING=1 STUB_CHECK_RC=0 STUB_PENDING_CHECK_RC=125 run_wrapper --yes
+PENDING=1 STUB_CHECK_RC=0 STUB_RESTART_CHECK_RC=125 run_wrapper --yes
 expect_case "a restart check that does not run keeps the restart pending" preflight_failed
+
+# An older release that wrote the files may not know the database check; this script's release does.
+older_pending_no_db_user() {
+    rc_is 6 && logged "edulution-installer:2.2.3 python -m update restart-check" \
+        && not_logged "edulution-installer:2.2.2 python -m update restart-check" \
+        && not_logged "compose" && [[ $(cat "$PENDING_FILE") == 2.2.2 ]]
+}
+PENDING=2.2.2 STUB_CHECK_RC=0 STUB_RESTART_CHECK_RC=6 run_stamped --yes
+expect_case "a pending restart from an older release is checked by the script's own release" older_pending_no_db_user
+
+older_version_no_db_user() {
+    rc_is 6 && logged "edulution-installer:2.2.2 python -m update apply" \
+        && logged "edulution-installer:2.2.3 python -m update restart-check" && not_logged "compose" \
+        && [[ $(cat "$PENDING_FILE") == 2.2.2 ]]
+}
+STUB_RESTART_CHECK_RC=6 run_stamped --version 2.2.2 --yes
+expect_case "--version with an older release is checked by the script's own release before the restart" \
+    older_version_no_db_user
+
+newer_checks_itself() {
+    rc_is 0 && logged "edulution-installer:2.2.4 python -m update restart-check" && not_logged "edulution-installer:2.2.3" \
+        && logged "compose --project-directory $WORK/dir/ up -d"
+}
+run_stamped --version 2.2.4 --yes
+expect_case "--version with a newer release checks with that release" newer_checks_itself
+
+own_image_missing() {
+    rc_is 1 && not_logged "restart-check" && not_logged "compose" && [[ $(cat "$PENDING_FILE") == 2.2.2 ]] \
+        && grep -q "Prüfung vor dem Neustart" "$WORK/out"
+}
+PENDING=2.2.2 STUB_CHECK_RC=0 STUB_PULL_FAIL=:2.2.3 STUB_INSPECT_RC=1 run_stamped --yes
+expect_case "without the script's own image the restart is not carried out" own_image_missing
+
+newer_pending() {
+    rc_is 0 && logged "edulution-installer:2.3.0 python -m update restart-check" && not_logged "edulution-installer:2.2.3" \
+        && ! grep -q "ist verfügbar" "$WORK/out"
+}
+PENDING=2.3.0 STUB_CHECK_RC=0 run_stamped --yes
+expect_case "finishing a newer pending restart names no older release" newer_pending
+
+# A --check races with a running update that removes the marker; an unreadable one stands in for that.
+unreadable_marker() { rc_is 10 && [[ "$(cat "$WORK/stdout")" == report ]]; }
+PENDING=2.2.2 reset
+chmod 000 "$PENDING_FILE"
+PATH="$WORK/bin:$PATH" STUB_LOG="$LOG" EDULUTION_UPDATE_DIR="$WORK/dir" EDULUTION_UPDATE_SKIP_ROOT_CHECK=1 \
+    bash "$STAMPED" --check --json > "$WORK/stdout" 2> "$WORK/stderr" || RC=$?
+cat "$WORK/stdout" "$WORK/stderr" > "$WORK/out"
+chmod 600 "$PENDING_FILE"
+expect_case "--check --json reports even if the marker cannot be read" unreadable_marker
 
 if [[ $fails -ne 0 ]]; then
     echo "$fails case(s) failed"
