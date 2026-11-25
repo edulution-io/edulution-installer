@@ -332,10 +332,10 @@ STUB_SUMS="$WORK/sums" VM_TEST_DNS=9.9.9.9 run_vmtest up
 expect_case "VM_TEST_DNS gives the VMs that server and turns DNS off on the gateway" gateway_without_dns
 
 bad_dns() { [[ $RC -ne 0 ]] && grep -q "IPv4 address" "$WORK/out" && [[ ! -e $RUN_DIR ]]; }
-for value in dns.example 999.9.9.9 9.9.9 9.9.9.9.; do
+for value in dns.example 999.9.9.9 9.9.9 9.9.9.9. $'9.9.9.9\nbad'; do
     reset
     VM_TEST_DNS=$value run_vmtest up
-    expect_case "up refuses VM_TEST_DNS=$value" bad_dns
+    expect_case "up refuses VM_TEST_DNS=${value@Q}" bad_dns
 done
 
 failed_rebuild() {
