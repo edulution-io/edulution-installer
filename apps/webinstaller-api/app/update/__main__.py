@@ -1,15 +1,18 @@
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
-from update.drift import check, exit_code, fingerprint, to_json
+from update.drift import DB_CREDENTIALS_MESSAGE, check, db_credentials_missing, exit_code, fingerprint, to_json
 from update.installation import COMPOSE
 from update.migrations import MIGRATIONS
 from update.runner import UpdateError, apply, init, migrate
 from update.templates import history, target_compose, target_version
 
 DEFAULT_DIR = "/edulution-ui"
+# Set by update.sh. An environment variable, not an option: images without this check ignore it.
+RESOLVED_CONFIG_ENV = "EDULUTION_UPDATE_RESOLVED_CONFIG"
 
 
 STATUS_DE = {
@@ -33,6 +36,8 @@ def _print_report(report) -> None:
         print("Ausstehende Migrationen:")
         for m in report.pending:
             print(f"  {m.id} ({m.kind})")
+    if report.db_credentials_missing:
+        print("Blockiert: " + DB_CREDENTIALS_MESSAGE)
     if report.blocked_by:
         print("Blockiert durch: " + ", ".join(m.id for m in report.blocked_by))
     if report.available_majors:
@@ -60,17 +65,44 @@ def _summary(outcome) -> None:
         print("Ein Update der Installation steht noch aus.")
 
 
+def _service_env() -> dict[str, str] | None:
+    """edu-api's environment from `docker compose config --format json`, which update.sh passes."""
+    path = os.environ.get(RESOLVED_CONFIG_ENV)
+    if not path:
+        return None
+    try:
+        env = json.loads(Path(path).read_text(encoding="utf-8"))["services"]["edu-api"].get("environment") or {}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    if isinstance(env, list):
+        env = dict(item.split("=", 1) if "=" in item else (item, "") for item in env)
+    return {str(key): "" if value is None else str(value) for key, value in env.items()}
+
+
 def _run(args) -> int:
     root = Path(args.dir)
     version = target_version()
     if args.command == "check":
-        report = check(root, target_compose(), version, history(), MIGRATIONS)
-        report.restart_pending = args.restart_pending
+        report = check(
+            root,
+            target_compose(),
+            version,
+            history(),
+            MIGRATIONS,
+            restart_pending=args.restart_pending,
+            service_env=_service_env(),
+        )
         if args.json:
             print(json.dumps(to_json(report), ensure_ascii=False, indent=2))
         else:
             _print_report(report)
         return exit_code(report)
+    if args.command == "restart-check":
+        # What a restart starts is the installed files, whichever release wrote them.
+        if db_credentials_missing(root, (root / COMPOSE).read_bytes().decode("utf-8"), _service_env()):
+            print("Blockiert: " + DB_CREDENTIALS_MESSAGE)
+            return 6
+        return 0
     if args.command == "expect":
         print(fingerprint(root))
         return 0
@@ -93,6 +125,7 @@ def _run(args) -> int:
             target_version=version,
             history=hist,
             registry=MIGRATIONS,
+            service_env=_service_env(),
         )
     else:
         outcome = migrate(
@@ -104,6 +137,7 @@ def _run(args) -> int:
             history=hist,
             discard_local_changes=args.discard_local_changes,
             registry=MIGRATIONS,
+            service_env=_service_env(),
         )
     _summary(outcome)
     return 0
@@ -118,6 +152,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.add_argument("--restart-pending", action="store_true", help="update.sh: Neustart steht noch aus")
 
+    sub.add_parser("restart-check", help="update.sh: vor dem Neustart den Datenbank-Benutzer prüfen")
     sub.add_parser("expect", help="Fingerabdruck der Dateien ausgeben")
 
     p = sub.add_parser("apply", help="Update anwenden")

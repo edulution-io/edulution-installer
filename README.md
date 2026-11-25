@@ -20,7 +20,7 @@ Apply the update. The script shows what changes, asks for confirmation on the te
 curl -fsSL https://get.edulution.io/update | sudo bash -s --
 ```
 
-Declining changes nothing and exits with code 2. If pulling or restarting fails after the files were updated, running the script again finishes the restart. For unattended runs use `--yes`; `--compose-only` updates the files without pulling or restarting, and the next run without it restarts the stack:
+Declining changes nothing and exits with code 2. If pulling or restarting fails after the files were updated, running the script again finishes the restart. For unattended runs use `--yes`; `--compose-only` updates the files without pulling or restarting, and the next run without it restarts the stack. That run uses the release that wrote the files, even if a newer one has been published meanwhile; a `--version` naming another release is refused until the restart is done (or `--version X.Y.Z --compose-only` writes that release's files instead). Before any restart, and in `--check` while the files of an older release wait for their restart, the script checks the database user (exit code 6) with the newer of its own release and the one in use, so files written by an older release are checked as well. In that case the exit code of `--check --json` can be 6 while the report, written by the older release, says 10:
 
 ```bash
 curl -fsSL https://get.edulution.io/update | sudo bash -s -- --compose-only --yes
@@ -28,7 +28,7 @@ curl -fsSL https://get.edulution.io/update | sudo bash -s -- --compose-only --ye
 
 Other options: `--version X.Y.Z` (update to that release), `--check --json` (machine-readable report on stdout, the script's own messages go to stderr), `--discard-local-changes` (replace a locally modified `docker-compose.yml`) and `--migration ID` (run a major migration listed in the check output).
 
-Tools that run the installer image directly instead of this script get the same exit codes, except for the pending restart, which only this script tracks.
+Tools that run the installer image directly instead of this script get the same exit codes, with two exceptions. The pending restart is tracked only by this script. For exit code 6, this script hands the container edu-api's environment as `docker compose config --format json` resolves it. A direct run reads `edulution.env` alone, unless `EDULUTION_UPDATE_RESOLVED_CONFIG` names such a file inside the container.
 
 Keep local changes in `docker-compose.override.yml`, not in `docker-compose.yml`: the update replaces `docker-compose.yml` as a whole. Before every change the previous files are copied to `/srv/docker/edulution-ui/docker-compose-backups/` (readable by root only, as the copies of `edulution.env` hold its secrets). Old backups are not removed automatically; delete the ones you no longer need.
 
@@ -43,6 +43,7 @@ Keep local changes in `docker-compose.override.yml`, not in `docker-compose.yml`
 | 3 | Another update is running |
 | 4 | Files changed since the check |
 | 5 | Downgrade refused: the installation is newer than the target release (`--check` reports it before anything runs; pick the release with `--version`) |
+| 6 | edu-api does not get both `MONGODB_USERNAME` and `MONGODB_PASSWORD` with a value (as `docker compose config` resolves them from `edulution.env` and `docker-compose.override.yml`), while the update or the restart would start the database with access control; create a database user and enter it first |
 
 Any other non-zero code (for example Docker's 125 to 127) means the update container could not be started.
 
