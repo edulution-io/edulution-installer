@@ -106,9 +106,11 @@
 
     # Repository (normally left unchanged)
     lmn_repo_url: 'https://package.edulution.io/'
-    # A name apt has to resolve; checked after lmn-appliance, when the package installation fails
-    # and after linuxmuster-setup.
-    lmn_dns_probe_host: "{{ lmn_repo_url | urlsplit('hostname') }}"
+    # The name apt has to resolve: the proxy's if there is one, else the repository's. Checked after
+    # lmn-appliance, when the package installation fails and after linuxmuster-setup.
+    lmn_dns_probe_host: >-
+      {{ ((lmn_https_proxy if '://' in lmn_https_proxy else '//' ~ lmn_https_proxy) | urlsplit('hostname'))
+      if lmn_https_proxy | default('') else (lmn_repo_url | urlsplit('hostname')) }}
     lmn_repo_gpg_url: 'https://package.edulution.io/pub.gpg'
     # Fingerprints of the edulution archive keys; lmn-appliance gets these keys as well.
     # Both stay accepted while the repository key is rotated (edulution-package-server#50).
@@ -268,14 +270,16 @@
       changed_when: false
       failed_when: false
 
+    # Its own name: an 'auto' given with -e outranks set_fact.
     - name: Determine the DNS forwarder (auto -> detected upstream, otherwise 9.9.9.9)
       ansible.builtin.set_fact:
-        lmn_dns_forwarder: "{{ (lmn_detected_dns.stdout | default('') | trim) or '9.9.9.9' }}"
-      when: lmn_dns_forwarder == 'auto'
+        lmn_dns_server: >-
+          {{ ((lmn_detected_dns.stdout | default('') | trim) or '9.9.9.9')
+          if lmn_dns_forwarder == 'auto' else lmn_dns_forwarder }}
 
     - name: Show the DNS forwarder in use
       ansible.builtin.debug:
-        msg: "DNS forwarder for Samba: {{ lmn_dns_forwarder }}"
+        msg: "DNS forwarder for Samba: {{ lmn_dns_server }}"
 
     - name: Wait for the apt lock
       ansible.builtin.shell: |
@@ -498,7 +502,14 @@
       ansible.builtin.set_fact:
         lmn_cidr: "{{ (lmn_server_ip + '/' + lmn_netmask) | ansible.utils.ipaddr('prefix') }}"
 
+    - name: Check whether linuxmuster-setup has run
+      ansible.builtin.stat:
+        path: /var/lib/linuxmuster/.setup.done
+      register: lmn_setup_done
+
+    # Also for servers set up before .appliance_configured was written.
     - name: Run lmn-appliance (server profile)
+      when: not lmn_setup_done.stat.exists
       ansible.builtin.shell: |
         set -o pipefail
         {{ lmn_appliance_script }} -p server -u \
@@ -520,12 +531,7 @@
     # lmn-prepare makes the gateway the only nameserver. linuxmuster-setup later makes the server
     # its own DNS with the forwarder; until then the apt tasks need a resolver, so where the gateway
     # answers no DNS, the forwarder takes its place if it resolves. A restart in between brings the
-    # gateway back from netplan, and the next run corrects it again.
-    - name: Check whether linuxmuster-setup has run
-      ansible.builtin.stat:
-        path: /var/lib/linuxmuster/.setup.done
-      register: lmn_setup_done
-
+    # gateway back from netplan, so netplan gets the forwarder as well.
     - name: Check name resolution after lmn-appliance
       ansible.builtin.command:
         argv: [getent, ahosts, '{{ lmn_dns_probe_host }}']
@@ -538,7 +544,7 @@
       when:
         - lmn_dns_after_appliance is not skipped
         - lmn_dns_after_appliance.rc != 0
-        - lmn_dns_forwarder != lmn_gateway
+        - lmn_dns_server != lmn_gateway
       block:
         - name: Read resolv.conf as lmn-appliance wrote it
           ansible.builtin.slurp:
@@ -553,7 +559,7 @@
             follow: true
             content: |
               search {{ lmn_domainname }}
-              nameserver {{ lmn_dns_forwarder }}
+              nameserver {{ lmn_dns_server }}
             mode: '0644'
 
         - name: Check name resolution through the DNS forwarder
@@ -570,6 +576,21 @@
             content: '{{ lmn_resolv_appliance.content | b64decode }}'
             mode: '0644'
           when: lmn_dns_through_forwarder.rc != 0
+
+        - name: Point the netplan nameserver to the DNS forwarder
+          ansible.builtin.replace:
+            path: /etc/netplan/01-netcfg.yaml
+            regexp: '(nameservers:\s*addresses:\s*\[)[^\]]*(\])'
+            replace: '\g<1>{{ lmn_dns_server }}\g<2>'
+          register: lmn_netplan_dns
+          when: lmn_dns_through_forwarder.rc == 0
+
+        - name: Note when netplan keeps the gateway as nameserver
+          ansible.builtin.debug:
+            msg: >-
+              /etc/netplan/01-netcfg.yaml has no nameserver list in the expected form. Until
+              linuxmuster-setup, a restart makes the gateway {{ lmn_gateway }} the nameserver again.
+          when: lmn_dns_through_forwarder.rc == 0 and lmn_netplan_dns is not changed
 
     # =========================================================================
     # REPOSITORY KEY AFTER LMN-APPLIANCE
@@ -702,18 +723,18 @@
           changed_when: false
           failed_when: false
 
-        # Behind a proxy apt needs no DNS of its own, so the hint is left out there.
         - name: 'Stop: the linuxmuster server packages could not be installed'
           ansible.builtin.fail:
             msg: >-
               {{ ansible_failed_result.msg | default('The linuxmuster server packages could not be installed.') }}
-              {{ lmn_dns_hint if lmn_dns_after_apt.rc != 0 and not (lmn_https_proxy | default('')) else '' }}
+              {{ lmn_dns_hint if lmn_dns_after_apt.rc != 0 else '' }}
+              {{ lmn_forwarder_hint if lmn_dns_after_apt.rc != 0 and lmn_dns_through_forwarder.rc | default(0) != 0 else '' }}
           vars:
             lmn_dns_hint: >-
-              Name resolution does not work on this server: {{ lmn_dns_probe_host }} does not resolve.
-              lmn-appliance made the gateway {{ lmn_gateway }} the nameserver, and the DNS forwarder
-              {{ lmn_dns_forwarder }} did not resolve either. Make sure one of them answers DNS queries,
-              or name a working one with lmn_dns_forwarder, then start the installation again.
+              Name resolution does not work on this server: {{ lmn_dns_probe_host }} does not resolve with
+              the nameserver in /etc/resolv.conf. Make sure it answers DNS queries, or name a working one
+              with lmn_dns_forwarder, then start the installation again.
+            lmn_forwarder_hint: The DNS forwarder {{ lmn_dns_server }} did not resolve it either.
 
     - name: Make sure linuxmuster-setup is present
       ansible.builtin.stat:
@@ -826,7 +847,7 @@
       ansible.builtin.replace:
         path: /etc/samba/smb.conf
         regexp: '^(\s*dns forwarder\s*=\s*).*$'
-        replace: '\g<1>{{ lmn_dns_forwarder }}'
+        replace: '\g<1>{{ lmn_dns_server }}'
 
     - name: Restart Samba AD DC
       ansible.builtin.systemd:
@@ -861,8 +882,7 @@
       ansible.builtin.debug:
         msg: >-
           External name resolution ({{ lmn_dns_probe_host }}) through the DNS forwarder
-          {{ lmn_dns_forwarder }} does not work. Behind a proxy this is often
-          normal (apt goes through the proxy). If apt tasks fail afterwards,
+          {{ lmn_dns_server }} does not work. If apt tasks fail afterwards,
           please check lmn_dns_forwarder.
       when: lmn_dns_check.rc != 0
 

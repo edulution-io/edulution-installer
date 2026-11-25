@@ -260,9 +260,11 @@ STUB_POOL_TYPE=logical run_vmtest up
 expect_case "up refuses a pool that is not a directory" not_dir_pool
 
 bad_subnet() { [[ $RC -ne 0 ]] && grep -q "three octets" "$WORK/out"; }
-reset
-VM_TEST_SUBNET=10.78 run_vmtest up
-expect_case "up refuses a malformed VM_TEST_SUBNET" bad_subnet
+for value in 10.78 10.300.0; do
+    reset
+    VM_TEST_SUBNET=$value run_vmtest up
+    expect_case "up refuses VM_TEST_SUBNET=$value" bad_subnet
+done
 
 # prepare_image: a cached cloud image and the checksum list that up fetches.
 prepare_image() {
@@ -330,9 +332,11 @@ STUB_SUMS="$WORK/sums" VM_TEST_DNS=9.9.9.9 run_vmtest up
 expect_case "VM_TEST_DNS gives the VMs that server and turns DNS off on the gateway" gateway_without_dns
 
 bad_dns() { [[ $RC -ne 0 ]] && grep -q "IPv4 address" "$WORK/out" && [[ ! -e $RUN_DIR ]]; }
-reset
-VM_TEST_DNS=dns.example run_vmtest up
-expect_case "up refuses a VM_TEST_DNS that is no IPv4 address" bad_dns
+for value in dns.example 999.9.9.9 9.9.9 9.9.9.9.; do
+    reset
+    VM_TEST_DNS=$value run_vmtest up
+    expect_case "up refuses VM_TEST_DNS=$value" bad_dns
+done
 
 failed_rebuild() {
     [[ $RC -eq 0 ]] && [[ $(cut -d' ' -f1 "$RUN_DIR/image") == "edutest-$COMMIT_A" ]] \
