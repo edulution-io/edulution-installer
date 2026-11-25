@@ -168,6 +168,7 @@ def test_env_with_specials_survives(make_installation, target_text):
     password = 'p@ss?:%&"x'
     env = (
         "A=1\n"
+        "MONGODB_USERNAME=root\n"
         f"MONGODB_PASSWORD={password}\n"
         f"MONGODB_SERVER_URL=mongodb://root:{password}@edu-db:27017/\n"
     )
@@ -336,3 +337,46 @@ def test_init_keeps_existing_header(make_installation, target_text):
     root = make_installation(header="2.1.0")
     init(root, target_version=TARGET)
     assert (root / COMPOSE).read_text() == f"# edulution-installer template 2.1.0\n{target_text}"
+
+
+NO_DB_USER_ENV = "MONGODB_PASSWORD=pw\nMONGODB_SERVER_URL=mongodb://root:pw@edu-db:27017/\n"
+
+
+def test_apply_refuses_missing_db_user(outdated, target_text):
+    root, history = outdated
+    (root / ENV).write_text(NO_DB_USER_ENV)
+    before = snapshot(root)
+    with pytest.raises(UpdateError) as err:
+        run_apply(root, target_text, history)
+    assert err.value.code == 6
+    assert "MONGODB_USERNAME" in err.value.message
+    assert_untouched_except_lock(root, before)
+
+
+def test_migrate_refuses_missing_db_user(make_installation, target_text):
+    root = make_installation(header="2.1.0", state=State("2.1.0", []), env=NO_DB_USER_ENV)
+    before = snapshot(root)
+    with pytest.raises(UpdateError) as err:
+        run_migrate(root, GATE.id, target_text, (*MIGRATIONS, GATE))
+    assert err.value.code == 6
+    assert_untouched_except_lock(root, before)
+
+
+DATA = Migration("0098-data", "major", (), lambda c: True, lambda c: c.env.set_if_absent("NG", "1"))
+
+
+def test_migrate_without_template_runs_despite_missing_db_user(make_installation, target_text):
+    # The restart after a data step starts the installed files, which run the database without a key file.
+    plain = target_text.replace("--keyFile", "--bind_ip_all")
+    root = make_installation(body=plain, header="2.1.0", state=State("2.1.0", []), env=NO_DB_USER_ENV)
+    run_migrate(root, DATA.id, target_text, (*MIGRATIONS, DATA, GATE))
+    assert load_state(root).applied == [DATA.id]
+
+
+def test_migrate_without_template_refuses_when_the_installed_files_need_the_db_user(make_installation, target_text):
+    root = make_installation(header="2.1.0", state=State("2.1.0", []), env=NO_DB_USER_ENV)
+    before = snapshot(root)
+    with pytest.raises(UpdateError) as err:
+        run_migrate(root, DATA.id, target_text, (*MIGRATIONS, DATA, GATE))
+    assert err.value.code == 6
+    assert_untouched_except_lock(root, before)
