@@ -16,13 +16,15 @@ RESOURCES="$RUN/resources"
 # Subnet and pool of the run, so later commands use them without the environment of 'up'.
 SETTINGS="$RUN/settings"
 POOL="${VM_TEST_POOL:-default}"
+KVM_DEVICE="${VM_TEST_KVM_DEVICE:-/dev/kvm}" # test hook
 V=(virsh -c qemu:///system)
 
 # linuxmuster.net 7.4 needs Ubuntu 26.04.
 UBUNTU_RELEASE=26.04
 IMAGE_BASE_URL="https://cloud-images.ubuntu.com/releases/${UBUNTU_RELEASE}/release"
 IMAGE_FILE="ubuntu-${UBUNTU_RELEASE}-server-cloudimg-amd64.img"
-BASE_VOL="${PREFIX}-base.qcow2"
+# Set by up and kept with the run; volume names carry it, so a stale record never matches another run's disks.
+RUN_ID=""
 
 EDU_MEMORY="${VM_TEST_EDU_MEMORY:-6144}"
 LMN_MEMORY="${VM_TEST_LMN_MEMORY:-4608}"
@@ -61,6 +63,7 @@ EOF
 
 # Role -> name, address, MAC address.
 vm_name() { echo "${PREFIX}-$1"; }
+vol_name() { echo "${PREFIX}-${RUN_ID}-$1"; }
 vm_ip() {
     case $1 in
         edu) echo "${SUBNET}.20" ;;
@@ -100,7 +103,7 @@ record() {
 }
 
 save_settings() {
-    printf 'subnet=%s\npool=%s\n' "$SUBNET" "$POOL" > "$SETTINGS"
+    printf 'run=%s\nsubnet=%s\npool=%s\n' "$RUN_ID" "$SUBNET" "$POOL" > "$SETTINGS"
 }
 
 load_settings() {
@@ -108,6 +111,7 @@ load_settings() {
     [[ -f $SETTINGS ]] || return 0
     while IFS='=' read -r key value; do
         case $key in
+            run) RUN_ID=$value ;;
             subnet) SUBNET=$value ;;
             pool) POOL=$value ;;
         esac
@@ -132,6 +136,26 @@ snapshot() {
     "${V[@]}" vol-list "$POOL" | awk 'NR > 2 && NF { print "volume: " $1 }'
     ip -br link | awk '{ sub(/@.*/, "", $1); print "link: " $1 }' | grep -vE ': (veth|vnet|tap)' || true
     ip -4 route | sed 's/^/route: /'
+    echo "sysctl: net.ipv4.ip_forward=$(cat /proc/sys/net/ipv4/ip_forward 2> /dev/null || echo unknown)"
+}
+
+# Whether an object exists; a libvirt error stops the run instead of reading as "gone".
+has_domain() {
+    local names
+    names=$("${V[@]}" list --all --name) || die "virsh cannot list the VMs"
+    grep -qx -- "$1" <<< "$names"
+}
+
+has_volume() {
+    local names
+    names=$("${V[@]}" vol-list "$1") || die "virsh cannot list pool $1"
+    awk 'NR > 2 && NF { print $1 }' <<< "$names" | grep -qx -- "$2"
+}
+
+has_network() {
+    local names
+    names=$("${V[@]}" net-list --all --name) || die "virsh cannot list the networks"
+    grep -qx -- "$1" <<< "$names"
 }
 
 leftovers() {
@@ -251,14 +275,14 @@ create_vm() {
     shift 2
     local name seed xml
     name=$(vm_name "$role")
-    seed="${name}-seed.iso"
+    seed=$(vol_name "$role-seed.iso")
     write_cloud_init "$role"
     make_seed "$RUN/seed-$role" "$RUN/$seed"
     upload_volume "$seed" "$RUN/$seed" raw
     xml="$RUN/$name.xml"
     domain_xml "$name" "$memory" "$(vm_mac "$role")" "$seed" "$@" > "$xml"
     "${V[@]}" define "$xml" > /dev/null
-    record domain "$name"
+    record domain "$name" "$("${V[@]}" domuuid "$name")"
     note "VM $name defined (${memory} MiB, 2 vCPUs, $(vm_ip "$role"))" "virsh -c qemu:///system undefine $name"
     "${V[@]}" start "$name" > /dev/null
     note "VM $name started" "virsh -c qemu:///system destroy $name"
@@ -286,13 +310,14 @@ cmd_up() {
     routes=$(subnet_routes)
     [[ -z $routes ]] || die "${SUBNET}.0/24 overlaps routes on this host; choose another with VM_TEST_SUBNET:"$'\n'"$routes"
     [[ ! -e $RUN ]] || die "an environment exists already ($RUN); remove it with 'vm-test down'"
-    [[ -e /dev/kvm ]] || die "/dev/kvm is missing, KVM is not available"
+    [[ -e $KVM_DEVICE ]] || die "$KVM_DEVICE is missing, KVM is not available"
     "${V[@]}" pool-info "$POOL" > /dev/null 2>&1 || die "no access to libvirt pool '$POOL' on qemu:///system (group libvirt?)"
     [[ -z $(leftovers) ]] || die "libvirt objects named ${PREFIX}* exist already, from another run or one whose state is gone;" \
         "'vm-test down --all' removes everything named ${PREFIX}*"
 
     mkdir -p "$STATE" "$CACHE"
     (umask 077 && mkdir "$RUN")
+    RUN_ID=$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')
     save_settings
     [[ ! -e $PROTOCOL ]] || mv "$PROTOCOL" "$STATE/protocol-$(date -r "$PROTOCOL" '+%Y%m%d-%H%M%S').md"
     snapshot > "$RUN/baseline.txt"
@@ -324,11 +349,13 @@ cmd_up() {
     fi
 
     info "Creating volumes ..."
-    upload_volume "$BASE_VOL" "$CACHE/$IMAGE_FILE" qcow2
+    local base
+    base=$(vol_name base.qcow2)
+    upload_volume "$base" "$CACHE/$IMAGE_FILE" qcow2
     "${V[@]}" pool-refresh "$POOL" > /dev/null
-    create_volume "${PREFIX}-edu.qcow2" 30G "$BASE_VOL"
-    create_volume "${PREFIX}-lmn.qcow2" 25G "$BASE_VOL"
-    create_volume "${PREFIX}-lmn-data.qcow2" 25G
+    create_volume "$(vol_name edu.qcow2)" 30G "$base"
+    create_volume "$(vol_name lmn.qcow2)" 25G "$base"
+    create_volume "$(vol_name lmn-data.qcow2)" 25G
 
     info "Creating network $PREFIX (${SUBNET}.0/24, NAT, no DHCP) ..."
     cat > "$RUN/network.xml" <<EOF
@@ -340,16 +367,22 @@ cmd_up() {
 </network>
 EOF
     "${V[@]}" net-define "$RUN/network.xml" > /dev/null
-    record network "$PREFIX"
+    record network "$PREFIX" "$("${V[@]}" net-uuid "$PREFIX")"
     note "libvirt network $PREFIX defined (NAT ${SUBNET}.0/24, bridge virbr-$PREFIX)" "virsh -c qemu:///system net-undefine $PREFIX"
+    local forward
+    forward=$(cat /proc/sys/net/ipv4/ip_forward 2> /dev/null || true)
     "${V[@]}" net-start "$PREFIX" > /dev/null
     note "libvirt network $PREFIX started (bridge, dnsmasq for DNS, NAT rules)" "virsh -c qemu:///system net-destroy $PREFIX"
+    # libvirt turns on IPv4 forwarding for a NAT network and leaves it on.
+    if [[ $forward == 0 && $(cat /proc/sys/net/ipv4/ip_forward 2> /dev/null || true) == 1 ]]; then
+        note "IPv4 forwarding turned on by libvirt" "sudo sysctl -w net.ipv4.ip_forward=0"
+    fi
 
     info "Creating VMs ..."
     ssh-keygen -q -t ed25519 -N '' -C vm-test -f "$RUN/id_ed25519"
     (umask 077 && head -c 18 /dev/urandom | base64 | tr -d '/+=' > "$RUN/lmn-root-password")
-    create_vm lmn "$LMN_MEMORY" "${PREFIX}-lmn.qcow2" "${PREFIX}-lmn-data.qcow2"
-    create_vm edu "$EDU_MEMORY" "${PREFIX}-edu.qcow2"
+    create_vm lmn "$LMN_MEMORY" "$(vol_name lmn.qcow2)" "$(vol_name lmn-data.qcow2)"
+    create_vm edu "$EDU_MEMORY" "$(vol_name edu.qcow2)"
 
     wait_for_vm lmn
     wait_for_vm edu
@@ -366,8 +399,10 @@ cmd_status() {
             "$("${V[@]}" domstate "$(vm_name "$role")" 2> /dev/null || echo missing)"
     done
     echo
-    echo "linuxmuster server for the web installer: $(vm_ip lmn), user root, password $(cat "$RUN/lmn-root-password")"
-    echo "  (after linuxmuster-setup the root password is the admin password entered in the web installer)"
+    if [[ -f $RUN/lmn-root-password ]]; then
+        echo "linuxmuster server for the web installer: $(vm_ip lmn), user root, password $(cat "$RUN/lmn-root-password")"
+        echo "  (after linuxmuster-setup the root password is the admin password entered in the web installer)"
+    fi
     [[ ! -f $RUN/image-tag ]] || echo "Image built on edu: $(cat "$RUN/image-tag") (vm-test install --local)"
     [[ ! -f $RUN/installer-url ]] || echo "Web installer: $(cat "$RUN/installer-url")"
     echo "Protocol: $PROTOCOL"
@@ -388,7 +423,7 @@ cmd_build() {
         commit=$(git -C "$REPO_ROOT" rev-parse --verify "${ref}^{commit}")
     fi
     tag="vmtest-$(git -C "$REPO_ROOT" rev-parse --short "$commit")"
-    src="$SRC_ON_VM/$tag"
+    src="$SRC_ON_VM/$tag-$(date +%Y%m%d%H%M%S)-$$"
 
     info "Copying $commit to edu ..."
     git -C "$REPO_ROOT" archive --format=tar "$commit" \
@@ -414,15 +449,18 @@ docker run --rm -e NX_DAEMON=false -e CI=true -v "$src:/src" -w /src "$node_imag
     sh -c 'npm ci --no-audit --no-fund --loglevel=error && npx nx build webinstaller'
 rm -rf "$src/node_modules"
 docker build -q --build-arg INSTALLER_VERSION="$tag" -t "ghcr.io/edulution-io/edulution-installer:$tag" "$src"
-find "${src%/*}" -mindepth 1 -maxdepth 1 ! -name "$tag" -exec rm -rf {} +
 EOF
     echo "$tag" > "$RUN/image-tag"
+    echo "$src" > "$RUN/image-src"
+    # Only now, so the recorded build always has its sources.
+    vm_ssh edu "sudo find $SRC_ON_VM -mindepth 1 -maxdepth 1 ! -name ${src##*/} -exec rm -rf {} +" \
+        || info "older builds in $SRC_ON_VM on edu could not be removed"
     info "Image ghcr.io/edulution-io/edulution-installer:$tag is ready; start it with 'vm-test install --local'."
 }
 
 cmd_install() {
     [[ -d $RUN ]] || die "no environment, run 'vm-test up' first"
-    local command tag attempt url=""
+    local command tag src attempt url=""
     case ${1:-} in
         "")
             command="curl -fsSL https://get.edulution.io/installer -o /root/installer && bash /root/installer"
@@ -432,11 +470,12 @@ cmd_install() {
             command="curl -fsSL https://get.edulution.io/installer -o /root/installer && bash /root/installer --version $(printf '%q' "$2")"
             ;;
         --local)
-            [[ -f $RUN/image-tag ]] || die "no image built, run 'vm-test build' first"
+            [[ -f $RUN/image-tag && -f $RUN/image-src ]] || die "no image built, run 'vm-test build' first"
             tag=$(cat "$RUN/image-tag")
+            src=$(cat "$RUN/image-src")
             # As in the E2E workflow: the tag exists neither in the registry nor on GitHub, so docker
             # takes the local image and the templates come from the copied checkout.
-            command="EDULUTION_TEMPLATE_URL=file://$SRC_ON_VM/$tag/apps/public-page/public/download bash $SRC_ON_VM/$tag/apps/public-page/public/installer --version $tag"
+            command="EDULUTION_TEMPLATE_URL=file://$src/apps/public-page/public/download bash $src/apps/public-page/public/installer --version $tag"
             ;;
         *) die "unknown option '$1'" ;;
     esac
@@ -464,27 +503,34 @@ EOF
     echo "  linuxmuster server: $(vm_ip lmn), user root, password $(cat "$RUN/lmn-root-password")"
 }
 
-# remove <kind> [<pool>] <name>: removes one libvirt object if it exists.
+# owned <kind> [<pool>] <name> [<uuid>]: true if the object exists and, given a UUID, is the one recorded.
+owned() {
+    case $1 in
+        domain) has_domain "$2" && [[ -z ${3:-} || $("${V[@]}" domuuid "$2") == "$3" ]] ;;
+        volume) has_volume "$2" "$3" ;;
+        network) has_network "$2" && [[ -z ${3:-} || $("${V[@]}" net-uuid "$2") == "$3" ]] ;;
+        *) die "unknown entry in $RESOURCES: $*" ;;
+    esac
+}
+
+# remove <kind> [<pool>] <name> [<uuid>]: removes one object if owned says it is this run's.
 remove() {
+    owned "$@" || return 0
     case $1 in
         domain)
-            "${V[@]}" domstate "$2" > /dev/null 2>&1 || return 0
             "${V[@]}" destroy "$2" > /dev/null 2>&1 || true
             "${V[@]}" undefine "$2" > /dev/null
             log_down "VM $2 stopped and removed"
             ;;
         volume)
-            "${V[@]}" vol-info --pool "$2" "$3" > /dev/null 2>&1 || return 0
             "${V[@]}" vol-delete --pool "$2" "$3" > /dev/null
             log_down "Volume $3 deleted from pool $2"
             ;;
         network)
-            "${V[@]}" net-info "$2" > /dev/null 2>&1 || return 0
             "${V[@]}" net-destroy "$2" > /dev/null 2>&1 || true
             "${V[@]}" net-undefine "$2" > /dev/null
             log_down "Network $2 stopped and removed (bridge, dnsmasq, NAT rules)"
             ;;
-        *) die "unknown entry in $RESOURCES: $*" ;;
     esac
 }
 
@@ -530,6 +576,15 @@ cmd_down() {
             read -r -a fields <<< "$line"
             remove "${fields[@]}"
         done
+        # The record goes only once nothing in it is left, so 'down' can be run again.
+        for line in "${lines[@]}"; do
+            read -r -a fields <<< "$line"
+            ! owned "${fields[@]}" || die "still present: $line; run 'vm-test down' again"
+        done
+        if [[ $all -eq 0 ]]; then
+            rest=$(leftovers)
+            [[ -z $rest ]] || info "objects named ${PREFIX}* that this run did not create remain:"$'\n'"$rest"
+        fi
     fi
     if [[ $all -eq 1 ]]; then
         mapfile -t names < <("${V[@]}" list --all --name | grep "^${PREFIX}-" || true)
@@ -537,7 +592,7 @@ cmd_down() {
             remove domain "$name"
         done
         mapfile -t volumes < <("${V[@]}" vol-list "$POOL" | awk 'NR > 2 && NF { print $1 }' | grep "^${PREFIX}-" \
-            | awk -v base="$BASE_VOL" '$0 == base { last = $0; next } { print } END { if (last) print last }' || true)
+            | awk '/-base\.qcow2$/ { last[++n] = $0; next } { print } END { for (i = 1; i <= n; i++) print last[i] }' || true)
         for vol in "${volumes[@]}"; do
             remove volume "$POOL" "$vol"
         done

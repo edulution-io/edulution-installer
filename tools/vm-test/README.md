@@ -18,7 +18,7 @@ Use it for every pull request that touches the installer flow: the `installer` s
 - About 11 GB free RAM (edu 6 GiB, lmn 4.5 GiB; set `VM_TEST_EDU_MEMORY` / `VM_TEST_LMN_MEMORY` in MiB)
 - About 40 GB free in the libvirt pool `default`. The disks are thin, so a full run uses about that much. Their nominal size is 80 GB.
 
-Nothing is installed on the host. The tool creates only libvirt objects whose names start with `edutest`, plus its own directory `~/.local/state/edulution-vm-test`.
+Nothing is installed on the host. The tool creates only libvirt objects whose names start with `edutest`, plus its own directory `~/.local/state/edulution-vm-test`. Two things stay after `down`, as libvirt handles them: IPv4 forwarding, which libvirt turns on for a NAT network and leaves on (the protocol records it with the command that turns it off again, and the comparison after `down` shows it), and the VM logs in `/var/log/libvirt/qemu/edutest-*.log`.
 
 ## Quick start
 
@@ -48,6 +48,7 @@ Other commands:
 ```bash
 tools/vm-test/vm-test status              # addresses, state, linuxmuster login, installer URL
 tools/vm-test/vm-test ssh lmn             # shell as edutest (sudo without password)
+# a command runs in the VM's shell: quote it as one argument if it holds quotes or escapes
 tools/vm-test/vm-test ssh edu sudo tail -f /root/installer.log
 ```
 
@@ -66,10 +67,10 @@ After `linuxmuster-setup`, the root password on the lmn VM is the admin password
 
 The basic run: install, linuxmuster setup, edulution stack up, login works. Depending on the change, also:
 
-- **Lost connection:** close the browser tab while `linuxmuster-setup` runs and open the URL again. The page continues the same run, shows the full log once without duplicate lines, and does not start a second run. Check with `vm-test ssh lmn sudo grep -c 'POST /api/playbook/linuxmuster.yml/start' /opt/edulution-installer/api.log` (expected: 1).
+- **Lost connection:** close the browser tab while `linuxmuster-setup` runs and open the URL again. The page continues the same run, shows the full log once without duplicate lines, and does not start a second run. Check with `vm-test ssh lmn "sudo grep -c 'POST /api/playbook/linuxmuster.yml/start' /opt/edulution-installer/api.log"` (expected: 1).
 - **Reload after the run:** reload the page after the run finished and before "Next". The configuration is fetched again. The LMN installer API stops only on "Next".
-- **Second run on the same server:** run the installer again against the installed lmn VM. Existing configuration such as `/etc/edulution-fileproxy/config.yml` stays as it was.
-- **fileproxy:** `vm-test ssh lmn curl -sk -o /dev/null -w '%{http_code}\n' https://127.0.0.1/webdav/` answers `401`.
+- **Second run on the same server:** run the installer again against the installed lmn VM. `install` starts only one run per environment; for a second one, remove its log first: `vm-test ssh edu 'sudo rm /root/installer.log /root/installer.rc'`, then `vm-test install` again. Existing configuration such as `/etc/edulution-fileproxy/config.yml` stays as it was.
+- **fileproxy:** `vm-test ssh lmn "curl -sk -o /dev/null -w '%{http_code}\n' https://127.0.0.1/webdav/"` answers `401`.
 - **Update:** after an install with an older version, `vm-test ssh edu 'curl -fsSL https://get.edulution.io/update | sudo bash -s -- --check'`.
 
 For a browser test with Playwright, ignore certificate errors: the web installer uses a self-signed certificate. With the Chrome DevTools Protocol that is `Security.setIgnoreCertificateErrors`.
@@ -92,7 +93,7 @@ For a browser test with Playwright, ignore certificate errors: the web installer
 3. deletes the SSH key, the passwords and the cloud-init files, and with them the downloaded cloud image (`--keep-image` keeps the image for the next run)
 4. keeps the protocol as `~/.local/state/edulution-vm-test/protocol-<date>.md`
 
-`up` records each object as soon as it exists, so `down` also cleans up after an `up` that stopped half way. Objects named `edutest` that the run did not create, for example from another user's run or a run whose state directory is gone, stay; `down` names them, and `down --all` removes everything named `edutest`. A difference in the comparison can come from the host itself, for example a VPN that changed its routes.
+`up` records each object as soon as it exists, so `down` also cleans up after an `up` that stopped half way. Volume names carry an id of the run, and VMs and the network are recorded with their UUIDs, so `down` leaves an object alone that another run has created under the same name since. If something cannot be removed, `down` keeps its record and can be run again. Objects named `edutest` that the run did not create, for example from another user's run or a run whose state directory is gone, stay; `down` names them, and `down --all` removes everything named `edutest`. A difference in the comparison can come from the host itself, for example a VPN that changed its routes.
 
 ## Pitfalls
 
