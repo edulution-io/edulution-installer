@@ -52,6 +52,13 @@ interface AcmeCnameResponse {
 
 export type ApiError = Error & { status: number };
 
+// AbortSignal.timeout is missing in older browsers the build still targets (Safari before 16, Chrome before 103).
+export const timeoutSignal = (ms: number): AbortSignal => {
+  const controller = new AbortController();
+  window.setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+};
+
 const apiFetch = async <T>(
   url: string,
   options?: RequestInit,
@@ -262,6 +269,7 @@ const refusalMessage = (body: unknown, status: number): string => {
 export const startLmnPlaybook = (
   playbook: string,
   extraVars: Record<string, unknown> = {},
+  signal?: AbortSignal,
 ): Promise<PlaybookStartResponse> =>
   apiFetch<PlaybookStartResponse>(
     `/api/lmn/playbook/${playbook}/start`,
@@ -269,6 +277,7 @@ export const startLmnPlaybook = (
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ variables: { extra_vars: extraVars } }),
+      signal,
     },
     refusalMessage,
   );
@@ -299,8 +308,8 @@ export const getLmnNetworkInfo = (): Promise<LmnNetworkInfo> =>
 
 type LmnJobStatus = 'idle' | 'running' | 'completed' | 'failed';
 
-export const getLmnPlaybookStatus = (signal?: AbortSignal): Promise<{ status: LmnJobStatus }> =>
-  apiFetch<{ status: LmnJobStatus }>('/api/lmn/status', { signal });
+export const getLmnPlaybookStatus = (signal?: AbortSignal): Promise<{ status: LmnJobStatus; job_id?: string | null }> =>
+  apiFetch<{ status: LmnJobStatus; job_id?: string | null }>('/api/lmn/status', { signal });
 
 export interface LmnOutputMessage {
   type: string;
