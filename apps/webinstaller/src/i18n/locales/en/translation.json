@@ -183,6 +183,7 @@
     "installing": "The edulution UI is now being installed...",
     "redirect": "You will be redirected automatically once the installation is complete.",
     "openEdulution": "Open edulution",
-    "failed": "Installation not finished"
+    "failed": "Installation not finished",
+    "serverError": "The configuration could not be written (HTTP {{status}})."
   }
 }

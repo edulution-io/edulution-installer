@@ -183,6 +183,7 @@
     "installing": "Die edulution UI wird nun installiert...",
     "redirect": "Sie werden automatisch weitergeleitet, wenn die Installation abgeschlossen ist.",
     "openEdulution": "edulution öffnen",
-    "failed": "Installation nicht abgeschlossen"
+    "failed": "Installation nicht abgeschlossen",
+    "serverError": "Die Konfiguration konnte nicht geschrieben werden (HTTP {{status}})."
   }
 }

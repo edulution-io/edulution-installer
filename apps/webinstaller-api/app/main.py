@@ -293,7 +293,13 @@ class RequireInstallerToken:
             response = exchangeTokenForSession(scope)
         elif hasInstallerToken(connection.cookies.get(SESSION_COOKIE)):
             IDLE.touch()
-            return await self.app(scope, receive, send)
+
+            # A stream (bootstrap output, WebSocket) counts as use while it sends.
+            async def sendActive(message):
+                IDLE.touch()
+                await send(message)
+
+            return await self.app(scope, receive, sendActive)
         elif scope["type"] == "websocket":
             response = WebSocketClose(code=1008)
         elif connection.url.path.startswith("/api/"):
@@ -1182,9 +1188,6 @@ EDULUTION_ONLYOFFICE_POSTGRES_PASSWORD={onlyoffice_postgres_secret}
         environment_file += "ACME_DNS_API_BASE=https://acme-dns.netzint.de\n"
         environment_file += "ACME_DNS_STORAGE_PATH=/etc/traefik/ssl/acmedns.json\n"
 
-    with openPrivate("/edulution-ui/edulution.env") as f:
-        f.write(environment_file)
-
     lmn_api_traefik = f"""
 http:
   routers:
@@ -1291,5 +1294,11 @@ tls:
 """
         with open("/edulution-ui/data/traefik/config/cert.yml", "w") as f:
             f.write(cert_traefik)
+
+    # Last and in one step: the installer script takes over as soon as the file exists.
+    env_path = f"{EDULUTION_DIRECTORY}/edulution.env"
+    with openPrivate(env_path + ".new") as f:
+        f.write(environment_file)
+    os.replace(env_path + ".new", env_path)
 
     # Shutdown is now triggered explicitly via POST /api/shutdown

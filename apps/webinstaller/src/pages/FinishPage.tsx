@@ -4,6 +4,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
 import { Button } from '@edulution-io/ui-kit';
 import { startInstallation, shutdownInstaller } from '../api/installerApi';
+import type { ApiError } from '../api/installerApi';
 import useInstallerStore from '../store/useInstallerStore';
 
 const POLL_START_DELAY_MS = 30000;
@@ -41,8 +42,15 @@ const FinishPage = () => {
           setError(response.message);
           return;
         }
-      } catch {
-        // Errors may occur if backend processes the request asynchronously
+      } catch (err) {
+        // An answer with an error status is a definite failure; a lost connection may follow a finish
+        // that went through, as the script removes the web installer once edulution.env exists.
+        const { status } = err as Partial<ApiError>;
+        if (status) {
+          redirectedRef.current = true;
+          setError(t('finish.serverError', { status }));
+          return;
+        }
       }
 
       // Files are written synchronously by /api/finish, trigger shutdown immediately

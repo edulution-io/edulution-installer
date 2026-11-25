@@ -128,6 +128,13 @@ if ! echo "$cpu_flags" | grep -qwE 'avx'; then
     exit 1
 fi
 
+# Ein zweiter Lauf wuerde den Web-Installer des ersten entfernen.
+exec 9> /run/edulution-installer.lock
+if ! flock -n 9; then
+  echo "[!] Das Installationsskript läuft bereits."
+  exit 1
+fi
+
 if [ -f "${DIRECTORY}edulution.env" ]; then
   echo "[!] Die edulution UI scheint bereits installiert zu sein. Bitte prüfe das Verzeichnis '$DIRECTORY'!"
   exit 1
@@ -258,8 +265,9 @@ remove_ssh_installer_access() {
     fi
 }
 # Ohne das Skript uebernimmt niemand die Konfiguration des Web-Installers: Er endet mit ihm.
+INSTALLER_CONTAINER=""
 cleanup_installer() {
-    docker rm -f edulution-installer > /dev/null 2>&1
+    [ -z "${INSTALLER_CONTAINER}" ] || docker rm -f "${INSTALLER_CONTAINER}" > /dev/null 2>&1
     remove_ssh_installer_access
 }
 trap cleanup_installer EXIT
@@ -401,11 +409,11 @@ INSTALLER_TOKEN=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
 docker rm -f edulution-installer > /dev/null 2>&1
 
 # BOOTSTRAP_BRANCH nur bei --version: Images bis 2.0 laden bootstrap.sh noch von GitHub.
-INSTALLER_TOKEN="${INSTALLER_TOKEN}" docker run -d --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ \
+INSTALLER_CONTAINER=$(INSTALLER_TOKEN="${INSTALLER_TOKEN}" docker run -d --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ \
     -e INSTALLER_TOKEN \
     ${EDULUTION_DOMAIN:+-e EDULUTION_DOMAIN=${EDULUTION_DOMAIN}} \
     ${EDULUTION_INSTALLER_REF:+-e BOOTSTRAP_BRANCH=${EDULUTION_INSTALLER_REF}} \
-    "${EDULUTION_INSTALLER_IMAGE}" 2>&1 > /dev/zero
+    "${EDULUTION_INSTALLER_IMAGE}" 2>/dev/null)
 
 # Warte bis der Installer bereit ist
 attempt=0
@@ -455,10 +463,9 @@ EOF
 # beendet sich selbst, wenn er lange nicht benutzt wird.
 echo "[*] Warte auf Abschluss der Web-Installation..."
 while [ ! -f "${DIRECTORY}edulution.env" ]; do
-    # Prüfe ob Container noch läuft
-    if ! docker ps | grep -q edulution-installer; then
+    if [ "$(docker inspect -f '{{.State.Running}}' "${INSTALLER_CONTAINER}" 2>/dev/null)" != true ]; then
         echo "[!] Der Web-Installer läuft nicht mehr, der Grund steht am Ende seines Protokolls:"
-        docker logs edulution-installer
+        docker logs "${INSTALLER_CONTAINER}"
         exit 1
     fi
 
