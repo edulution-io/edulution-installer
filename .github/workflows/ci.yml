@@ -41,7 +41,8 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/repo:ro" -w /repo --entrypoint shellcheck \
             rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 \
-            apps/public-page/public/update apps/public-page/tests/update-wrapper.test.sh
+            apps/public-page/public/update apps/public-page/tests/update-wrapper.test.sh \
+            tools/vm-test/vm-test tools/vm-test/vm-test.test.sh
 
       - name: hadolint
         run: |
@@ -68,6 +69,9 @@ jobs:
 
       - name: Update wrapper
         run: bash apps/public-page/tests/update-wrapper.test.sh
+
+      - name: vm-test
+        run: bash tools/vm-test/vm-test.test.sh
 
       - name: pytest
         run: |
