@@ -50,6 +50,15 @@ interface AcmeCnameResponse {
   resolved: boolean;
 }
 
+export type ApiError = Error & { status: number };
+
+// AbortSignal.timeout is missing in older browsers the build still targets (Safari before 16, Chrome before 103).
+export const timeoutSignal = (ms: number): AbortSignal => {
+  const controller = new AbortController();
+  window.setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+};
+
 const apiFetch = async <T>(
   url: string,
   options?: RequestInit,
@@ -57,9 +66,10 @@ const apiFetch = async <T>(
 ): Promise<T> => {
   const response = await fetch(url, options);
   if (!response.ok) {
-    throw new Error(
-      toMessage ? toMessage(await response.json().catch(() => null), response.status) : `API error: ${response.status}`,
-    );
+    const message = toMessage
+      ? toMessage(await response.json().catch(() => null), response.status)
+      : `API error: ${response.status}`;
+    throw Object.assign(new Error(message), { status: response.status }) as ApiError;
   }
   return response.json() as Promise<T>;
 };
@@ -259,6 +269,7 @@ const refusalMessage = (body: unknown, status: number): string => {
 export const startLmnPlaybook = (
   playbook: string,
   extraVars: Record<string, unknown> = {},
+  signal?: AbortSignal,
 ): Promise<PlaybookStartResponse> =>
   apiFetch<PlaybookStartResponse>(
     `/api/lmn/playbook/${playbook}/start`,
@@ -266,6 +277,7 @@ export const startLmnPlaybook = (
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ variables: { extra_vars: extraVars } }),
+      signal,
     },
     refusalMessage,
   );
@@ -296,8 +308,26 @@ export const getLmnNetworkInfo = (): Promise<LmnNetworkInfo> =>
 
 type LmnJobStatus = 'idle' | 'running' | 'completed' | 'failed';
 
-export const getLmnPlaybookStatus = (): Promise<{ status: LmnJobStatus }> =>
-  apiFetch<{ status: LmnJobStatus }>('/api/lmn/status');
+export const getLmnPlaybookStatus = (signal?: AbortSignal): Promise<{ status: LmnJobStatus; job_id?: string | null }> =>
+  apiFetch<{ status: LmnJobStatus; job_id?: string | null }>('/api/lmn/status', { signal });
+
+export interface LmnOutputMessage {
+  type: string;
+  data: string;
+  job_id?: string | null;
+  seq?: number | null;
+}
+
+export interface LmnOutputPage {
+  job_id: string | null;
+  first: number;
+  next: number;
+  total: number;
+  messages: LmnOutputMessage[];
+}
+
+export const getLmnOutput = (since: number, signal?: AbortSignal): Promise<LmnOutputPage> =>
+  apiFetch<LmnOutputPage>(`/api/lmn/output?since=${since}`, { signal });
 
 export const shutdownLmnInstaller = (): Promise<StatusResponse> =>
   apiFetch<StatusResponse>('/api/lmn/shutdown', { method: 'POST' });

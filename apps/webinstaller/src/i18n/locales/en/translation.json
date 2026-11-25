@@ -173,8 +173,10 @@
     "configFetched": "Configuration fetched successfully. You can now restart the linuxmuster.net server and then click 'Next'.",
     "configFetchedLocal": "Configuration fetched successfully. Check the address of edulution UI and click 'Next'.",
     "configError": "Failed to fetch edulution configuration. Please check if the linuxmuster.net server is accessible.",
-    "wsConnectionFailed": "Could not connect to the linuxmuster.net installer. Please check that the server is reachable and the installer API is running.",
-    "wsConnectionLost": "Connection to the linuxmuster.net installer was lost. The installation could not be fully monitored."
+    "reconnecting": "The connection to the linuxmuster.net installer was interrupted and is being restored. The installation on the server is not affected by this.",
+    "unresponsive": "The linuxmuster.net installer has not answered for more than {{minutes}} minutes. The installation may still be running. Follow it on the server with:",
+    "runLost": "The linuxmuster.net installer no longer reports the installation, e.g. after the installer was restarted. It may have been interrupted; start it again via 'Back to setup'.",
+    "checkAgain": "Check again"
   },
   "finish": {
     "title": "Configuration complete",
