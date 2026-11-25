@@ -41,7 +41,7 @@ tools/vm-test/vm-test install --local
 tools/vm-test/vm-test down
 ```
 
-`build <git-ref>` builds a branch, tag or commit instead of the working tree. Untracked files are not part of a build; `git add` them first. A build installs Docker on the edu VM, so the installer takes its "Docker is already installed" path there.
+`build <git-ref>` builds a branch, tag or commit instead of the working tree. Each build gets its own source directory on the VM; if a build fails, `install --local` keeps using the last good one. Untracked files are not part of a build; `git add` them first. A build installs Docker on the edu VM, so the installer takes its "Docker is already installed" path there.
 
 Other commands:
 
@@ -87,17 +87,17 @@ For a browser test with Playwright, ignore certificate errors: the web installer
 
 `vm-test up` writes a protocol. It lists the host state before the run and every change to the host, each with the command that undoes it. `vm-test down`:
 
-1. stops and removes the VMs, deletes the `edutest-*` volumes and removes the network
+1. stops and removes the VMs, volumes and network that this run's `up` created, and nothing else
 2. compares the host with the state recorded before `up` and writes the result into the protocol
 3. deletes the SSH key, the passwords and the cloud-init files, and with them the downloaded cloud image (`--keep-image` keeps the image for the next run)
 4. keeps the protocol as `~/.local/state/edulution-vm-test/protocol-<date>.md`
 
-`down` works by name, so it also cleans up after an `up` that stopped half way. A difference in the comparison can come from the host itself, for example a VPN that changed its routes; anything named `edutest` would be a leftover, and `down` fails on those.
+`up` records each object as soon as it exists, so `down` also cleans up after an `up` that stopped half way. Objects named `edutest` that the run did not create, for example from another user's run or a run whose state directory is gone, stay; `down` names them, and `down --all` removes everything named `edutest`. A difference in the comparison can come from the host itself, for example a VPN that changed its routes.
 
 ## Pitfalls
 
 - **60 minutes:** the `installer` script waits at most 60 minutes for the web installer to finish (#175). A run with the linuxmuster setup uses much of that time on these VMs, and a second run against the same server can exceed it. Start the web installer soon after `install`.
 - **One environment per host:** the names and the network are fixed. Run `down` before the next `up`; `up` refuses if anything named `edutest` exists.
-- **Network in use:** if 10.77.0.0/24 is routed on the host already (VPN, other libvirt network), choose another with `VM_TEST_SUBNET=10.78.0`.
+- **Network in use:** `up` refuses if a route on the host covers 10.77.0.0/24 or lies inside it (VPN, other libvirt network); choose another with `VM_TEST_SUBNET=10.78.0`. The run keeps its subnet and `VM_TEST_POOL`, so the later commands need neither.
 - **No virt-install:** `up` defines the VMs with `virsh` and its own seed ISO. `virt-install --cloud-init` needs `meta-data`, or cloud-init does not run. It also creates the persistent pool `boot-scratch` and files under `~/.cache/virt-manager`.
 - **Host keys:** `vm-test ssh` does not check or store host keys. The VMs exist only in the local NAT network, and `linuxmuster-setup` replaces the keys of the lmn VM.

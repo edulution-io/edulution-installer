@@ -11,6 +11,10 @@ STATE="${VM_TEST_HOME:-${XDG_STATE_HOME:-$HOME/.local/state}/edulution-vm-test}"
 RUN="$STATE/run"
 CACHE="$STATE/cache"
 PROTOCOL="$STATE/protocol.md"
+# What up created, one "<kind> <name>" or "volume <pool> <name>" per line; down removes only these.
+RESOURCES="$RUN/resources"
+# Subnet and pool of the run, so later commands use them without the environment of 'up'.
+SETTINGS="$RUN/settings"
 POOL="${VM_TEST_POOL:-default}"
 V=(virsh -c qemu:///system)
 
@@ -24,6 +28,7 @@ EDU_MEMORY="${VM_TEST_EDU_MEMORY:-6144}"
 LMN_MEMORY="${VM_TEST_LMN_MEMORY:-4608}"
 # Same version as the CI workflows.
 NODE_IMAGE="node:22.23.4-bookworm"
+# One directory per build, so a failed build leaves the last good one as it was.
 SRC_ON_VM=/root/vm-test-src
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -46,7 +51,9 @@ Usage: vm-test <command>
                              --local uses the image from 'build'; without options the latest release.
   status                     Show the VMs, their addresses and the logins.
   ssh <edu|lmn> [command]    Open a shell on a VM (user edutest, sudo without password).
-  down [--keep-image]        Remove everything 'up' created and compare the host with the state before.
+  down [--keep-image] [--all]
+                             Remove everything 'up' created and compare the host with the state before.
+                             --all also removes objects named edutest* that this run did not create.
 
 State and protocol: $STATE
 EOF
@@ -86,6 +93,31 @@ vm_ssh() {
 note() {
     # shellcheck disable=SC2016 # the backticks are Markdown
     printf '| %s | %s | `%s` |\n' "$(date '+%H:%M:%S')" "$1" "$2" >> "$PROTOCOL"
+}
+
+record() {
+    echo "$*" >> "$RESOURCES"
+}
+
+save_settings() {
+    printf 'subnet=%s\npool=%s\n' "$SUBNET" "$POOL" > "$SETTINGS"
+}
+
+load_settings() {
+    local key value
+    [[ -f $SETTINGS ]] || return 0
+    while IFS='=' read -r key value; do
+        case $key in
+            subnet) SUBNET=$value ;;
+            pool) POOL=$value ;;
+        esac
+    done < "$SETTINGS"
+}
+
+# Routes on the host that cover the test network or lie inside it, apart from the default route.
+subnet_routes() {
+    { ip -4 route show table all match "${SUBNET}.0/24"; ip -4 route show table all root "${SUBNET}.0/24"; } \
+        | awk '$1 != "default" && $2 != "default"' || true
 }
 
 note_teardown() {
@@ -202,12 +234,14 @@ create_volume() {
     else
         "${V[@]}" vol-create-as "$POOL" "$name" "$size" --format qcow2 > /dev/null
     fi
+    record volume "$POOL" "$name"
     note "Volume $name ($size, thin) in pool $POOL" "virsh -c qemu:///system vol-delete --pool $POOL $name"
 }
 
 upload_volume() {
     local name=$1 file=$2 format=$3
     "${V[@]}" vol-create-as "$POOL" "$name" "$(stat -c %s "$file")" --format "$format" > /dev/null
+    record volume "$POOL" "$name"
     note "Volume $name in pool $POOL" "virsh -c qemu:///system vol-delete --pool $POOL $name"
     "${V[@]}" vol-upload --pool "$POOL" "$name" "$file"
 }
@@ -224,6 +258,7 @@ create_vm() {
     xml="$RUN/$name.xml"
     domain_xml "$name" "$memory" "$(vm_mac "$role")" "$seed" "$@" > "$xml"
     "${V[@]}" define "$xml" > /dev/null
+    record domain "$name"
     note "VM $name defined (${memory} MiB, 2 vCPUs, $(vm_ip "$role"))" "virsh -c qemu:///system undefine $name"
     "${V[@]}" start "$name" > /dev/null
     note "VM $name started" "virsh -c qemu:///system destroy $name"
@@ -246,16 +281,19 @@ cmd_up() {
     for tool in virsh ssh ssh-keygen curl sha256sum ip; do
         command -v "$tool" > /dev/null || die "$tool is missing"
     done
+    [[ $SUBNET =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || die "VM_TEST_SUBNET takes three octets, e.g. 10.78.0"
+    local routes
+    routes=$(subnet_routes)
+    [[ -z $routes ]] || die "${SUBNET}.0/24 overlaps routes on this host; choose another with VM_TEST_SUBNET:"$'\n'"$routes"
+    [[ ! -e $RUN ]] || die "an environment exists already ($RUN); remove it with 'vm-test down'"
     [[ -e /dev/kvm ]] || die "/dev/kvm is missing, KVM is not available"
     "${V[@]}" pool-info "$POOL" > /dev/null 2>&1 || die "no access to libvirt pool '$POOL' on qemu:///system (group libvirt?)"
-    [[ ! -e $RUN ]] || die "an environment exists already ($RUN); remove it with 'vm-test down'"
-    [[ -z $(leftovers) ]] || die "libvirt objects named ${PREFIX}* exist already; remove them with 'vm-test down'"
-    if ip -4 route | grep -q "^${SUBNET}\."; then
-        die "${SUBNET}.0/24 is in use on this host; choose another with VM_TEST_SUBNET"
-    fi
+    [[ -z $(leftovers) ]] || die "libvirt objects named ${PREFIX}* exist already, from another run or one whose state is gone;" \
+        "'vm-test down --all' removes everything named ${PREFIX}*"
 
     mkdir -p "$STATE" "$CACHE"
     (umask 077 && mkdir "$RUN")
+    save_settings
     [[ ! -e $PROTOCOL ]] || mv "$PROTOCOL" "$STATE/protocol-$(date -r "$PROTOCOL" '+%Y%m%d-%H%M%S').md"
     snapshot > "$RUN/baseline.txt"
     {
@@ -302,6 +340,7 @@ cmd_up() {
 </network>
 EOF
     "${V[@]}" net-define "$RUN/network.xml" > /dev/null
+    record network "$PREFIX"
     note "libvirt network $PREFIX defined (NAT ${SUBNET}.0/24, bridge virbr-$PREFIX)" "virsh -c qemu:///system net-undefine $PREFIX"
     "${V[@]}" net-start "$PREFIX" > /dev/null
     note "libvirt network $PREFIX started (bridge, dnsmasq for DNS, NAT rules)" "virsh -c qemu:///system net-destroy $PREFIX"
@@ -337,7 +376,7 @@ cmd_status() {
 cmd_build() {
     [[ -d $RUN ]] || die "no environment, run 'vm-test up' first"
     command -v git > /dev/null || die "git is missing"
-    local ref=${1:-} commit tag
+    local ref=${1:-} commit tag src
     if [[ -z $ref ]]; then
         # A commit of the working tree without touching the index or the stash list.
         commit=$(git -C "$REPO_ROOT" stash create)
@@ -349,13 +388,14 @@ cmd_build() {
         commit=$(git -C "$REPO_ROOT" rev-parse --verify "${ref}^{commit}")
     fi
     tag="vmtest-$(git -C "$REPO_ROOT" rev-parse --short "$commit")"
+    src="$SRC_ON_VM/$tag"
 
     info "Copying $commit to edu ..."
     git -C "$REPO_ROOT" archive --format=tar "$commit" \
-        | vm_ssh edu "sudo rm -rf $SRC_ON_VM && sudo mkdir -p $SRC_ON_VM && sudo tar -x -C $SRC_ON_VM"
+        | vm_ssh edu "sudo rm -rf $src && sudo mkdir -p $src && sudo tar -x -C $src"
 
     info "Building the web installer and image $tag on edu (takes a few minutes) ..."
-    vm_ssh edu "sudo bash -s -- $(printf '%q ' "$SRC_ON_VM" "$NODE_IMAGE" "$tag")" <<'EOF'
+    vm_ssh edu "sudo bash -s -- $(printf '%q ' "$src" "$NODE_IMAGE" "$tag")" <<'EOF'
 set -euo pipefail
 src=$1 node_image=$2 tag=$3
 if ! command -v docker > /dev/null; then
@@ -374,6 +414,7 @@ docker run --rm -e NX_DAEMON=false -e CI=true -v "$src:/src" -w /src "$node_imag
     sh -c 'npm ci --no-audit --no-fund --loglevel=error && npx nx build webinstaller'
 rm -rf "$src/node_modules"
 docker build -q --build-arg INSTALLER_VERSION="$tag" -t "ghcr.io/edulution-io/edulution-installer:$tag" "$src"
+find "${src%/*}" -mindepth 1 -maxdepth 1 ! -name "$tag" -exec rm -rf {} +
 EOF
     echo "$tag" > "$RUN/image-tag"
     info "Image ghcr.io/edulution-io/edulution-installer:$tag is ready; start it with 'vm-test install --local'."
@@ -395,7 +436,7 @@ cmd_install() {
             tag=$(cat "$RUN/image-tag")
             # As in the E2E workflow: the tag exists neither in the registry nor on GitHub, so docker
             # takes the local image and the templates come from the copied checkout.
-            command="EDULUTION_TEMPLATE_URL=file://$SRC_ON_VM/apps/public-page/public/download bash $SRC_ON_VM/apps/public-page/public/installer --version $tag"
+            command="EDULUTION_TEMPLATE_URL=file://$SRC_ON_VM/$tag/apps/public-page/public/download bash $SRC_ON_VM/$tag/apps/public-page/public/installer --version $tag"
             ;;
         *) die "unknown option '$1'" ;;
     esac
@@ -423,14 +464,50 @@ EOF
     echo "  linuxmuster server: $(vm_ip lmn), user root, password $(cat "$RUN/lmn-root-password")"
 }
 
-cmd_down() {
-    local keep_image=0 name vol had_protocol=0
-    local -a names volumes
-    case ${1:-} in
-        "") ;;
-        --keep-image) keep_image=1 ;;
-        *) die "unknown option '$1'" ;;
+# remove <kind> [<pool>] <name>: removes one libvirt object if it exists.
+remove() {
+    case $1 in
+        domain)
+            "${V[@]}" domstate "$2" > /dev/null 2>&1 || return 0
+            "${V[@]}" destroy "$2" > /dev/null 2>&1 || true
+            "${V[@]}" undefine "$2" > /dev/null
+            log_down "VM $2 stopped and removed"
+            ;;
+        volume)
+            "${V[@]}" vol-info --pool "$2" "$3" > /dev/null 2>&1 || return 0
+            "${V[@]}" vol-delete --pool "$2" "$3" > /dev/null
+            log_down "Volume $3 deleted from pool $2"
+            ;;
+        network)
+            "${V[@]}" net-info "$2" > /dev/null 2>&1 || return 0
+            "${V[@]}" net-destroy "$2" > /dev/null 2>&1 || true
+            "${V[@]}" net-undefine "$2" > /dev/null
+            log_down "Network $2 stopped and removed (bridge, dnsmasq, NAT rules)"
+            ;;
+        *) die "unknown entry in $RESOURCES: $*" ;;
     esac
+}
+
+cmd_down() {
+    local keep_image=0 all=0 name vol line rest had_protocol=0
+    local -a names volumes lines fields
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --keep-image) keep_image=1 ;;
+            --all) all=1 ;;
+            *) die "unknown option '$1'" ;;
+        esac
+        shift
+    done
+    if [[ $all -eq 0 && ! -f $RESOURCES ]]; then
+        rest=$(leftovers)
+        if [[ -n $rest ]]; then
+            local msg="this run created none of these; they belong to another run or one whose state is gone:"$'\n'"$rest"$'\n'"'vm-test down --all' removes them"
+            # Without a run there is nothing else to do; a run that stopped early still has its files to remove.
+            [[ -d $RUN ]] || die "$msg"
+            info "$msg"
+        fi
+    fi
     if [[ -f $PROTOCOL ]]; then
         had_protocol=1
         {
@@ -446,28 +523,29 @@ cmd_down() {
         [[ $had_protocol -eq 0 ]] || note_teardown "$1"
     }
 
-    mapfile -t names < <("${V[@]}" list --all --name | grep "^${PREFIX}-" || true)
-    for name in "${names[@]}"; do
-        "${V[@]}" destroy "$name" > /dev/null 2>&1 || true
-        "${V[@]}" undefine "$name" > /dev/null
-        log_down "VM $name stopped and removed"
-    done
-    # Overlays before the base image they refer to.
-    mapfile -t volumes < <("${V[@]}" vol-list "$POOL" | awk 'NR > 2 && NF { print $1 }' | grep "^${PREFIX}-" \
-        | awk -v base="$BASE_VOL" '$0 == base { last = $0; next } { print } END { if (last) print last }' || true)
-    for vol in "${volumes[@]}"; do
-        "${V[@]}" vol-delete --pool "$POOL" "$vol" > /dev/null
-        log_down "Volume $vol deleted"
-    done
-    if "${V[@]}" net-info "$PREFIX" > /dev/null 2>&1; then
-        "${V[@]}" net-destroy "$PREFIX" > /dev/null 2>&1 || true
-        "${V[@]}" net-undefine "$PREFIX" > /dev/null
-        log_down "Network $PREFIX stopped and removed (bridge, dnsmasq, NAT rules)"
+    # Last created first: VMs before their disks, overlays before the base image.
+    if [[ -f $RESOURCES ]]; then
+        mapfile -t lines < <(tac "$RESOURCES")
+        for line in "${lines[@]}"; do
+            read -r -a fields <<< "$line"
+            remove "${fields[@]}"
+        done
+    fi
+    if [[ $all -eq 1 ]]; then
+        mapfile -t names < <("${V[@]}" list --all --name | grep "^${PREFIX}-" || true)
+        for name in "${names[@]}"; do
+            remove domain "$name"
+        done
+        mapfile -t volumes < <("${V[@]}" vol-list "$POOL" | awk 'NR > 2 && NF { print $1 }' | grep "^${PREFIX}-" \
+            | awk -v base="$BASE_VOL" '$0 == base { last = $0; next } { print } END { if (last) print last }' || true)
+        for vol in "${volumes[@]}"; do
+            remove volume "$POOL" "$vol"
+        done
+        remove network "$PREFIX"
+        rest=$(leftovers)
+        [[ -z $rest ]] || die "still present: $rest"
     fi
 
-    local rest
-    rest=$(leftovers)
-    [[ -z $rest ]] || die "still present: $rest"
     if [[ -f $RUN/baseline.txt ]]; then
         snapshot > "$STATE/after.txt"
         local diff_out
@@ -504,6 +582,7 @@ cmd_down() {
 main() {
     local command=${1:-}
     [[ $# -eq 0 ]] || shift
+    [[ $command == up ]] || load_settings
     case $command in
         up) cmd_up ;;
         build) cmd_build "$@" ;;
