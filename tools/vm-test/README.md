@@ -61,13 +61,13 @@ tools/vm-test/vm-test ssh edu sudo tail -f /root/installer.log
 | SSH password | printed by `install` and `status` |
 | Admin password | any password that meets the linuxmuster rules, e.g. upper and lower case, a digit and a special character |
 
-After `linuxmuster-setup`, the root password on the lmn VM is the admin password from the web installer. `vm-test ssh lmn` uses its key and keeps working.
+After `linuxmuster-setup`, the root password on the lmn VM is the admin password from the web installer. `vm-test ssh lmn` uses its key and keeps working. When the web installer asks to restart the linuxmuster server, run `vm-test ssh lmn 'sudo systemctl reboot'`, wait until `vm-test ssh lmn true` answers again, then continue with "Next". The edulution address is `10.77.0.20`. The VMs have no QEMU guest agent channel, so the playbook's task that starts the agent waits 90 seconds and is then ignored.
 
 ## What to test
 
 The basic run: install, linuxmuster setup, edulution stack up, login works. Depending on the change, also:
 
-- **Lost connection:** close the browser tab while `linuxmuster-setup` runs and open the URL again. The page continues the same run, shows the full log once without duplicate lines, and does not start a second run. Check with `vm-test ssh lmn "sudo grep -c 'POST /api/playbook/linuxmuster.yml/start' /opt/edulution-installer/api.log"` (expected: 1).
+- **Lost connection:** close the browser tab while `linuxmuster-setup` runs and open `https://10.77.0.20/lmn-install` again (the URL with the token leads to the start page). The page continues the same run, shows the full log once without duplicate lines, and does not start a second run. Check with `vm-test ssh lmn "sudo grep -c 'POST /api/playbook/linuxmuster.yml/start' /opt/edulution-installer/api.log"` (expected: 1).
 - **Reload after the run:** reload the page after the run finished and before "Next". The configuration is fetched again. The LMN installer API stops only on "Next".
 - **Second run on the same server:** run the installer again against the installed lmn VM. `install` starts only one run per environment; for a second one, remove its log first: `vm-test ssh edu 'sudo rm /root/installer.log /root/installer.rc'`, then `vm-test install` again. Existing configuration such as `/etc/edulution-fileproxy/config.yml` stays as it was.
 - **fileproxy:** `vm-test ssh lmn "curl -sk -o /dev/null -w '%{http_code}\n' https://127.0.0.1/webdav/"` answers `401`.

@@ -216,12 +216,13 @@ write_cloud_init() {
             echo "  - [systemctl, restart, ssh]"
         fi
     } > "$dir/user-data"
+    # No set-name: linuxmuster-setup writes its netplan for the name it sees, and once the playbook has
+    # removed cloud-init only the kernel's name is left.
     cat > "$dir/network-config" <<EOF
 version: 2
 ethernets:
   nic0:
     match: {macaddress: "$(vm_mac "$role")"}
-    set-name: eth0
     addresses: [$(vm_ip "$role")/24]
     routes: [{to: default, via: ${SUBNET}.1}]
     nameservers: {addresses: [${SUBNET}.1]}
