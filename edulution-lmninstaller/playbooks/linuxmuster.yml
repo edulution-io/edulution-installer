@@ -282,38 +282,23 @@
       register: lmn_setup_done
 
     # lmn-prepare leaves the gateway as the only nameserver until Samba runs, and linuxmuster-setup's
-    # ntpd -q pool.ntp.org then waits for good without DNS. Checked before anything changes, so in
-    # Python: dig (dnsutils) comes with the packages installed later.
+    # ntpd -q pool.ntp.org then waits for good without DNS. Checked before anything changes, so not
+    # with dig, whose package comes later.
     - name: Check that the gateway answers DNS queries
       ansible.builtin.command:
         argv: [python3, -c, '{{ lmn_dns_query }}', '{{ lmn_gateway }}', pool.ntp.org]
       vars:
-        # Exit code 0: resolved, 2: answered without an address, 1: no answer. A truncated reply is
-        # asked again over TCP, as a normal client does.
+        # dnspython (from the bootstrap, with ansible) follows CNAMEs and repeats a truncated query over TCP.
         lmn_dns_query: |
-          import random, socket, struct, sys
-          server, name = sys.argv[1], sys.argv[2]
-          query = struct.pack(">HHHHHH", random.getrandbits(16), 0x0100, 1, 0, 0, 0)
-          query += b"".join(bytes([len(p)]) + p.encode() for p in name.split(".")) + b"\0\0\1\0\1"
-          def resolved(answer):
-              return answer[3] & 0x0F == 0 and struct.unpack(">H", answer[6:8])[0] > 0
-          udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-          udp.settimeout(3)
-          for _ in range(2):
-              try:
-                  udp.sendto(query, (server, 53))
-                  answer = udp.recv(512)
-              except OSError:
-                  continue
-              if answer[2] & 0x02:
-                  try:
-                      with socket.create_connection((server, 53), timeout=3) as tcp:
-                          tcp.sendall(struct.pack(">H", len(query)) + query)
-                          answer = tcp.recv(65535)[2:]
-                  except OSError:
-                      sys.exit(1)
-              sys.exit(0 if resolved(answer) else 2)
-          sys.exit(1)
+          import sys
+          import dns.exception, dns.resolver
+          resolver = dns.resolver.Resolver(configure=False)
+          resolver.nameservers = [sys.argv[1]]
+          resolver.lifetime = 6
+          try:
+              resolver.resolve(sys.argv[2], "A")
+          except dns.exception.DNSException as error:
+              sys.exit(f"{type(error).__name__}: {error}")
       register: lmn_gateway_dns
       changed_when: false
       failed_when: false
@@ -322,11 +307,10 @@
     - name: 'Stop: the gateway does not answer DNS queries'
       ansible.builtin.fail:
         msg: >-
-          The gateway {{ lmn_gateway }} {{ 'does not answer DNS queries' if lmn_gateway_dns.rc == 1
-          else 'does not resolve pool.ntp.org' }}. linuxmuster.net uses the gateway (its firewall) as
-          the server's DNS server until the setup has set up Samba, and the setup waits for good without
-          it. Let the firewall answer DNS queries, then start the installation again. linuxmuster.net
-          has not been set up on the server yet.
+          The gateway {{ lmn_gateway }} does not resolve pool.ntp.org ({{ lmn_gateway_dns.stderr | trim }}).
+          linuxmuster.net uses the gateway (its firewall) as the server's DNS server until the setup has
+          set up Samba, and the setup waits for good without it. Let the firewall answer DNS queries, then
+          start the installation again. linuxmuster.net has not been set up on the server yet.
       when: lmn_gateway_dns is not skipped and lmn_gateway_dns.rc != 0
 
     - name: Wait for the apt lock
