@@ -282,14 +282,12 @@
       register: lmn_setup_done
 
     # lmn-prepare leaves the gateway as the only nameserver until Samba runs, and linuxmuster-setup's
-    # ntpd -q pool.ntp.org then waits for good without DNS. Checked before anything changes, so not
-    # with dig, whose package comes later.
-    - name: Check that the gateway answers DNS queries
+    # ntpd -q pool.ntp.org then waits for good without DNS. Checked before the packages are installed,
+    # so with the system Python and its python3-dnspython from the bootstrap (the API's venv has none).
+    - name: Check that the gateway resolves pool.ntp.org
       ansible.builtin.command:
         argv: [/usr/bin/python3, -c, '{{ lmn_dns_query }}', '{{ lmn_gateway }}', pool.ntp.org]
       vars:
-        # The system Python: its dnspython (python3-dnspython, from the bootstrap) follows CNAMEs and repeats
-        # a truncated query over TCP. The venv Python of the installer API has none.
         lmn_dns_query: |
           import sys
           import dns.exception, dns.resolver
@@ -305,7 +303,7 @@
       failed_when: false
       when: not lmn_setup_done.stat.exists
 
-    - name: 'Stop: the gateway does not answer DNS queries'
+    - name: 'Stop: the gateway does not resolve pool.ntp.org'
       ansible.builtin.fail:
         msg: >-
           The gateway {{ lmn_gateway }} does not resolve pool.ntp.org ({{ lmn_gateway_dns.stderr | trim }}).
