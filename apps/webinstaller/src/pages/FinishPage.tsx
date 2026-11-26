@@ -66,8 +66,11 @@ const FinishPage = () => {
         }
         try {
           const response = await fetch(healthUrl);
-          // 503 = traefik not ready, 502 = api not ready, 401 = api running (auth required)
-          if (response.status === 401 || response.ok) {
+          // 503 = traefik not ready, 502 = api not ready, 401 = api running (auth required). A 200 counts
+          // only as JSON: on the same host, the web installer's own page answers 200 as well.
+          const fromApi =
+            response.status === 401 || (response.ok && response.headers.get('content-type')?.includes('json'));
+          if (fromApi) {
             clearInterval(interval);
             redirect();
           }
@@ -120,9 +123,7 @@ const FinishPage = () => {
         className="text-4xl text-muted-foreground"
       />
       <p className="text-center text-muted-foreground">{t('finish.installing')}</p>
-      <p className="text-center text-sm text-muted-foreground">
-        {t('finish.redirect')}
-      </p>
+      <p className="text-center text-sm text-muted-foreground">{t('finish.redirect')}</p>
       {showManualLink && (
         <Button
           variant="btn-security"

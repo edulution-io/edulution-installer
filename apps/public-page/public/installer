@@ -409,12 +409,12 @@ INSTALLER_TOKEN=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
 docker rm -f edulution-installer > /dev/null 2>&1
 
 # BOOTSTRAP_BRANCH nur bei --version: Images bis 2.0 laden bootstrap.sh noch von GitHub.
-INSTALLER_CONTAINER=$(INSTALLER_TOKEN="${INSTALLER_TOKEN}" docker run -d --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ \
+# Docker kann die ID ausgeben und trotzdem scheitern (z.B. Port belegt): die ID bleibt fuer das Aufraeumen.
+if ! INSTALLER_CONTAINER=$(INSTALLER_TOKEN="${INSTALLER_TOKEN}" docker run -d --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ \
     -e INSTALLER_TOKEN \
     ${EDULUTION_DOMAIN:+-e EDULUTION_DOMAIN=${EDULUTION_DOMAIN}} \
     ${EDULUTION_INSTALLER_REF:+-e BOOTSTRAP_BRANCH=${EDULUTION_INSTALLER_REF}} \
-    "${EDULUTION_INSTALLER_IMAGE}")
-if [ -z "${INSTALLER_CONTAINER}" ]; then
+    "${EDULUTION_INSTALLER_IMAGE}") || [ -z "${INSTALLER_CONTAINER}" ]; then
     echo "[!] Der Web-Installer konnte nicht gestartet werden (Fehler von Docker oben)."
     exit 1
 fi

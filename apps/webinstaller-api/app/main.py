@@ -295,7 +295,9 @@ class RequireInstallerToken:
         if scope["type"] == "http" and hasInstallerToken(connection.query_params.get("token")):
             response = exchangeTokenForSession(scope)
         elif hasInstallerToken(connection.cookies.get(SESSION_COOKIE)):
-            # Every answer counts as use, and a stream (bootstrap output, WebSocket) while it sends.
+            # A request counts as use, and a stream (bootstrap output, WebSocket) while it sends.
+            IDLE.touch()
+
             async def sendActive(message):
                 IDLE.touch()
                 await send(message)
