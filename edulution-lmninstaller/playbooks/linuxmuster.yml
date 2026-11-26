@@ -106,11 +106,6 @@
 
     # Repository (normally left unchanged)
     lmn_repo_url: 'https://package.edulution.io/'
-    # The name apt has to resolve: the proxy's if there is one, else the repository's. Checked after
-    # lmn-appliance, when the package installation fails and after linuxmuster-setup.
-    lmn_dns_probe_host: >-
-      {{ ((lmn_https_proxy if '://' in lmn_https_proxy else '//' ~ lmn_https_proxy) | urlsplit('hostname'))
-      if lmn_https_proxy | default('') else (lmn_repo_url | urlsplit('hostname')) }}
     lmn_repo_gpg_url: 'https://package.edulution.io/pub.gpg'
     # Fingerprints of the edulution archive keys; lmn-appliance gets these keys as well.
     # Both stay accepted while the repository key is rotated (edulution-package-server#50).
@@ -286,10 +281,9 @@
         path: /var/lib/linuxmuster/.setup.done
       register: lmn_setup_done
 
-    # lmn-prepare (from lmn-appliance and again in linuxmuster-setup) makes the gateway the only
-    # nameserver until Samba runs, and linuxmuster-setup syncs the time from pool.ntp.org then, an
-    # ntpd -q that waits for good without DNS. So the gateway has to answer, which is checked here,
-    # before anything on the server changes.
+    # lmn-prepare leaves the gateway as the only nameserver until Samba runs, and linuxmuster-setup's
+    # ntpd -q pool.ntp.org then waits for good without DNS. Checked before anything changes, so in
+    # Python: dig (dnsutils) comes with the packages installed later.
     - name: Check that the gateway answers DNS queries
       ansible.builtin.command:
         argv: [python3, -c, '{{ lmn_dns_query }}', '{{ lmn_gateway }}', pool.ntp.org]
@@ -546,7 +540,7 @@
       ansible.builtin.set_fact:
         lmn_cidr: "{{ (lmn_server_ip + '/' + lmn_netmask) | ansible.utils.ipaddr('prefix') }}"
 
-    # Also for servers set up before .appliance_configured was written.
+    # Its creates: file is written by nothing, so a finished server would be prepared again.
     - name: Run lmn-appliance (server profile)
       when: not lmn_setup_done.stat.exists
       ansible.builtin.shell: |
@@ -674,40 +668,20 @@
     # of this installation; linuxmuster-api7 takes its place, and
     # edulution-linbo-gui7 replaces linuxmuster-linbo-gui7 (it declares
     # Provides/Conflicts/Replaces for it).
-    - name: Install the linuxmuster server packages
-      block:
-        - name: Install the linuxmuster server packages (non-interactive)
-          ansible.builtin.apt:
-            name:
-              - linuxmuster-base7
-              - linuxmuster-linbo7
-              - linuxmuster-tools7
-              - linuxmuster-cli7
-              - linuxmuster-api7
-              - edulution-linbo-gui7
-              - sophomorix-samba
-            state: latest
-            update_cache: true
-          environment:
-            DEBIAN_FRONTEND: noninteractive
-      rescue:
-        - name: Check name resolution after the failed package installation
-          ansible.builtin.command:
-            argv: [getent, ahosts, '{{ lmn_dns_probe_host }}']
-          register: lmn_dns_after_apt
-          changed_when: false
-          failed_when: false
-
-        - name: 'Stop: the linuxmuster server packages could not be installed'
-          ansible.builtin.fail:
-            msg: >-
-              {{ ansible_failed_result.msg | default('The linuxmuster server packages could not be installed.') }}
-              {{ lmn_dns_hint if lmn_dns_after_apt.rc != 0 else '' }}
-          vars:
-            lmn_dns_hint: >-
-              Name resolution does not work on this server: {{ lmn_dns_probe_host }} does not resolve with
-              the nameserver in /etc/resolv.conf, the gateway {{ lmn_gateway }}. Make sure it answers DNS
-              queries, then start the installation again.
+    - name: Install the linuxmuster server packages (non-interactive)
+      ansible.builtin.apt:
+        name:
+          - linuxmuster-base7
+          - linuxmuster-linbo7
+          - linuxmuster-tools7
+          - linuxmuster-cli7
+          - linuxmuster-api7
+          - edulution-linbo-gui7
+          - sophomorix-samba
+        state: latest
+        update_cache: true
+      environment:
+        DEBIAN_FRONTEND: noninteractive
 
     - name: Make sure linuxmuster-setup is present
       ansible.builtin.stat:
@@ -722,16 +696,6 @@
           could not be installed. Please check 'apt-get install
           linuxmuster-base7' (repository/dependencies).
 
-    # The creates: of lmn-appliance, which nothing else writes: a later run would otherwise rewrite
-    # the network configuration. Not before here, so a run that stopped earlier (key check, packages)
-    # runs lmn-appliance again and gets its package sources back.
-    - name: Mark lmn-appliance as done
-      ansible.builtin.file:
-        path: /etc/linuxmuster/.appliance_configured
-        state: touch
-        mode: '0644'
-        modification_time: preserve
-        access_time: preserve
 
     # =========================================================================
     # LINUXMUSTER-SETUP CONFIGURATION FILE
@@ -845,7 +809,7 @@
 
     - name: Check external DNS resolution (not critical)
       ansible.builtin.command:
-        argv: [getent, ahosts, '{{ lmn_dns_probe_host }}']
+        cmd: getent hosts deb.linuxmuster.net
       register: lmn_dns_check
       until: lmn_dns_check.rc == 0
       retries: 6
@@ -856,8 +820,9 @@
     - name: Note when external DNS resolution does not work
       ansible.builtin.debug:
         msg: >-
-          External name resolution ({{ lmn_dns_probe_host }}) through the DNS forwarder
-          {{ lmn_dns_server }} does not work. If apt tasks fail afterwards,
+          External name resolution (deb.linuxmuster.net) through the DNS forwarder
+          {{ lmn_dns_server }} does not work. Behind a proxy this is often
+          normal (apt goes through the proxy). If apt tasks fail afterwards,
           please check lmn_dns_forwarder.
       when: lmn_dns_check.rc != 0
 
