@@ -281,6 +281,50 @@
       ansible.builtin.debug:
         msg: "DNS forwarder for Samba: {{ lmn_dns_server }}"
 
+    - name: Check whether linuxmuster-setup has run
+      ansible.builtin.stat:
+        path: /var/lib/linuxmuster/.setup.done
+      register: lmn_setup_done
+
+    # lmn-prepare (from lmn-appliance and again in linuxmuster-setup) makes the gateway the only
+    # nameserver until Samba runs, and linuxmuster-setup syncs the time from pool.ntp.org then, an
+    # ntpd -q that waits for good without DNS. So the gateway has to answer, which is checked here,
+    # before anything on the server changes.
+    - name: Check that the gateway answers DNS queries
+      ansible.builtin.command:
+        argv: [python3, -c, '{{ lmn_dns_query }}', '{{ lmn_gateway }}', pool.ntp.org]
+      vars:
+        # Exit code 0: resolved, 2: answered without an address, 1: no answer.
+        lmn_dns_query: |
+          import random, socket, struct, sys
+          server, name = sys.argv[1], sys.argv[2]
+          query = struct.pack(">HHHHHH", random.getrandbits(16), 0x0100, 1, 0, 0, 0)
+          query += b"".join(bytes([len(p)]) + p.encode() for p in name.split(".")) + b"\0\0\1\0\1"
+          sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+          sock.settimeout(3)
+          for _ in range(2):
+              try:
+                  sock.sendto(query, (server, 53))
+                  answer = sock.recv(512)
+              except OSError:
+                  continue
+              sys.exit(0 if answer[3] & 0x0F == 0 and struct.unpack(">H", answer[6:8])[0] else 2)
+          sys.exit(1)
+      register: lmn_gateway_dns
+      changed_when: false
+      failed_when: false
+      when: not lmn_setup_done.stat.exists
+
+    - name: 'Stop: the gateway does not answer DNS queries'
+      ansible.builtin.fail:
+        msg: >-
+          The gateway {{ lmn_gateway }} {{ 'does not answer DNS queries' if lmn_gateway_dns.rc == 1
+          else 'does not resolve pool.ntp.org' }}. linuxmuster.net uses the gateway (its firewall) as
+          the server's DNS server until the setup has set up Samba, and the setup waits for good without
+          it. Let the firewall answer DNS queries, then start the installation again. Nothing on the
+          server has been changed.
+      when: lmn_gateway_dns is not skipped and lmn_gateway_dns.rc != 0
+
     - name: Wait for the apt lock
       ansible.builtin.shell: |
         while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
@@ -502,11 +546,6 @@
       ansible.builtin.set_fact:
         lmn_cidr: "{{ (lmn_server_ip + '/' + lmn_netmask) | ansible.utils.ipaddr('prefix') }}"
 
-    - name: Check whether linuxmuster-setup has run
-      ansible.builtin.stat:
-        path: /var/lib/linuxmuster/.setup.done
-      register: lmn_setup_done
-
     # Also for servers set up before .appliance_configured was written.
     - name: Run lmn-appliance (server profile)
       when: not lmn_setup_done.stat.exists
@@ -527,36 +566,6 @@
       changed_when: lmn_appliance_result.rc == 0
       async: 1800
       poll: 30
-
-    # lmn-prepare makes the gateway the only nameserver: in resolv.conf at once, in netplan from the
-    # next restart. Until linuxmuster-setup makes the server its own DNS, the server the host used
-    # before goes first, so a gateway that answers no DNS does not stop the apt tasks.
-    - name: Keep the previous DNS server until linuxmuster-setup
-      when: not lmn_setup_done.stat.exists and lmn_dns_server != lmn_gateway
-      block:
-        # follow: resolv.conf is usually a link into /run/systemd/resolve, which lmn-prepare
-        # writes through as well.
-        - name: Put the DNS forwarder before the gateway in resolv.conf
-          ansible.builtin.copy:
-            dest: /etc/resolv.conf
-            follow: true
-            content: |
-              search {{ lmn_domainname }}
-              nameserver {{ lmn_dns_server }}
-              nameserver {{ lmn_gateway }}
-            mode: '0644'
-
-        - name: Find the netplan configuration of lmn-prepare
-          ansible.builtin.stat:
-            path: /etc/netplan/01-netcfg.yaml
-          register: lmn_netplan
-
-        - name: Put the DNS forwarder before the gateway in netplan
-          ansible.builtin.replace:
-            path: /etc/netplan/01-netcfg.yaml
-            regexp: '(nameservers:\s*addresses:\s*\[)[^\]]*(\])'
-            replace: '\g<1>{{ lmn_dns_server }}, {{ lmn_gateway }}\g<2>'
-          when: lmn_netplan.stat.exists
 
     # =========================================================================
     # REPOSITORY KEY AFTER LMN-APPLIANCE
@@ -697,8 +706,8 @@
           vars:
             lmn_dns_hint: >-
               Name resolution does not work on this server: {{ lmn_dns_probe_host }} does not resolve with
-              the nameservers in /etc/resolv.conf. Make sure one of them answers DNS queries, or name a
-              working one with lmn_dns_forwarder, then start the installation again.
+              the nameserver in /etc/resolv.conf, the gateway {{ lmn_gateway }}. Make sure it answers DNS
+              queries, then start the installation again.
 
     - name: Make sure linuxmuster-setup is present
       ansible.builtin.stat:

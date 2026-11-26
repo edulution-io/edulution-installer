@@ -249,7 +249,7 @@ All variables have default values. Through the API, the settings in the tables b
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `lmn_dns_forwarder` | `auto` | DNS forwarder for Samba; `auto` takes the host's resolver. Until linuxmuster-setup it is also the first nameserver, before the gateway |
+| `lmn_dns_forwarder` | `auto` | DNS forwarder for Samba; `auto` takes the host's resolver |
 
 ### Installation next to edulution
 
