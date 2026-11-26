@@ -260,9 +260,11 @@ STUB_POOL_TYPE=logical run_vmtest up
 expect_case "up refuses a pool that is not a directory" not_dir_pool
 
 bad_subnet() { [[ $RC -ne 0 ]] && grep -q "three octets" "$WORK/out"; }
-reset
-VM_TEST_SUBNET=10.78 run_vmtest up
-expect_case "up refuses a malformed VM_TEST_SUBNET" bad_subnet
+for value in 10.78 10.300.0; do
+    reset
+    VM_TEST_SUBNET=$value run_vmtest up
+    expect_case "up refuses VM_TEST_SUBNET=$value" bad_subnet
+done
 
 # prepare_image: a cached cloud image and the checksum list that up fetches.
 prepare_image() {
@@ -290,6 +292,12 @@ prepare_image
 STUB_SUMS="$WORK/sums" run_vmtest up
 expect_case "up records every object right after creating it" recorded_up
 
+gateway_with_dns() {
+    [[ $RC -eq 0 ]] && ! grep -q "<dns" "$RUN_DIR/network.xml" \
+        && grep -q "nameservers: {addresses: \[10.77.0.1\]}" "$RUN_DIR/seed-lmn/network-config"
+}
+expect_case "without VM_TEST_DNS the gateway answers DNS" gateway_with_dns
+
 teardown_order() {
     [[ $RC -eq 0 ]] && [[ -z $(find "$WORK/virt" -type f) ]] \
         && [[ $(line_of "undefine $edu_uuid") -lt $(line_of "vol-delete.*edu-seed") ]] \
@@ -313,6 +321,22 @@ grep -q "^network edutest" "$RUN_DIR/resources" || up_rc=0
 run_vmtest down
 [[ $up_rc -ne 0 ]] || RC=1
 expect_case "an up that stops at net-start has recorded the network, and down removes it" network_failed
+
+gateway_without_dns() {
+    [[ $RC -eq 0 ]] && grep -q "<dns enable='no'/>" "$RUN_DIR/network.xml" \
+        && grep -q "nameservers: {addresses: \[9.9.9.9\]}" "$RUN_DIR/seed-lmn/network-config"
+}
+reset
+prepare_image
+STUB_SUMS="$WORK/sums" VM_TEST_DNS=9.9.9.9 run_vmtest up
+expect_case "VM_TEST_DNS gives the VMs that server and turns DNS off on the gateway" gateway_without_dns
+
+bad_dns() { [[ $RC -ne 0 ]] && grep -q "IPv4 address" "$WORK/out" && [[ ! -e $RUN_DIR ]]; }
+for value in dns.example 999.9.9.9 9.9.9 9.9.9.9. $'9.9.9.9\nbad'; do
+    reset
+    VM_TEST_DNS=$value run_vmtest up
+    expect_case "up refuses VM_TEST_DNS=${value@Q}" bad_dns
+done
 
 failed_rebuild() {
     [[ $RC -eq 0 ]] && [[ $(cut -d' ' -f1 "$RUN_DIR/image") == "edutest-$COMMIT_A" ]] \
