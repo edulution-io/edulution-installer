@@ -46,6 +46,7 @@ from pathlib import Path
 
 from envtools import generateSecret, openPrivate, envValue
 from activity import IdleWatch
+from update.installation import atomic_write
 
 
 BASE_PATH = Path(__file__).parent
@@ -53,6 +54,8 @@ STATIC_PATH = BASE_PATH / "static"
 
 # Container path of the mounted install directory, as for every other file this installer writes.
 EDULUTION_DIRECTORY = "/edulution-ui"
+# The installer script takes the installation over once this file exists.
+EDULUTION_ENV_FILE = Path(EDULUTION_DIRECTORY) / "edulution.env"
 
 INSTALLER_VERSION = os.environ.get("INSTALLER_VERSION", "dev")
 # Entered in the installer script (--domain or its prompt); prefills the edulution address.
@@ -292,9 +295,7 @@ class RequireInstallerToken:
         if scope["type"] == "http" and hasInstallerToken(connection.query_params.get("token")):
             response = exchangeTokenForSession(scope)
         elif hasInstallerToken(connection.cookies.get(SESSION_COOKIE)):
-            IDLE.touch()
-
-            # A stream (bootstrap output, WebSocket) counts as use while it sends.
+            # Every answer counts as use, and a stream (bootstrap output, WebSocket) while it sends.
             async def sendActive(message):
                 IDLE.touch()
                 await send(message)
@@ -647,7 +648,7 @@ def uploadCertificate(cert: UploadFile = File(...), key: UploadFile = File(...),
         return {"status": False, "message": "Unbekannter Fehler!"}
 
 
-# A second tab must neither write a half file nor replace the one the script took over.
+# A second tab must not replace the configuration the script already took over.
 FINISH_LOCK = threading.Lock()
 
 
@@ -664,7 +665,7 @@ def finish(data: Data = Depends(getData)):
         return {"status": False, "message": "Konfiguration unvollständig"}
 
     with FINISH_LOCK:
-        if not os.path.exists(f"{EDULUTION_DIRECTORY}/edulution.env"):
+        if not EDULUTION_ENV_FILE.exists():
             createEdulutionEnvFile(data)
     return {"status": True, "message": "Installation gestartet"}
 
@@ -1302,9 +1303,4 @@ tls:
             f.write(cert_traefik)
 
     # Last and in one step: the installer script takes over as soon as the file exists.
-    env_path = f"{EDULUTION_DIRECTORY}/edulution.env"
-    with openPrivate(env_path + ".new") as f:
-        f.write(environment_file)
-    os.replace(env_path + ".new", env_path)
-
-    # Shutdown is now triggered explicitly via POST /api/shutdown
+    atomic_write(EDULUTION_ENV_FILE, environment_file, mode=0o600)

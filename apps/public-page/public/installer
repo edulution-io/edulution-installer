@@ -427,7 +427,7 @@ until curl --output /dev/null --silent --insecure --get "https://localhost:443" 
 
     if [ $attempt -ge 60 ]; then
         echo "[!] Der Web-Installer konnte nicht gestartet werden!"
-        docker logs edulution-installer
+        docker logs "${INSTALLER_CONTAINER}"
         exit 1
     fi
 
@@ -468,7 +468,7 @@ EOF
 echo "[*] Warte auf Abschluss der Web-Installation..."
 while [ ! -f "${DIRECTORY}edulution.env" ]; do
     if [ "$(docker inspect -f '{{.State.Running}}' "${INSTALLER_CONTAINER}" 2>/dev/null)" != true ]; then
-        # The web installer ends after writing the file; that is a handover, not a failure.
+        # Endet der Web-Installer nach dem Schreiben der Datei, ist das die Uebergabe, kein Fehler.
         [ ! -f "${DIRECTORY}edulution.env" ] || break
         echo "[!] Der Web-Installer läuft nicht mehr, der Grund steht am Ende seines Protokolls:"
         docker logs "${INSTALLER_CONTAINER}"
@@ -479,8 +479,8 @@ while [ ! -f "${DIRECTORY}edulution.env" ]; do
 done
 
 echo "[*] Web-Installation abgeschlossen! Fahre mit der Konfiguration fort..."
-docker rm -f "${INSTALLER_CONTAINER}" > /dev/null 2>&1
-remove_ssh_installer_access
+cleanup_installer
+INSTALLER_CONTAINER=""
 
 echo "[*] Starte den Authentifizierungserver um die Einstellungen festzulegen..."
 

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner, faCircleXmark } from '@fortawesome/free-solid-svg-icons';
 import { Button } from '@edulution-io/ui-kit';
-import { startInstallation, shutdownInstaller } from '../api/installerApi';
+import { startInstallation } from '../api/installerApi';
 import type { ApiError } from '../api/installerApi';
 import useInstallerStore from '../store/useInstallerStore';
 
@@ -17,13 +17,20 @@ const FinishPage = () => {
   const [error, setError] = useState('');
   const { t } = useTranslation();
   const redirectedRef = useRef(false);
+  // After a refused finish there is no edulution to wait for or go to.
+  const failedRef = useRef(false);
 
   const edulutionDomain = useInstallerStore((s) => s.edulutionExternalDomain);
   const resetStore = useInstallerStore((s) => s.reset);
   const edulutionUrl = `https://${edulutionDomain || window.location.hostname}`;
 
+  const fail = (message: string) => {
+    failedRef.current = true;
+    setError(message);
+  };
+
   const redirect = () => {
-    if (redirectedRef.current) return;
+    if (redirectedRef.current || failedRef.current) return;
     redirectedRef.current = true;
     resetStore();
     window.location.href = edulutionUrl;
@@ -34,29 +41,16 @@ const FinishPage = () => {
     setStarted(true);
 
     const run = async () => {
+      // The installer script removes the web installer once the configuration is written.
       try {
         const response = await startInstallation();
-        if (!response.status) {
-          // No edulution to go to: the timers below must not redirect.
-          redirectedRef.current = true;
-          setError(response.message);
-          return;
-        }
+        if (!response.status) fail(response.message);
       } catch (err) {
         // An answer with an error status is a definite failure. A lost connection may follow a finish
         // that went through, as the script removes the web installer then; the page keeps waiting.
         const { status } = err as Partial<ApiError>;
-        if (status) {
-          redirectedRef.current = true;
-          setError(t('finish.serverError', { status }));
-        }
-        return;
+        if (status) fail(t('finish.serverError', { status }));
       }
-
-      // Files are written synchronously by /api/finish, trigger shutdown immediately
-      void shutdownInstaller().catch(() => {
-        // Shutdown may fail if server already terminated
-      });
     };
     void run();
   }, [started]);
@@ -66,6 +60,10 @@ const FinishPage = () => {
     const healthUrl = `${edulutionUrl}/edu-api/health/check`;
     const pollTimeout = setTimeout(() => {
       const interval = setInterval(async () => {
+        if (failedRef.current) {
+          clearInterval(interval);
+          return;
+        }
         try {
           const response = await fetch(healthUrl);
           // 503 = traefik not ready, 502 = api not ready, 401 = api running (auth required)
