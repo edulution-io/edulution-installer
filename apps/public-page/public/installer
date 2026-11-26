@@ -128,6 +128,13 @@ if ! echo "$cpu_flags" | grep -qwE 'avx'; then
     exit 1
 fi
 
+# Ein zweiter Lauf wuerde den Web-Installer des ersten entfernen.
+exec 9> /run/edulution-installer.lock
+if ! flock -n 9; then
+  echo "[!] Das Installationsskript läuft bereits."
+  exit 1
+fi
+
 if [ -f "${DIRECTORY}edulution.env" ]; then
   echo "[!] Die edulution UI scheint bereits installiert zu sein. Bitte prüfe das Verzeichnis '$DIRECTORY'!"
   exit 1
@@ -257,7 +264,13 @@ remove_ssh_installer_access() {
         restart_ssh
     fi
 }
-trap remove_ssh_installer_access EXIT
+# Ohne das Skript uebernimmt niemand die Konfiguration des Web-Installers: Er endet mit ihm.
+INSTALLER_CONTAINER=""
+cleanup_installer() {
+    [ -z "${INSTALLER_CONTAINER}" ] || docker rm -f "${INSTALLER_CONTAINER}" > /dev/null 2>&1
+    remove_ssh_installer_access
+}
+trap cleanup_installer EXIT
 # Bei SIGHUP (abgebrochene SSH-Sitzung) und SIGTERM laeuft die EXIT-Trap sonst nicht zuverlaessig.
 trap 'exit 1' HUP TERM
 
@@ -392,12 +405,19 @@ docker pull "${EDULUTION_INSTALLER_IMAGE}" 2>&1 > /dev/zero
 # Uebergabe per Umgebung, damit der Token nicht in der Prozessliste steht.
 INSTALLER_TOKEN=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
 
+# Ein Web-Installer eines abgebrochenen Laufs belegt sonst Port und Namen.
+docker rm -f edulution-installer > /dev/null 2>&1
+
 # BOOTSTRAP_BRANCH nur bei --version: Images bis 2.0 laden bootstrap.sh noch von GitHub.
-INSTALLER_TOKEN="${INSTALLER_TOKEN}" docker run -d --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ \
+# Docker kann die ID ausgeben und trotzdem scheitern (z.B. Port belegt): die ID bleibt fuer das Aufraeumen.
+if ! INSTALLER_CONTAINER=$(INSTALLER_TOKEN="${INSTALLER_TOKEN}" docker run -d --name edulution-installer -p 443:8000 -v ${DIRECTORY}:/edulution-ui/ \
     -e INSTALLER_TOKEN \
     ${EDULUTION_DOMAIN:+-e EDULUTION_DOMAIN=${EDULUTION_DOMAIN}} \
     ${EDULUTION_INSTALLER_REF:+-e BOOTSTRAP_BRANCH=${EDULUTION_INSTALLER_REF}} \
-    "${EDULUTION_INSTALLER_IMAGE}" 2>&1 > /dev/zero
+    "${EDULUTION_INSTALLER_IMAGE}") || [ -z "${INSTALLER_CONTAINER}" ]; then
+    echo "[!] Der Web-Installer konnte nicht gestartet werden (Fehler von Docker oben)."
+    exit 1
+fi
 
 # Warte bis der Installer bereit ist
 attempt=0
@@ -407,7 +427,7 @@ until curl --output /dev/null --silent --insecure --get "https://localhost:443" 
 
     if [ $attempt -ge 60 ]; then
         echo "[!] Der Web-Installer konnte nicht gestartet werden!"
-        docker logs edulution-installer
+        docker logs "${INSTALLER_CONTAINER}"
         exit 1
     fi
 
@@ -443,21 +463,15 @@ cat <<EOF
 
 EOF
 
-# Warte bis die Konfiguration vom Web-Installer erstellt wurde
+# Warte bis die Konfiguration vom Web-Installer erstellt wurde. Ohne feste Grenze: Der Web-Installer
+# beendet sich selbst, wenn er lange nicht benutzt wird.
 echo "[*] Warte auf Abschluss der Web-Installation..."
-attempt=0
 while [ ! -f "${DIRECTORY}edulution.env" ]; do
-    attempt=$((attempt+1))
-
-    # Prüfe ob Container noch läuft
-    if ! docker ps | grep -q edulution-installer; then
-        echo "[!] Der Web-Installer wurde unerwartet beendet!"
-        docker logs edulution-installer
-        exit 1
-    fi
-
-    if [ $attempt -ge 1200 ]; then
-        echo "[!] Timeout: Die Installation wurde nicht innerhalb von 60 Minuten abgeschlossen!"
+    if [ "$(docker inspect -f '{{.State.Running}}' "${INSTALLER_CONTAINER}" 2>/dev/null)" != true ]; then
+        # Endet der Web-Installer nach dem Schreiben der Datei, ist das die Uebergabe, kein Fehler.
+        [ ! -f "${DIRECTORY}edulution.env" ] || break
+        echo "[!] Der Web-Installer läuft nicht mehr, der Grund steht am Ende seines Protokolls:"
+        docker logs "${INSTALLER_CONTAINER}"
         exit 1
     fi
 
@@ -465,8 +479,8 @@ while [ ! -f "${DIRECTORY}edulution.env" ]; do
 done
 
 echo "[*] Web-Installation abgeschlossen! Fahre mit der Konfiguration fort..."
-docker rm -f edulution-installer 2>&1 > /dev/zero
-remove_ssh_installer_access
+cleanup_installer
+INSTALLER_CONTAINER=""
 
 echo "[*] Starte den Authentifizierungserver um die Einstellungen festzulegen..."
 

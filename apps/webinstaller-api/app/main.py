@@ -45,6 +45,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from envtools import generateSecret, openPrivate, envValue
+from activity import IdleWatch
+from update.installation import atomic_write
 
 
 BASE_PATH = Path(__file__).parent
@@ -52,6 +54,8 @@ STATIC_PATH = BASE_PATH / "static"
 
 # Container path of the mounted install directory, as for every other file this installer writes.
 EDULUTION_DIRECTORY = "/edulution-ui"
+# The installer script takes the installation over once this file exists.
+EDULUTION_ENV_FILE = Path(EDULUTION_DIRECTORY) / "edulution.env"
 
 INSTALLER_VERSION = os.environ.get("INSTALLER_VERSION", "dev")
 # Entered in the installer script (--domain or its prompt); prefills the edulution address.
@@ -249,6 +253,8 @@ if not INSTALLER_TOKEN:
     print(f"INSTALLER_TOKEN nicht gesetzt, Zugang ueber ?token={INSTALLER_TOKEN}", flush=True)
 
 SESSION_COOKIE = "edulution_installer_session"
+IDLE = IdleWatch()
+IDLE.start()
 
 
 def hasInstallerToken(value):
@@ -289,7 +295,14 @@ class RequireInstallerToken:
         if scope["type"] == "http" and hasInstallerToken(connection.query_params.get("token")):
             response = exchangeTokenForSession(scope)
         elif hasInstallerToken(connection.cookies.get(SESSION_COOKIE)):
-            return await self.app(scope, receive, send)
+            # A request counts as use, and a stream (bootstrap output, WebSocket) while it sends.
+            IDLE.touch()
+
+            async def sendActive(message):
+                IDLE.touch()
+                await send(message)
+
+            return await self.app(scope, receive, sendActive)
         elif scope["type"] == "websocket":
             response = WebSocketClose(code=1008)
         elif connection.url.path.startswith("/api/"):
@@ -637,6 +650,10 @@ def uploadCertificate(cert: UploadFile = File(...), key: UploadFile = File(...),
         return {"status": False, "message": "Unbekannter Fehler!"}
 
 
+# A second tab must not replace the configuration the script already took over.
+FINISH_LOCK = threading.Lock()
+
+
 @api.post("/finish")
 def finish(data: Data = Depends(getData)):
     if (
@@ -649,7 +666,9 @@ def finish(data: Data = Depends(getData)):
     ):
         return {"status": False, "message": "Konfiguration unvollständig"}
 
-    createEdulutionEnvFile(data)
+    with FINISH_LOCK:
+        if not EDULUTION_ENV_FILE.exists():
+            createEdulutionEnvFile(data)
     return {"status": True, "message": "Installation gestartet"}
 
 
@@ -1178,9 +1197,6 @@ EDULUTION_ONLYOFFICE_POSTGRES_PASSWORD={onlyoffice_postgres_secret}
         environment_file += "ACME_DNS_API_BASE=https://acme-dns.netzint.de\n"
         environment_file += "ACME_DNS_STORAGE_PATH=/etc/traefik/ssl/acmedns.json\n"
 
-    with openPrivate("/edulution-ui/edulution.env") as f:
-        f.write(environment_file)
-
     lmn_api_traefik = f"""
 http:
   routers:
@@ -1288,4 +1304,5 @@ tls:
         with open("/edulution-ui/data/traefik/config/cert.yml", "w") as f:
             f.write(cert_traefik)
 
-    # Shutdown is now triggered explicitly via POST /api/shutdown
+    # Last and in one step: the installer script takes over as soon as the file exists.
+    atomic_write(EDULUTION_ENV_FILE, environment_file, mode=0o600)

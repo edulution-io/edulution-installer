@@ -331,6 +331,3 @@ export const getLmnOutput = (since: number, signal?: AbortSignal): Promise<LmnOu
 
 export const shutdownLmnInstaller = (): Promise<StatusResponse> =>
   apiFetch<StatusResponse>('/api/lmn/shutdown', { method: 'POST' });
-
-export const shutdownInstaller = (): Promise<StatusResponse> =>
-  apiFetch<StatusResponse>('/api/shutdown', { method: 'POST' });
