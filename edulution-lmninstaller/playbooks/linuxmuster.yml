@@ -286,9 +286,10 @@
     # with dig, whose package comes later.
     - name: Check that the gateway answers DNS queries
       ansible.builtin.command:
-        argv: [python3, -c, '{{ lmn_dns_query }}', '{{ lmn_gateway }}', pool.ntp.org]
+        argv: [/usr/bin/python3, -c, '{{ lmn_dns_query }}', '{{ lmn_gateway }}', pool.ntp.org]
       vars:
-        # dnspython (from the bootstrap, with ansible) follows CNAMEs and repeats a truncated query over TCP.
+        # The system Python: its dnspython (python3-dnspython, from the bootstrap) follows CNAMEs and repeats
+        # a truncated query over TCP. The venv Python of the installer API has none.
         lmn_dns_query: |
           import sys
           import dns.exception, dns.resolver
