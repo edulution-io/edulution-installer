@@ -288,23 +288,31 @@
       ansible.builtin.command:
         argv: [python3, -c, '{{ lmn_dns_query }}', '{{ lmn_gateway }}', pool.ntp.org]
       vars:
-        # Exit code 0: resolved (or truncated, which a client completes over TCP), 2: answered without
-        # an address, 1: no answer.
+        # Exit code 0: resolved, 2: answered without an address, 1: no answer. A truncated reply is
+        # asked again over TCP, as a normal client does.
         lmn_dns_query: |
           import random, socket, struct, sys
           server, name = sys.argv[1], sys.argv[2]
           query = struct.pack(">HHHHHH", random.getrandbits(16), 0x0100, 1, 0, 0, 0)
           query += b"".join(bytes([len(p)]) + p.encode() for p in name.split(".")) + b"\0\0\1\0\1"
-          sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-          sock.settimeout(3)
+          def resolved(answer):
+              return answer[3] & 0x0F == 0 and struct.unpack(">H", answer[6:8])[0] > 0
+          udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+          udp.settimeout(3)
           for _ in range(2):
               try:
-                  sock.sendto(query, (server, 53))
-                  answer = sock.recv(512)
+                  udp.sendto(query, (server, 53))
+                  answer = udp.recv(512)
               except OSError:
                   continue
-              resolved = answer[3] & 0x0F == 0 and (answer[2] & 0x02 or struct.unpack(">H", answer[6:8])[0])
-              sys.exit(0 if resolved else 2)
+              if answer[2] & 0x02:
+                  try:
+                      with socket.create_connection((server, 53), timeout=3) as tcp:
+                          tcp.sendall(struct.pack(">H", len(query)) + query)
+                          answer = tcp.recv(65535)[2:]
+                  except OSError:
+                      sys.exit(1)
+              sys.exit(0 if resolved(answer) else 2)
           sys.exit(1)
       register: lmn_gateway_dns
       changed_when: false
