@@ -288,7 +288,8 @@
       ansible.builtin.command:
         argv: [python3, -c, '{{ lmn_dns_query }}', '{{ lmn_gateway }}', pool.ntp.org]
       vars:
-        # Exit code 0: resolved, 2: answered without an address, 1: no answer.
+        # Exit code 0: resolved (or truncated, which a client completes over TCP), 2: answered without
+        # an address, 1: no answer.
         lmn_dns_query: |
           import random, socket, struct, sys
           server, name = sys.argv[1], sys.argv[2]
@@ -302,7 +303,8 @@
                   answer = sock.recv(512)
               except OSError:
                   continue
-              sys.exit(0 if answer[3] & 0x0F == 0 and struct.unpack(">H", answer[6:8])[0] else 2)
+              resolved = answer[3] & 0x0F == 0 and (answer[2] & 0x02 or struct.unpack(">H", answer[6:8])[0])
+              sys.exit(0 if resolved else 2)
           sys.exit(1)
       register: lmn_gateway_dns
       changed_when: false
@@ -315,8 +317,8 @@
           The gateway {{ lmn_gateway }} {{ 'does not answer DNS queries' if lmn_gateway_dns.rc == 1
           else 'does not resolve pool.ntp.org' }}. linuxmuster.net uses the gateway (its firewall) as
           the server's DNS server until the setup has set up Samba, and the setup waits for good without
-          it. Let the firewall answer DNS queries, then start the installation again. Nothing on the
-          server has been changed.
+          it. Let the firewall answer DNS queries, then start the installation again. linuxmuster.net
+          has not been set up on the server yet.
       when: lmn_gateway_dns is not skipped and lmn_gateway_dns.rc != 0
 
     - name: Wait for the apt lock
