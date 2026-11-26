@@ -66,10 +66,10 @@ const FinishPage = () => {
         }
         try {
           const response = await fetch(healthUrl);
-          // 503 = traefik not ready, 502 = api not ready, 401 = api running (auth required). A 200 counts
-          // only as JSON: on the same host, the web installer's own page answers 200 as well.
+          // 503 = traefik not ready, 502 = api not ready, 401 = api running (auth required). Only as JSON:
+          // on the same host, the web installer itself answers 200 (its page) or 401 (without a session).
           const fromApi =
-            response.status === 401 || (response.ok && response.headers.get('content-type')?.includes('json'));
+            (response.status === 401 || response.ok) && response.headers.get('content-type')?.includes('json');
           if (fromApi) {
             clearInterval(interval);
             redirect();
