@@ -413,7 +413,11 @@ INSTALLER_CONTAINER=$(INSTALLER_TOKEN="${INSTALLER_TOKEN}" docker run -d --name 
     -e INSTALLER_TOKEN \
     ${EDULUTION_DOMAIN:+-e EDULUTION_DOMAIN=${EDULUTION_DOMAIN}} \
     ${EDULUTION_INSTALLER_REF:+-e BOOTSTRAP_BRANCH=${EDULUTION_INSTALLER_REF}} \
-    "${EDULUTION_INSTALLER_IMAGE}" 2>/dev/null)
+    "${EDULUTION_INSTALLER_IMAGE}")
+if [ -z "${INSTALLER_CONTAINER}" ]; then
+    echo "[!] Der Web-Installer konnte nicht gestartet werden (Fehler von Docker oben)."
+    exit 1
+fi
 
 # Warte bis der Installer bereit ist
 attempt=0
@@ -464,6 +468,8 @@ EOF
 echo "[*] Warte auf Abschluss der Web-Installation..."
 while [ ! -f "${DIRECTORY}edulution.env" ]; do
     if [ "$(docker inspect -f '{{.State.Running}}' "${INSTALLER_CONTAINER}" 2>/dev/null)" != true ]; then
+        # The web installer ends after writing the file; that is a handover, not a failure.
+        [ ! -f "${DIRECTORY}edulution.env" ] || break
         echo "[!] Der Web-Installer läuft nicht mehr, der Grund steht am Ende seines Protokolls:"
         docker logs "${INSTALLER_CONTAINER}"
         exit 1
@@ -473,7 +479,7 @@ while [ ! -f "${DIRECTORY}edulution.env" ]; do
 done
 
 echo "[*] Web-Installation abgeschlossen! Fahre mit der Konfiguration fort..."
-docker rm -f edulution-installer 2>&1 > /dev/zero
+docker rm -f "${INSTALLER_CONTAINER}" > /dev/null 2>&1
 remove_ssh_installer_access
 
 echo "[*] Starte den Authentifizierungserver um die Einstellungen festzulegen..."

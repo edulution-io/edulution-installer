@@ -647,6 +647,10 @@ def uploadCertificate(cert: UploadFile = File(...), key: UploadFile = File(...),
         return {"status": False, "message": "Unbekannter Fehler!"}
 
 
+# A second tab must neither write a half file nor replace the one the script took over.
+FINISH_LOCK = threading.Lock()
+
+
 @api.post("/finish")
 def finish(data: Data = Depends(getData)):
     if (
@@ -659,7 +663,9 @@ def finish(data: Data = Depends(getData)):
     ):
         return {"status": False, "message": "Konfiguration unvollständig"}
 
-    createEdulutionEnvFile(data)
+    with FINISH_LOCK:
+        if not os.path.exists(f"{EDULUTION_DIRECTORY}/edulution.env"):
+            createEdulutionEnvFile(data)
     return {"status": True, "message": "Installation gestartet"}
 
 

@@ -43,14 +43,14 @@ const FinishPage = () => {
           return;
         }
       } catch (err) {
-        // An answer with an error status is a definite failure; a lost connection may follow a finish
-        // that went through, as the script removes the web installer once edulution.env exists.
+        // An answer with an error status is a definite failure. A lost connection may follow a finish
+        // that went through, as the script removes the web installer then; the page keeps waiting.
         const { status } = err as Partial<ApiError>;
         if (status) {
           redirectedRef.current = true;
           setError(t('finish.serverError', { status }));
-          return;
         }
+        return;
       }
 
       // Files are written synchronously by /api/finish, trigger shutdown immediately
