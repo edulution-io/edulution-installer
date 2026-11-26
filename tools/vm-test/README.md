@@ -99,6 +99,7 @@ For a browser test with Playwright, ignore certificate errors: the web installer
 
 - **60 minutes:** the `installer` script waits at most 60 minutes for the web installer to finish (#175). A run with the linuxmuster setup uses much of that time on these VMs, and a second run against the same server can exceed it. Start the web installer soon after `install`.
 - **One environment per host:** the names and the network are fixed. Run `down` before the next `up`; `up` refuses if anything named `edutest` exists.
+- **Gateway without DNS:** `VM_TEST_DNS=9.9.9.9 vm-test up` turns DNS off on the gateway (10.77.0.1) and gives the VMs that server instead, as on a network whose firewall answers no DNS (#178): the linuxmuster installation then stops with a message before it changes the server. The server has to be reachable from the host.
 - **Network in use:** `up` refuses if a route on the host covers 10.77.0.0/24 or lies inside it (VPN, other libvirt network); choose another with `VM_TEST_SUBNET=10.78.0`. The run keeps its subnet and `VM_TEST_POOL`, so the later commands need neither.
 - **No virt-install:** `up` defines the VMs with `virsh` and its own seed ISO. `virt-install --cloud-init` needs `meta-data`, or cloud-init does not run. It also creates the persistent pool `boot-scratch` and files under `~/.cache/virt-manager`.
 - **Host keys:** `vm-test ssh` does not check or store host keys. The VMs exist only in the local NAT network, and `linuxmuster-setup` replaces the keys of the lmn VM.

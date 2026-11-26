@@ -52,7 +52,7 @@ install_system_packages() {
 
     if command -v apt-get &> /dev/null; then
         apt-get update -qq
-        apt-get install -y -qq python3 python3-pip python3-venv ansible curl openssl
+        apt-get install -y -qq python3 python3-pip python3-venv python3-dnspython ansible curl openssl
     elif command -v dnf &> /dev/null; then
         dnf install -y -q python3 python3-pip ansible curl openssl
     elif command -v yum &> /dev/null; then

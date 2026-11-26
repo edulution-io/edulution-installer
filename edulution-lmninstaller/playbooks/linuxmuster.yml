@@ -265,14 +265,52 @@
       changed_when: false
       failed_when: false
 
+    # Its own name: an 'auto' given with -e outranks set_fact.
     - name: Determine the DNS forwarder (auto -> detected upstream, otherwise 9.9.9.9)
       ansible.builtin.set_fact:
-        lmn_dns_forwarder: "{{ (lmn_detected_dns.stdout | default('') | trim) or '9.9.9.9' }}"
-      when: lmn_dns_forwarder == 'auto'
+        lmn_dns_server: >-
+          {{ ((lmn_detected_dns.stdout | default('') | trim) or '9.9.9.9')
+          if lmn_dns_forwarder == 'auto' else lmn_dns_forwarder }}
 
     - name: Show the DNS forwarder in use
       ansible.builtin.debug:
-        msg: "DNS forwarder for Samba: {{ lmn_dns_forwarder }}"
+        msg: "DNS forwarder for Samba: {{ lmn_dns_server }}"
+
+    - name: Check whether linuxmuster-setup has run
+      ansible.builtin.stat:
+        path: /var/lib/linuxmuster/.setup.done
+      register: lmn_setup_done
+
+    # lmn-prepare leaves the gateway as the only nameserver until Samba runs, and linuxmuster-setup's
+    # ntpd -q pool.ntp.org then waits for good without DNS. Checked before the packages are installed,
+    # so with the system Python and its python3-dnspython from the bootstrap (the API's venv has none).
+    - name: Check that the gateway resolves pool.ntp.org
+      ansible.builtin.command:
+        argv: [/usr/bin/python3, -c, '{{ lmn_dns_query }}', '{{ lmn_gateway }}', pool.ntp.org]
+      vars:
+        lmn_dns_query: |
+          import sys
+          import dns.exception, dns.resolver
+          resolver = dns.resolver.Resolver(configure=False)
+          resolver.nameservers = [sys.argv[1]]
+          resolver.lifetime = 6
+          try:
+              resolver.resolve(sys.argv[2], "A")
+          except dns.exception.DNSException as error:
+              sys.exit(f"{type(error).__name__}: {error}")
+      register: lmn_gateway_dns
+      changed_when: false
+      failed_when: false
+      when: not lmn_setup_done.stat.exists
+
+    - name: 'Stop: the gateway does not resolve pool.ntp.org'
+      ansible.builtin.fail:
+        msg: >-
+          The gateway {{ lmn_gateway }} does not resolve pool.ntp.org ({{ lmn_gateway_dns.stderr | trim }}).
+          linuxmuster.net uses the gateway (its firewall) as the server's DNS server until the setup has
+          set up Samba, and the setup waits for good without it. Let the firewall answer DNS queries, then
+          start the installation again. linuxmuster.net has not been set up on the server yet.
+      when: lmn_gateway_dns is not skipped and lmn_gateway_dns.rc != 0
 
     - name: Wait for the apt lock
       ansible.builtin.shell: |
@@ -495,7 +533,9 @@
       ansible.builtin.set_fact:
         lmn_cidr: "{{ (lmn_server_ip + '/' + lmn_netmask) | ansible.utils.ipaddr('prefix') }}"
 
+    # Its creates: file is written by nothing, so a finished server would be prepared again.
     - name: Run lmn-appliance (server profile)
+      when: not lmn_setup_done.stat.exists
       ansible.builtin.shell: |
         set -o pipefail
         {{ lmn_appliance_script }} -p server -u \
@@ -649,6 +689,7 @@
           could not be installed. Please check 'apt-get install
           linuxmuster-base7' (repository/dependencies).
 
+
     # =========================================================================
     # LINUXMUSTER-SETUP CONFIGURATION FILE
     # =========================================================================
@@ -732,11 +773,13 @@
     # (deb.linuxmuster.net, archive.ubuntu.com, ...) no longer resolve.
     # Point it to a working forwarder before Samba restarts so that the
     # following apt tasks do not fail.
+    # Only right after the setup or when given: on a finished server 'auto' finds the server itself.
     - name: Set the DNS forwarder in smb.conf to a working resolver
       ansible.builtin.replace:
         path: /etc/samba/smb.conf
         regexp: '^(\s*dns forwarder\s*=\s*).*$'
-        replace: '\g<1>{{ lmn_dns_forwarder }}'
+        replace: '\g<1>{{ lmn_dns_server }}'
+      when: lmn_setup_result is changed or lmn_dns_forwarder != 'auto'
 
     - name: Restart Samba AD DC
       ansible.builtin.systemd:
@@ -771,7 +814,7 @@
       ansible.builtin.debug:
         msg: >-
           External name resolution (deb.linuxmuster.net) through the DNS forwarder
-          {{ lmn_dns_forwarder }} does not work. Behind a proxy this is often
+          {{ lmn_dns_server }} does not work. Behind a proxy this is often
           normal (apt goes through the proxy). If apt tasks fail afterwards,
           please check lmn_dns_forwarder.
       when: lmn_dns_check.rc != 0
