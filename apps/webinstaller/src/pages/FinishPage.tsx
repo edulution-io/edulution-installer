@@ -123,7 +123,9 @@ const FinishPage = () => {
         className="text-4xl text-muted-foreground"
       />
       <p className="text-center text-muted-foreground">{t('finish.installing')}</p>
-      <p className="text-center text-sm text-muted-foreground">{t('finish.redirect')}</p>
+      <p className="text-center text-sm text-muted-foreground">
+        {t('finish.redirect')}
+      </p>
       {showManualLink && (
         <Button
           variant="btn-security"
